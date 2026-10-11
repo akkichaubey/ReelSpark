@@ -1,8 +1,8 @@
-# PROJECT: AI Clip Finder — Local-First Video to Reels Studio
+# PROJECT: ReelSpark — Local-First Video to Reels Studio
 
 ## 1. Project Overview
 
-**AI Clip Finder** is a professional, local-first web application engineered to extract the most motivational, philosophical, and thought-provoking short clips from long-form speeches, podcasts, and interviews (optimized for Osho speeches, Alan Watts, J. Krishnamurti, and deep educational talks).
+**ReelSpark** is a professional, local-first web application engineered to extract the most motivational, philosophical, and thought-provoking short clips from long-form speeches, podcasts, and interviews (optimized for Osho speeches, Alan Watts, J. Krishnamurti, and deep educational talks).
 
 Every discovered clip is strictly capped at **60 seconds**, contextually verified to ensure complete thoughts without dangling pronouns, ranked across a 7-factor scoring engine, synchronized with local timeline subtitles, and rendered locally with FFmpeg into vertical 9:16 reels and horizontal formats.
 

@@ -33,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-bold text-white tracking-tight">AI Video Studio</h1>
+              <h1 className="text-lg font-bold text-white tracking-tight">ReelSpark</h1>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-zinc-200 border border-white/20">
                 PRO
               </span>

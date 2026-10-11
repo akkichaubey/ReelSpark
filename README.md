@@ -1,4 +1,4 @@
-# AI Clip Finder — Local-First Video to Reels Studio
+# ReelSpark — Local-First Video to Reels Studio
 
 > Extract high-impact, philosophical, and motivational short clips (under 60 seconds) from long-form speeches, podcasts, and interviews. Built for speeches like Osho, Alan Watts, and deep conversations.
 

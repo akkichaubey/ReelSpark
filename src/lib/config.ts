@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 
 export const APP_CONFIG = {
-  appName: 'AI Clip Finder — Local Studio',
+  appName: 'ReelSpark — Local Studio',
   version: '1.0.0',
   defaultGeminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   maxClipDurationSeconds: 60,

@@ -44,7 +44,7 @@ const execFileAsync = promisify(execFile);
 
 async function runAllTests() {
   console.log('\n======================================================');
-  console.log('🚀 AI CLIP FINDER — AUTOMATED TEST SUITE EXECUTION');
+  console.log('🚀 REELSPARK — AUTOMATED TEST SUITE EXECUTION');
   console.log('======================================================\n');
 
   let passed = 0;
