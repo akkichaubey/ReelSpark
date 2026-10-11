@@ -12,6 +12,7 @@ import {
   Layers,
   Upload,
   CheckCircle2,
+  Music,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
 
@@ -74,33 +75,50 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
             </span>
           </div>
 
-          {/* Video Metadata badges */}
+          {/* Video / Audio Metadata badges */}
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
             {project.videoMetadata ? (
-              <>
-                <span className="flex items-center space-x-1">
-                  <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Duration: {Math.round(project.videoMetadata.duration)}s</span>
-                </span>
-                <span className="flex items-center space-x-1">
-                  <Maximize2 className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>
-                    {project.videoMetadata.width}x{project.videoMetadata.height} ({project.videoMetadata.aspectRatio})
+              (!project.videoMetadata.videoCodec && project.videoMetadata.hasAudio) || project.sourceType === 'audio' ? (
+                <>
+                  <span className="flex items-center space-x-1">
+                    <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Duration: {Math.round(project.videoMetadata.duration)}s</span>
                   </span>
-                </span>
-                <span className="flex items-center space-x-1">
-                  <Layers className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>{project.videoMetadata.fps} FPS</span>
-                </span>
-                <span className="flex items-center space-x-1">
-                  <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>{project.videoMetadata.hasAudio ? 'Stereo Audio' : 'No Audio'}</span>
-                </span>
-              </>
+                  <span className="flex items-center space-x-1 text-amber-400">
+                    <Music className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Audio Project ({project.videoMetadata.audioCodec || 'Stereo'})</span>
+                  </span>
+                  <span className="flex items-center space-x-1 text-emerald-400">
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Speech Track Ready</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center space-x-1">
+                    <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Duration: {Math.round(project.videoMetadata.duration)}s</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Maximize2 className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>
+                      {project.videoMetadata.width}x{project.videoMetadata.height} ({project.videoMetadata.aspectRatio})
+                    </span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Layers className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>{project.videoMetadata.fps} FPS</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>{project.videoMetadata.hasAudio ? 'Stereo Audio' : 'No Audio'}</span>
+                  </span>
+                </>
+              )
             ) : project.youtubeUrl ? (
               <span className="text-red-400">YouTube Source: {project.youtubeUrl}</span>
             ) : (
-              <span>Inspecting video streams...</span>
+              <span>Inspecting media streams...</span>
             )}
           </div>
         </div>

@@ -1,14 +1,21 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+
+const storageBase = process.env.STORAGE_DIR
+  ? path.resolve(process.env.STORAGE_DIR)
+  : (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+    ? path.join(os.tmpdir(), 'reelspark_storage')
+    : path.join(process.cwd(), 'storage');
 
 export const APP_CONFIG = {
   appName: 'ReelSpark — Local Studio',
   version: '1.0.0',
   defaultGeminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   maxClipDurationSeconds: 60,
-  storageRoot: path.join(process.cwd(), 'storage'),
-  projectsDir: path.join(process.cwd(), 'storage', 'projects'),
-  tempDir: path.join(process.cwd(), 'storage', 'temp'),
+  storageRoot: storageBase,
+  projectsDir: path.join(storageBase, 'projects'),
+  tempDir: path.join(storageBase, 'temp'),
   binDir: path.join(process.cwd(), 'bin'),
 };
 

@@ -11,7 +11,7 @@ export type ProjectStatus =
   | 'FAILED'
   | 'CANCELLED';
 
-export type VideoSourceType = 'upload' | 'youtube';
+export type VideoSourceType = 'upload' | 'audio' | 'youtube';
 
 export type TopicCategory =
   | 'Motivation'

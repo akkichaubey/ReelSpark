@@ -277,14 +277,40 @@ export default function DashboardPage() {
   };
 
   // Handler: Open in AI Reel Caption Maker
-  const handleCreateReel = (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
+  const handleCreateReel = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
     try {
-      const reelProj = createCaptionProjectFromClip(candidate, activeProject, lang);
+      showToast('Extracting audio for selected clip...', 'info');
+
+      let audioOverride;
+      if (activeProject?.id) {
+        try {
+          const res = await fetch(`/api/projects/${activeProject.id}/clip-audio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clipId: candidate.id,
+              start: candidate.start,
+              end: candidate.end,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.audioUrl) {
+            audioOverride = {
+              audioUrl: data.audioUrl,
+              storagePath: data.audioPath,
+              duration: data.duration,
+              fileSize: data.fileSize,
+            };
+          }
+        } catch (apiErr) {
+          console.warn('Clip audio API extraction failed, using fallback:', apiErr);
+        }
+      }
+
+      const reelProj = createCaptionProjectFromClip(candidate, activeProject, lang, audioOverride);
       localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
-      showToast('Opening in AI Reel Caption Maker...', 'info');
-      setTimeout(() => {
-        router.push('/caption-maker');
-      }, 350);
+      showToast('Opening in AI Reel Caption Maker...', 'success');
+      router.push('/caption-maker');
     } catch (err: any) {
       console.error('Failed to create reel from clip:', err);
       router.push('/caption-maker');
@@ -660,14 +686,14 @@ export default function DashboardPage() {
                 </div>
                 <h3 className="text-lg font-bold text-white">No Clips Discovered Yet</h3>
                 <p className="text-sm text-zinc-400 max-w-md mx-auto">
-                  Click &ldquo;Run Full AI Analysis&rdquo; in the header above to transcribe the video and discover motivational, philosophical, and viral clips under 60s.
+                  Click &ldquo;Run Full AI Analysis&rdquo; in the header above to transcribe the audio/video and discover motivational, philosophical, and viral clips under 60s.
                 </p>
                 <button
                   onClick={handleRunAnalysis}
                   disabled={isAnalyzing || (activeProject.sourceType === 'youtube' && !activeProject.localVideoPath)}
                   className="px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
                 >
-                  {isAnalyzing ? 'Analyzing Video...' : 'Run Full AI Analysis'}
+                  {isAnalyzing ? 'Analyzing Media...' : 'Run Full AI Analysis'}
                 </button>
               </div>
             )}

@@ -1,0 +1,452 @@
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
+import { useCurrentFrame, useVideoConfig } from 'remotion';
+import gsap from 'gsap';
+import { CaptionGroup, CaptionStyle, TranscriptWord } from '../lib/caption-maker/types';
+import { hexToRgba } from '../lib/caption-maker/sample-data';
+import { getGoogleFontUrl } from '../lib/caption-maker/google-fonts';
+
+interface GsapAnimatedCaptionsProps {
+  words: TranscriptWord[];
+  captionGroups: CaptionGroup[];
+  style: CaptionStyle;
+  width: number;
+  height: number;
+}
+
+export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
+  words,
+  captionGroups,
+  style,
+  width,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const currentTime = frame / fps;
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<gsap.core.Timeline | null>(null);
+
+  // Proportional typography sizing relative to 1080p width
+  const scaleFactor = width / 1080;
+  const fontSize = Math.round(style.fontSize * scaleFactor);
+  const strokeWidth = Math.max(0, Math.round(style.strokeWidth * scaleFactor));
+  const shadowBlur = Math.round((style.shadowBlur || 8) * scaleFactor);
+  const paddingX = Math.round((style.backgroundPadding ?? 14) * scaleFactor);
+  const paddingY = Math.round(paddingX * 0.5);
+
+  // Container width constraint matching preview (88% of canvas width)
+  const containerWidth = Math.round(width * 0.88);
+  const textAlign = style.textAlign === 'custom' ? 'center' : (style.textAlign || 'center');
+  const justifyAlign =
+    textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
+
+  const primaryFontName = useMemo(() => {
+    return style.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Arial';
+  }, [style.fontFamily]);
+
+  const cleanFontFamily = useMemo(() => {
+    return `"${primaryFontName}", "Nirmala UI", "Segoe UI", sans-serif`;
+  }, [primaryFontName]);
+
+  const googleFontUrl = useMemo(() => {
+    if (!primaryFontName || ['Arial', 'Helvetica', 'Times New Roman', 'Impact', 'sans-serif'].includes(primaryFontName)) {
+      return null;
+    }
+    return getGoogleFontUrl(primaryFontName);
+  }, [primaryFontName]);
+
+  const fontWeight =
+    style.fontWeight === 'black'
+      ? 900
+      : style.fontWeight === 'bold'
+      ? 700
+      : style.fontWeight === 'semibold'
+      ? 600
+      : style.fontWeight === 'medium'
+      ? 500
+      : 400;
+
+  // Compute text shadow / neon glow based on textEffect
+  const getTextShadow = (): string => {
+    const effect = style.textEffect || 'drop-shadow';
+    if (effect === 'none') return 'none';
+    if (effect === 'neon-glow') {
+      const glow = style.glowColor || style.importantColor || '#FCD905';
+      const blur = shadowBlur || 12;
+      return `0 0 ${Math.max(2, Math.round(blur * 0.4))}px ${glow}, 0 0 ${blur}px ${glow}, 0 0 ${Math.round(blur * 1.5)}px ${glow}`;
+    }
+    if (effect === 'retro-3d') {
+      const offX = Math.round((style.shadowOffsetX ?? 5) * scaleFactor);
+      const offY = Math.round((style.shadowOffsetY ?? 5) * scaleFactor);
+      const col = style.shadowColor || '#000000';
+      return `${offX}px ${offY}px 0px ${col}`;
+    }
+    if (effect === 'soft-ambient') {
+      return `0px 2px ${shadowBlur}px ${style.shadowColor || 'rgba(0,0,0,0.6)'}`;
+    }
+    // drop-shadow
+    const offX = Math.round((style.shadowOffsetX ?? 0) * scaleFactor);
+    const offY = Math.max(1, Math.round((style.shadowOffsetY ?? shadowBlur * 0.4) * scaleFactor));
+    return `${offX}px ${offY}px ${shadowBlur}px ${style.shadowColor || 'rgba(0,0,0,0.85)'}`;
+  };
+
+  // Compute background container styling (Instagram / VN style badges)
+  const getBackgroundStyles = (): React.CSSProperties => {
+    const bgStyle = style.backgroundStyle || 'none';
+    if (bgStyle === 'none') {
+      if (style.backgroundColor && style.backgroundColor !== 'transparent') {
+        const rawBg = style.backgroundColor;
+        const opacity = style.backgroundOpacity ?? 0.8;
+        return {
+          backgroundColor: hexToRgba(rawBg, opacity),
+          padding: `${paddingY}px ${paddingX}px`,
+          borderRadius: `${Math.round(16 * scaleFactor)}px`,
+        };
+      }
+      return {};
+    }
+
+    const rawBg = style.backgroundColor || '#000000';
+    const opacity = style.backgroundOpacity ?? 0.8;
+    const bgRgba = hexToRgba(rawBg, opacity);
+    const radius = Math.round((style.backgroundRadius ?? 16) * scaleFactor);
+
+    if (bgStyle === 'solid-pill') {
+      return {
+        backgroundColor: bgRgba,
+        borderRadius: radius >= 30 ? '9999px' : `${radius}px`,
+        padding: `${paddingY}px ${paddingX}px`,
+      };
+    }
+    if (bgStyle === 'frosted-glass') {
+      return {
+        backgroundColor: bgRgba,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.18)',
+        borderRadius: radius >= 30 ? '9999px' : `${radius}px`,
+        padding: `${paddingY}px ${paddingX}px`,
+      };
+    }
+    if (bgStyle === 'marker-bar') {
+      return {
+        backgroundColor: bgRgba,
+        borderRadius: `${Math.min(6, radius)}px`,
+        padding: `${paddingY}px ${paddingX}px`,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+      };
+    }
+    if (bgStyle === 'outline-pill') {
+      return {
+        backgroundColor: hexToRgba(rawBg, opacity * 0.4),
+        border: `2px solid ${style.importantColor || '#FCD905'}`,
+        borderRadius: radius >= 30 ? '9999px' : `${radius}px`,
+        padding: `${paddingY}px ${paddingX}px`,
+      };
+    }
+    return {};
+  };
+
+  // Vertical & Horizontal position styling matching ASS/Preview anchors 1:1
+  const getContainerPositionStyles = (): React.CSSProperties => {
+    const isCustomX = style.textAlign === 'custom' || style.position === 'custom';
+    const posX = isCustomX ? `${style.customX ?? 50}%` : '50%';
+
+    if (style.position === 'top') {
+      return { top: '18%', left: posX, transform: 'translateX(-50%)' };
+    }
+    if (style.position === 'center') {
+      return { top: '50%', left: posX, transform: 'translate(-50%, -50%)' };
+    }
+    if (style.position === 'bottom') {
+      return { top: '82%', left: posX, transform: 'translateX(-50%)' };
+    }
+    return {
+      top: `${style.customY ?? 75}%`,
+      left: posX,
+      transform: 'translate(-50%, -50%)',
+    };
+  };
+
+  const getGroupVerticalAnchor = (): React.CSSProperties => {
+    if (style.position === 'bottom') {
+      return { bottom: 0 };
+    }
+    if (style.position === 'top') {
+      return { top: 0 };
+    }
+    return { top: '50%', transform: 'translateY(-50%)' };
+  };
+
+  const letterSpacing = `${Math.round((style.letterSpacing ?? 0) * scaleFactor)}px`;
+  const lineHeight = style.lineHeight ?? 1.3;
+
+  // Build paused GSAP master timeline deterministically
+  useLayoutEffect(() => {
+    if (!rootRef.current) return;
+
+    if (timelineRef.current) {
+      timelineRef.current.kill();
+    }
+
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ paused: true });
+
+      if (style.captionMode === 'word-by-word') {
+        // Mode 1: Individual word animations
+        const targetScale =
+          style.highlightAnimation === 'color-change' || style.highlightAnimation === 'none'
+            ? 1.0
+            : Math.min(1.2, style.zoomScale ?? 1.15);
+
+        words.forEach((w) => {
+          const target = `.w-item-${w.id}`;
+          const activeColor = style.importantColor;
+
+          // Initially invisible
+          gsap.set(target, { autoAlpha: 0, scale: 0.85 });
+
+          // Appearance animation at w.start
+          tl.to(target, { autoAlpha: 1, scale: targetScale, color: activeColor, duration: 0.06, ease: 'power2.out' }, w.start);
+
+          // Disappearance at w.end
+          const exitTime = Math.max(w.start + 0.15, w.end);
+          tl.to(target, { autoAlpha: 0, scale: 0.9, duration: 0.05, ease: 'power1.in' }, exitTime);
+        });
+      } else {
+        // Mode 2 & Mode 3: Phrase Groups with Word Highlights
+        captionGroups.forEach((group, gIdx) => {
+          const groupSelector = `.c-group-${gIdx}`;
+
+          // Initially invisible
+          gsap.set(groupSelector, { autoAlpha: 0 });
+
+          // Group visible window
+          tl.to(groupSelector, { autoAlpha: 1, duration: 0.06, ease: 'power2.out' }, group.start);
+
+          // Word highlighting within group
+          group.words.forEach((w, wIdx) => {
+            const wordSelector = `.w-span-${w.id}`;
+            const nextWord = group.words[wIdx + 1];
+            const activeEndTime = nextWord ? nextWord.start : Math.max(w.end, group.end);
+            const activeColor = style.importantColor;
+            const baseColor = w.isImportant ? style.importantColor : style.textColor;
+
+            const highlightAnim = style.highlightAnimation || 'pop';
+            const isWordBadge = highlightAnim === 'background' || Boolean(style.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none');
+            const wordBadgeColor = style.activeWordBgColor || style.importantColor;
+
+            // Target zoom scale: Only zoom when highlightAction is 'pop'!
+            let targetScale = 1.0;
+            if (highlightAnim === 'pop') {
+              targetScale = style.zoomScale ?? 1.15;
+            } else if (highlightAnim === 'background') {
+              targetScale = 1.04;
+            } else {
+              targetScale = 1.0; // Flat text for color-change, none, underline!
+            }
+
+            const extraMargin = targetScale > 1.0
+              ? Math.round((targetScale - 1) * 0.45 * fontSize)
+              : 0;
+
+            const normalOpacity = style.textOpacity ?? 0.65;
+
+            // Initially dimmed
+            gsap.set(wordSelector, {
+              color: baseColor,
+              backgroundColor: 'transparent',
+              opacity: normalOpacity,
+              scale: 1.0,
+              marginLeft: 0,
+              marginRight: 0,
+            });
+
+            // At w.start: Pop/Punch/Glow to active state
+            const targetColor = isWordBadge ? '#000000' : activeColor;
+            const targetBg = isWordBadge ? wordBadgeColor : 'transparent';
+
+            tl.to(wordSelector, {
+              color: targetColor,
+              backgroundColor: targetBg,
+              opacity: 1.0,
+              scale: targetScale,
+              marginLeft: extraMargin,
+              marginRight: extraMargin,
+              duration: 0.06,
+              ease: targetScale > 1.0 ? 'power2.out' : 'none',
+            }, w.start);
+
+            // At activeEndTime: Revert to dimmed inactive state
+            tl.to(wordSelector, {
+              color: baseColor,
+              backgroundColor: 'transparent',
+              opacity: normalOpacity,
+              scale: 1.0,
+              marginLeft: 0,
+              marginRight: 0,
+              duration: 0.07,
+              ease: 'power1.inOut',
+            }, activeEndTime);
+          });
+
+          // Group fades out at group.end
+          tl.to(groupSelector, { autoAlpha: 0, duration: 0.06, ease: 'power2.in' }, group.end);
+        });
+      }
+
+      tl.seek(currentTime);
+      timelineRef.current = tl;
+    }, rootRef);
+
+    return () => ctx.revert();
+  }, [captionGroups, words, style, currentTime, fontSize]);
+
+  // Synchronize GSAP seek on frame update
+  useLayoutEffect(() => {
+    if (timelineRef.current) {
+      timelineRef.current.seek(currentTime);
+    }
+  }, [currentTime]);
+
+  const baseTextStyle: React.CSSProperties = {
+    fontFamily: cleanFontFamily,
+    fontSize: `${fontSize}px`,
+    fontWeight,
+    WebkitTextStroke: strokeWidth > 0 ? `${strokeWidth}px ${style.strokeColor}` : undefined,
+    paintOrder: 'stroke fill',
+    textShadow: getTextShadow(),
+    textAlign,
+    lineHeight,
+    letterSpacing,
+    userSelect: 'none',
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      style={{
+        position: 'absolute',
+        ...getContainerPositionStyles(),
+        width: `${containerWidth}px`,
+        maxWidth: `${containerWidth}px`,
+        zIndex: 50,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: justifyAlign,
+        justifyContent: 'center',
+        textAlign,
+      }}
+    >
+      {googleFontUrl && (
+        <style dangerouslySetInnerHTML={{ __html: `@import url('${googleFontUrl}');` }} />
+      )}
+
+      {style.captionMode === 'word-by-word' ? (
+        // Mode 1: Individual word containers
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: `${Math.round(fontSize * 1.5)}px`,
+            display: 'flex',
+            justifyContent: justifyAlign,
+            alignItems: 'center',
+          }}
+        >
+          {words.map((w) => {
+            const text = style.uppercase ? w.text.toUpperCase() : w.text;
+            return (
+              <div
+                key={w.id}
+                className={`w-item-${w.id}`}
+                style={{
+                  ...baseTextStyle,
+                  position: 'absolute',
+                  top: '50%',
+                  left: textAlign === 'left' ? 0 : textAlign === 'right' ? '100%' : '50%',
+                  transform:
+                    textAlign === 'center'
+                      ? 'translate(-50%, -50%)'
+                      : textAlign === 'right'
+                      ? 'translate(-100%, -50%)'
+                      : 'translate(0, -50%)',
+                  whiteSpace: 'nowrap',
+                  color: style.textColor,
+                  ...getBackgroundStyles(),
+                }}
+              >
+                {text}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        // Mode 2 & Mode 3: Phrase Groups with Word Highlight Spans
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            textAlign,
+          }}
+        >
+          {captionGroups.map((group, gIdx) => {
+            return (
+              <div
+                key={group.id}
+                className={`c-group-${gIdx}`}
+                style={{
+                  position: 'absolute',
+                  ...getGroupVerticalAnchor(),
+                  left: 0,
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: justifyAlign,
+                  textAlign,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: justifyAlign,
+                    columnGap: `${Math.round(fontSize * 0.32)}px`,
+                    rowGap: `${Math.round(fontSize * 0.40 * Math.max(0.3, lineHeight - 0.7))}px`,
+                    ...getBackgroundStyles(),
+                    maxWidth: '100%',
+                    textAlign,
+                  }}
+                >
+                  {group.words.map((w) => {
+                    const text = style.uppercase ? w.text.toUpperCase() : w.text;
+                    const isWordBadge = style.highlightAnimation === 'background' || Boolean(style.activeWordBgColor);
+                    return (
+                      <span
+                        key={w.id}
+                        className={`w-span-${w.id}`}
+                        style={{
+                          ...baseTextStyle,
+                          display: 'inline-block',
+                          whiteSpace: 'nowrap',
+                          transformOrigin: 'center center',
+                          borderRadius: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
+                          padding: isWordBadge ? `${Math.round(2 * scaleFactor)}px ${Math.round(8 * scaleFactor)}px` : undefined,
+                          willChange: 'transform, color, opacity, background-color',
+                        }}
+                      >
+                        {text}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};

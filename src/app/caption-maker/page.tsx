@@ -1,7 +1,7 @@
 'use strict';
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   CaptionProject,
@@ -11,21 +11,26 @@ import {
   ImageAsset,
   AudioAsset,
   ImageFitMode,
+  ImagePosition,
   TranscriptWord,
+  ThumbnailSettings,
 } from '@/lib/caption-maker/types';
-import {
-  createDefaultCaptionProject,
-  SAMPLE_TRANSCRIPT_WORDS,
-} from '@/lib/caption-maker/sample-data';
-import { groupTranscriptWords } from '@/lib/caption-maker/caption-grouping';
+import { createDefaultCaptionProject } from '@/lib/caption-maker/sample-data';
 import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSection';
 import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import { TranscriptEditor } from '@/components/caption-maker/TranscriptEditor';
 import { CaptionTimeline } from '@/components/caption-maker/CaptionTimeline';
 import { CaptionStylePanel } from '@/components/caption-maker/CaptionStylePanel';
+import { ThumbnailStylePanel } from '@/components/caption-maker/ThumbnailStylePanel';
+import { ThumbnailPreview } from '@/components/caption-maker/ThumbnailPreview';
 import { OutputSettingsPanel } from '@/components/caption-maker/OutputSettingsPanel';
 import { ExportModal } from '@/components/caption-maker/ExportModal';
 import { KeyboardShortcutsDialog } from '@/components/caption-maker/KeyboardShortcutsDialog';
+import {
+  createDefaultThumbnailSettings,
+  renderThumbnailToCanvas,
+  getThumbnailDimensions,
+} from '@/lib/caption-maker/thumbnail-presets';
 import {
   Film,
   Sparkles,
@@ -40,6 +45,7 @@ import {
   FolderOpen,
   Check,
   Tv,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export default function CaptionMakerPage() {
@@ -58,7 +64,8 @@ export default function CaptionMakerPage() {
 
   // UI Panels & Tabs
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
-  const [rightTab, setRightTab] = useState<'style' | 'output'>('style');
+  const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('style');
+  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
 
   // Modals
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -74,15 +81,39 @@ export default function CaptionMakerPage() {
     videoUrl?: string;
     srtUrl?: string;
     error?: string;
+    thumbnailMerged?: boolean;
+    thumbnailUrl?: string;
   } | null>(null);
 
   // Initialize from LocalStorage if available
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('reel_caption_project_v1');
+      let saved = localStorage.getItem('reel_caption_project_v2');
+      if (!saved) {
+        saved = localStorage.getItem('reel_caption_project_v1');
+      }
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.captionStyle && parsed.outputSettings) {
+          // Ensure default active color is #FCD905 if it was missing or an older default yellow
+          const oldYellows = ['#FFE600', '#FFD700', '#FDE047', '#FEF08A', '#EAB308', '#FFEB3B', '#F59E0B'];
+          const currentImportant = parsed.captionStyle.importantColor?.toUpperCase?.() || '';
+          if (!parsed.captionStyle.importantColor || oldYellows.includes(currentImportant)) {
+            parsed.captionStyle.importantColor = '#FCD905';
+            if (parsed.captionStyle.glowColor && oldYellows.includes(parsed.captionStyle.glowColor.toUpperCase())) {
+              parsed.captionStyle.glowColor = '#FCD905';
+            }
+          }
+          if (parsed.captionStyle.textOpacity === undefined) {
+            parsed.captionStyle.textOpacity = 0.65;
+          }
+          // Persist upgraded structure to v2
+          try {
+            localStorage.setItem('reel_caption_project_v2', JSON.stringify(parsed));
+          } catch {
+            // Ignore storage quota warnings
+          }
+
           setTimeout(() => {
             setProject(parsed);
             setHistory([parsed]);
@@ -191,7 +222,7 @@ export default function CaptionMakerPage() {
   // Save project to localStorage
   const handleSaveProject = () => {
     try {
-      localStorage.setItem('reel_caption_project_v1', JSON.stringify(project));
+      localStorage.setItem('reel_caption_project_v2', JSON.stringify(project));
       setSaveSuccessNotice(true);
       setTimeout(() => setSaveSuccessNotice(false), 2500);
     } catch (e) {
@@ -259,10 +290,155 @@ export default function CaptionMakerPage() {
   }, [togglePlay, handleSeek, currentTime, undo, redo]);
 
   // Asset Upload Handlers
-  const handleImageUploaded = (image: ImageAsset) => {
+  const handleImageUploaded = (image: ImageAsset, accompanyingAudio?: AudioAsset) => {
     updateProjectWithHistory((prev) => ({
       ...prev,
       image,
+      audio: prev.audio ? prev.audio : accompanyingAudio ? accompanyingAudio : prev.audio,
+      updatedAt: new Date().toISOString(),
+    }));
+    if (accompanyingAudio && (!project.audio || !project.audio.fileUrl)) {
+      setAudioDuration(accompanyingAudio.duration);
+      handleSeek(0);
+    }
+  };
+
+  const initialThumbAspect: '9:16' | '4:5' | '1:1' | '16:9' = useMemo(() => {
+    const asp = project.outputSettings?.aspectRatio;
+    if (asp === '16:9' || asp === '1:1' || asp === '4:5' || asp === '9:16') {
+      return asp;
+    }
+    const preset = project.outputSettings?.preset;
+    if (preset === 'instagram-portrait') return '4:5';
+    if (preset === 'instagram-square') return '1:1';
+    if (preset === 'youtube-landscape') return '16:9';
+    return '9:16';
+  }, [project.outputSettings?.aspectRatio, project.outputSettings?.preset]);
+
+  const currentThumbSettings = useMemo(() => {
+    if (project.thumbnailSettings) {
+      return {
+        ...project.thumbnailSettings,
+        aspectRatio: initialThumbAspect,
+      };
+    }
+
+    const firstCaptionPhrase = project.captionGroups?.[0]?.words
+      ?.map((w) => w.text)
+      .join(' ')
+      .trim();
+    const resolvedTitle =
+      project.title && project.title !== 'Untitled Reel'
+        ? project.title
+        : firstCaptionPhrase || 'CREATE VIRAL REELS IN SECONDS';
+
+    return createDefaultThumbnailSettings(
+      resolvedTitle,
+      initialThumbAspect,
+      (project.captionStyle?.position as any) || 'top',
+      project.captionStyle?.customY ?? (project.captionStyle?.position === 'top' ? 18 : 50),
+      project.captionStyle?.fontFamily || 'Montserrat',
+      project.captionStyle?.importantColor || '#FCD905'
+    );
+  }, [
+    project.thumbnailSettings,
+    project.title,
+    project.captionGroups,
+    project.captionStyle?.position,
+    project.captionStyle?.customY,
+    project.captionStyle?.fontFamily,
+    project.captionStyle?.importantColor,
+    initialThumbAspect,
+  ]);
+
+  const handleChangeThumbnailSettings = (newSettings: ThumbnailSettings) => {
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      thumbnailSettings: newSettings,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleDownloadThumbnail = async (format: 'png' | 'jpeg') => {
+    try {
+      const canvas = document.createElement('canvas');
+      let bgImg: HTMLImageElement | null = null;
+      const sourceUrl = currentThumbSettings.customBgUrl || project.image?.fileUrl;
+      if (sourceUrl) {
+        bgImg = await new Promise<HTMLImageElement | null>((res) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => res(img);
+          img.onerror = () => res(null);
+          img.src = sourceUrl;
+        });
+      }
+
+      await renderThumbnailToCanvas(canvas, currentThumbSettings, bgImg, project.image);
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const ext = format === 'jpeg' ? 'jpg' : 'png';
+      const dataUrl = canvas.toDataURL(mime, 0.95);
+
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      const cleanTitle = (currentThumbSettings.title || 'reel_thumbnail')
+        .replace(/[^a-z0-9]/gi, '_')
+        .toLowerCase()
+        .substring(0, 30);
+      a.download = `${cleanTitle}_cover.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Failed to download thumbnail:', e);
+    }
+  };
+
+  const handleApplyThumbnailAsReelImage = async () => {
+    try {
+      const canvas = document.createElement('canvas');
+      let bgImg: HTMLImageElement | null = null;
+      const sourceUrl = currentThumbSettings.customBgUrl || project.image?.fileUrl;
+      if (sourceUrl) {
+        bgImg = await new Promise<HTMLImageElement | null>((res) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => res(img);
+          img.onerror = () => res(null);
+          img.src = sourceUrl;
+        });
+      }
+
+      await renderThumbnailToCanvas(canvas, currentThumbSettings, bgImg, project.image);
+      const dataUrl = canvas.toDataURL('image/png', 0.95);
+      const { width, height } = getThumbnailDimensions(currentThumbSettings.aspectRatio);
+
+      const newImageAsset: ImageAsset = {
+        id: `thumb-${Date.now()}`,
+        fileUrl: dataUrl,
+        fileName: `${(currentThumbSettings.title || 'cover').substring(0, 20)}.png`,
+        fileSize: Math.round(dataUrl.length * 0.75),
+        width,
+        height,
+        format: 'png',
+        fitMode: 'cover',
+        mediaType: 'image',
+      };
+
+      handleImageUploaded(newImageAsset);
+    } catch (e) {
+      console.error('Failed to apply thumbnail as reel image:', e);
+    }
+  };
+
+  const handleApplyThumbnailCover = (imageAsset: ImageAsset) => {
+    handleImageUploaded(imageAsset);
+  };
+
+  const handleSaveThumbnailSettings = (thumbnailSettings: ThumbnailSettings) => {
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      thumbnailSettings,
       updatedAt: new Date().toISOString(),
     }));
   };
@@ -281,7 +457,31 @@ export default function CaptionMakerPage() {
     if (!project.image) return;
     updateProjectWithHistory((prev) => ({
       ...prev,
-      image: prev.image ? { ...prev.image, fitMode: mode } : undefined,
+      image: prev.image
+        ? {
+            ...prev.image,
+            fitMode: mode,
+            scale: prev.image.scale ?? (mode === 'contain' ? 85 : 100),
+          }
+        : undefined,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleImagePositionChange = (position: ImagePosition) => {
+    if (!project.image) return;
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      image: prev.image ? { ...prev.image, position } : undefined,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleImageScaleChange = (scale: number) => {
+    if (!project.image) return;
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      image: prev.image ? { ...prev.image, scale } : undefined,
       updatedAt: new Date().toISOString(),
     }));
   };
@@ -343,65 +543,212 @@ export default function CaptionMakerPage() {
   };
 
   const handleChangeOutput = (outputSettings: OutputSettings) => {
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      outputSettings,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      const asp = outputSettings.aspectRatio;
+      const targetAspect: '9:16' | '4:5' | '1:1' | '16:9' =
+        asp === '16:9' || asp === '1:1' || asp === '4:5' || asp === '9:16'
+          ? asp
+          : '9:16';
+
+      return {
+        ...prev,
+        outputSettings,
+        thumbnailSettings: prev.thumbnailSettings
+          ? {
+              ...prev.thumbnailSettings,
+              aspectRatio: targetAspect,
+            }
+          : undefined,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
-  // FFmpeg Video Render Trigger
-  const handleStartRender = async () => {
+  // Video Render Trigger (Remotion + GSAP or FFmpeg)
+  const handleStartRender = async (
+    engine: 'remotion' | 'ffmpeg' = 'remotion',
+    options?: {
+      mergeThumbnail?: boolean;
+      thumbnailMergeMode?: 'intro_and_poster' | 'intro_hook' | 'poster_only';
+      thumbnailIntroDuration?: number;
+    }
+  ) => {
     if (!project.audio) {
       alert('Please upload an audio file before rendering.');
       return;
     }
 
     setIsRendering(true);
-    setRenderProgress(10);
-    setRenderStatusText('Initializing rendering pipeline...');
+    setRenderProgress(5);
+    setRenderStatusText(
+      engine === 'remotion'
+        ? 'Bundling Remotion React composition & GSAP typography...'
+        : 'Initializing FFmpeg rendering pipeline...'
+    );
     setRenderResult(null);
 
-    try {
-      setRenderProgress(25);
-      setRenderStatusText('Compositing ASS word-level animations & styles...');
+    // Auto-generate or resolve thumbnail data URL if mergeThumbnail is enabled
+    let thumbnailDataUrl = project.thumbnailUrl;
+    const shouldMerge = options?.mergeThumbnail !== false;
 
-      const response = await fetch('/api/caption-maker/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectTitle: project.title,
-          image: project.image,
-          audio: project.audio,
-          captionStyle: project.captionStyle,
-          captionGroups: project.captionGroups,
-          outputSettings: project.outputSettings,
-        }),
-      });
+    if (shouldMerge && !thumbnailDataUrl && typeof window !== 'undefined') {
+      try {
+        const { renderThumbnailToCanvas, createDefaultThumbnailSettings } = await import(
+          '@/lib/caption-maker/thumbnail-presets'
+        );
+        const canvas = document.createElement('canvas');
+        const aspect = (project.outputSettings?.aspectRatio === '4:5'
+          ? '4:5'
+          : project.outputSettings?.aspectRatio === '1:1'
+          ? '1:1'
+          : project.outputSettings?.aspectRatio === '16:9'
+          ? '16:9'
+          : '9:16') as '9:16' | '4:5' | '1:1' | '16:9';
 
-      setRenderProgress(70);
-      setRenderStatusText('FFmpeg encoding H.264 video with AAC audio...');
+        const thumbSettings =
+          project.thumbnailSettings ||
+          createDefaultThumbnailSettings(project.title, aspect);
 
-      const data = await response.json();
+        let bgImg: HTMLImageElement | null = null;
+        if (project.image?.fileUrl) {
+          bgImg = await new Promise<HTMLImageElement | null>((res) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => res(img);
+            img.onerror = () => res(null);
+            img.src = project.image!.fileUrl;
+          });
+        }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'FFmpeg rendering failed on the server.');
+        await renderThumbnailToCanvas(canvas, thumbSettings, bgImg, project.image);
+        thumbnailDataUrl = canvas.toDataURL('image/png', 0.95);
+      } catch (e) {
+        console.warn('Could not auto-generate thumbnail before render:', e);
       }
+    }
 
-      setRenderProgress(100);
-      setRenderStatusText('Rendering finished!');
-      setRenderResult({
-        videoUrl: data.videoUrl,
-        srtUrl: data.srtUrl,
-      });
+    const payload = {
+      projectId: project.id,
+      projectTitle: project.title,
+      image: project.image,
+      imageUrl: project.image?.fileUrl,
+      imagePath: project.image?.storagePath,
+      imageFitMode: project.image?.fitMode || 'cover',
+      imagePosition: project.image?.position || 'center',
+      audio: project.audio,
+      audioUrl: project.audio?.fileUrl,
+      audioPath: project.audio?.storagePath,
+      transcript: project.transcript,
+      captionStyle: project.captionStyle,
+      captionGroups: project.captionGroups,
+      outputSettings: project.outputSettings,
+      thumbnailDataUrl,
+      mergeThumbnail: shouldMerge,
+      thumbnailMergeMode: options?.thumbnailMergeMode || 'intro_and_poster',
+      thumbnailIntroDuration: options?.thumbnailIntroDuration ?? 0.000001,
+    };
 
-      // Update project with render urls
-      updateProjectWithHistory((prev) => ({
-        ...prev,
-        renderedVideoUrl: data.videoUrl,
-        renderedVideoPath: data.videoPath,
-        renderedSrtPath: data.srtPath,
-      }));
+    try {
+      if (engine === 'remotion') {
+        const response = await fetch('/api/caption-maker/render-remotion?stream=true', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({ error: 'Remotion render failed' }));
+          throw new Error(errData.error || 'Remotion server render failed');
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        if (!reader) {
+          throw new Error('Streaming response body is unavailable');
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || '';
+
+          for (const msg of messages) {
+            if (msg.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(msg.slice(6));
+                if (event.type === 'progress') {
+                  setRenderProgress(event.progress);
+                  setRenderStatusText(
+                    `Rendering GSAP typography frames... ${event.progress}%`
+                  );
+                } else if (event.type === 'complete') {
+                  setRenderProgress(100);
+                  setRenderStatusText('Remotion video rendering completed!');
+                  setRenderResult({
+                    videoUrl: event.videoUrl,
+                    srtUrl: event.srtUrl,
+                    thumbnailMerged: event.thumbnailMerged ?? shouldMerge,
+                    thumbnailUrl: event.thumbnailUrl || payload.thumbnailDataUrl || project.thumbnailUrl,
+                  });
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    renderedVideoUrl: event.videoUrl,
+                    renderedVideoPath: event.videoPath,
+                    renderedSrtPath: event.srtPath,
+                  }));
+                  return;
+                } else if (event.type === 'error') {
+                  throw new Error(event.error || 'Rendering pipeline error');
+                }
+              } catch (parseErr: any) {
+                if (msg.includes('"type":"error"')) throw parseErr;
+              }
+            }
+          }
+        }
+      } else {
+        setRenderProgress(25);
+        setRenderStatusText('Compositing ASS word-level animations & styles...');
+
+        const response = await fetch('/api/caption-maker/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        setRenderProgress(70);
+        setRenderStatusText('FFmpeg encoding H.264 video with AAC audio...');
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'FFmpeg rendering failed on the server.');
+        }
+
+        setRenderProgress(100);
+        setRenderStatusText('FFmpeg rendering finished!');
+        setRenderResult({
+          videoUrl: data.videoUrl,
+          srtUrl: data.srtUrl,
+          thumbnailMerged: data.thumbnailMerged ?? shouldMerge,
+          thumbnailUrl: data.thumbnailUrl || payload.thumbnailDataUrl || project.thumbnailUrl,
+        });
+
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          renderedVideoUrl: data.videoUrl,
+          renderedVideoPath: data.videoPath,
+          renderedSrtPath: data.srtPath,
+        }));
+      }
     } catch (err) {
       console.error('Render error:', err);
       setRenderResult({
@@ -545,6 +892,35 @@ export default function CaptionMakerPage() {
             )}
           </button>
 
+          {/* Platform & Canvas Setting Trigger (activates Canvas tab on the right side) */}
+          <button
+            onClick={() => {
+              if (rightTab === 'canvas') {
+                setRightTab('style');
+              } else {
+                setRightTab('canvas');
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer ${
+              rightTab === 'canvas'
+                ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-md shadow-amber-400/20'
+                : 'border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300'
+            }`}
+            title="Target Platform Preset, Aspect Ratio & Canvas Resolution"
+          >
+            <Tv className={`w-3.5 h-3.5 ${rightTab === 'canvas' ? 'text-black' : 'text-amber-400'}`} />
+            <span className="hidden sm:inline">Platform & Canvas</span>
+            <span
+              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                rightTab === 'canvas'
+                  ? 'bg-black/20 text-black border-black/30'
+                  : 'bg-zinc-950 text-amber-300 border-zinc-800'
+              }`}
+            >
+              {project.outputSettings.aspectRatio}
+            </span>
+          </button>
+
           {/* Render / Export Modal Trigger */}
           <button
             onClick={() => setIsExportOpen(true)}
@@ -557,9 +933,9 @@ export default function CaptionMakerPage() {
       </header>
 
       {/* Main 3-Column Studio Editor Workspace */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* LEFT COLUMN: Assets & Transcript Tabs */}
-        <section className="w-full md:w-80 lg:w-96 flex flex-col border-r border-zinc-800 bg-zinc-950 shrink-0">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+        {/* LEFT COLUMN: Assets & Audio and Transcript Tabs */}
+        <section className="w-full md:w-80 lg:w-96 flex flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0">
           {/* Tab Headers */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
             <button
@@ -582,7 +958,7 @@ export default function CaptionMakerPage() {
               }`}
             >
               <FileText className="w-3.5 h-3.5 text-amber-400" />
-              Transcript & Words
+              Transcript
               {project.captionGroups.length > 0 && (
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded-full font-mono">
                   {project.captionGroups.length}
@@ -591,14 +967,14 @@ export default function CaptionMakerPage() {
             </button>
           </div>
 
-          {/* Left Tab Body */}
-          <div className="flex-1 overflow-hidden p-3">
+          {/* Left Tab Body (Scrollable Box) */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-3">
             {leftTab === 'assets' ? (
               <AssetUploadSection
                 image={project.image}
                 audio={project.audio}
-                onImageChange={(img) => {
-                  if (img) handleImageUploaded(img);
+                onImageChange={(img, aud) => {
+                  if (img) handleImageUploaded(img, aud);
                   else {
                     updateProjectWithHistory((prev) => ({
                       ...prev,
@@ -620,6 +996,8 @@ export default function CaptionMakerPage() {
                 onTranscribe={handleTranscribe}
                 isTranscribing={isTranscribing}
                 onFitModeChange={handleFitModeChange}
+                onPositionChange={handleImagePositionChange}
+                onScaleChange={handleImageScaleChange}
               />
             ) : (
               <TranscriptEditor
@@ -632,29 +1010,98 @@ export default function CaptionMakerPage() {
           </div>
         </section>
 
-        {/* CENTER COLUMN: Real-Time Canvas Video Preview */}
+        {/* CENTER COLUMN: Real-Time Canvas Video Preview OR Live Thumbnail Cover Output */}
         <main className="flex-1 flex flex-col bg-zinc-950 items-center justify-center p-3 sm:p-4 overflow-hidden relative">
-          <CaptionPreview
-            image={project.image}
-            audioUrl={project.audio?.fileUrl}
-            transcript={project.transcript}
-            captionGroups={project.captionGroups}
-            captionStyle={project.captionStyle}
-            outputSettings={project.outputSettings}
-            currentTime={currentTime}
-            isPlaying={isPlaying}
-            onTogglePlay={togglePlay}
-            onSeek={handleSeek}
-            totalDuration={audioDuration}
-          />
+          <div className="flex flex-col items-center justify-center w-full h-full relative">
+            {/* Center Mode Switcher Tabs */}
+            <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md mb-2 px-1 text-xs">
+              <div className="flex items-center gap-1.5 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCenterViewMode('video');
+                    setRightTab('style');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    centerViewMode === 'video'
+                      ? 'bg-amber-400 text-black font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Switch to Video Reel Playback Preview"
+                >
+                  <Film className="w-3.5 h-3.5" />
+                  <span>Video Reel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCenterViewMode('thumbnail');
+                    setRightTab('thumbnail');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    centerViewMode === 'thumbnail'
+                      ? 'bg-amber-400 text-black font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Switch to Live Thumbnail Cover Output"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${centerViewMode === 'thumbnail' ? 'fill-black' : 'text-amber-400'}`} />
+                  <span>Thumbnail Cover</span>
+                </button>
+              </div>
+
+              <span className="text-[11px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                {centerViewMode === 'thumbnail'
+                  ? `${currentThumbSettings.aspectRatio === '16:9' ? '1920 × 1080' : currentThumbSettings.aspectRatio === '1:1' ? '1080 × 1080' : currentThumbSettings.aspectRatio === '4:5' ? '1080 × 1350' : '1080 × 1920'}`
+                  : `${project.outputSettings.width} × ${project.outputSettings.height}`}
+              </span>
+            </div>
+
+            {centerViewMode === 'thumbnail' ? (
+              <ThumbnailPreview
+                settings={currentThumbSettings}
+                image={project.image}
+                outputSettings={project.outputSettings}
+                onSwitchToVideo={() => {
+                  setCenterViewMode('video');
+                  setRightTab('style');
+                }}
+                onDownload={handleDownloadThumbnail}
+                onApplyAsReelImage={handleApplyThumbnailAsReelImage}
+                onToggleSafeArea={() => {
+                  handleChangeThumbnailSettings({
+                    ...currentThumbSettings,
+                    showSafeArea: currentThumbSettings.showSafeArea === false ? true : false,
+                  });
+                }}
+              />
+            ) : (
+              <CaptionPreview
+                image={project.image}
+                audioUrl={project.audio?.fileUrl}
+                transcript={project.transcript}
+                captionGroups={project.captionGroups}
+                captionStyle={project.captionStyle}
+                outputSettings={project.outputSettings}
+                currentTime={currentTime}
+                isPlaying={isPlaying}
+                onTogglePlay={togglePlay}
+                onSeek={handleSeek}
+                totalDuration={audioDuration}
+              />
+            )}
+          </div>
         </main>
 
-        {/* RIGHT COLUMN: Style & Output Settings Tabs */}
-        <section className="w-full md:w-80 lg:w-96 flex flex-col border-l border-zinc-800 bg-zinc-950 shrink-0">
-          {/* Tab Headers */}
+        {/* RIGHT COLUMN: Caption Style & Thumbnail Style Tabs */}
+        <section className="w-full md:w-80 lg:w-96 flex flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 min-h-0">
+          {/* Tab Headers: Clean 2 tabs only */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
             <button
-              onClick={() => setRightTab('style')}
+              onClick={() => {
+                setRightTab('style');
+                setCenterViewMode('video');
+              }}
               className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                 rightTab === 'style'
                   ? 'bg-zinc-800 text-white shadow-sm'
@@ -662,32 +1109,61 @@ export default function CaptionMakerPage() {
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-              Caption Styles
+              <span>Caption Styles</span>
             </button>
+
             <button
-              onClick={() => setRightTab('output')}
+              onClick={() => {
+                setRightTab('thumbnail');
+                setCenterViewMode('thumbnail');
+              }}
               className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                rightTab === 'output'
-                  ? 'bg-zinc-800 text-white shadow-sm'
+                rightTab === 'thumbnail'
+                  ? 'bg-zinc-800 text-amber-300 shadow-sm border border-amber-500/30 font-bold'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <Tv className="w-3.5 h-3.5 text-amber-400" />
-              Platform & Canvas
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Thumbnail Style</span>
             </button>
           </div>
 
-          {/* Right Tab Body */}
-          <div className="flex-1 overflow-hidden p-3">
-            {rightTab === 'style' ? (
+          {/* Right Tab Body (Scrollable Box) */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-3">
+            {rightTab === 'canvas' ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <Tv className="w-4 h-4 text-amber-400" />
+                    <span>Platform & Canvas Settings</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRightTab('style')}
+                    className="text-[11px] text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 cursor-pointer transition-colors"
+                  >
+                    Back to Styles
+                  </button>
+                </div>
+                <OutputSettingsPanel
+                  settings={project.outputSettings}
+                  onChangeSettings={handleChangeOutput}
+                />
+              </div>
+            ) : rightTab === 'thumbnail' ? (
+              <ThumbnailStylePanel
+                settings={currentThumbSettings}
+                onChangeSettings={handleChangeThumbnailSettings}
+                projectTitle={project.title}
+                captionGroups={project.captionGroups}
+                image={project.image}
+                onDownload={handleDownloadThumbnail}
+                onApplyAsReelImage={handleApplyThumbnailAsReelImage}
+              />
+            ) : (
               <CaptionStylePanel
                 style={project.captionStyle}
                 onChangeStyle={handleChangeStyle}
-              />
-            ) : (
-              <OutputSettingsPanel
-                settings={project.outputSettings}
-                onChangeSettings={handleChangeOutput}
               />
             )}
           </div>
@@ -716,6 +1192,11 @@ export default function CaptionMakerPage() {
         renderProgress={renderProgress}
         renderStatusText={renderStatusText}
         renderResult={renderResult}
+        onOpenThumbnailCreator={() => {
+          setIsExportOpen(false);
+          setRightTab('thumbnail');
+          setCenterViewMode('thumbnail');
+        }}
       />
 
       {/* Keyboard Shortcuts Dialog */}

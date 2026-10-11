@@ -41,6 +41,7 @@ export interface ProjectDirectories {
   renderedDir: string;
   srtDir: string;
   zipsDir: string;
+  clipsDir: string;
   manifestFile: string;
 }
 
@@ -58,9 +59,10 @@ export function getProjectDirs(projectId: string): ProjectDirectories {
   const renderedDir = path.join(rootDir, 'rendered');
   const srtDir = path.join(rootDir, 'srt');
   const zipsDir = path.join(rootDir, 'zips');
+  const clipsDir = path.join(rootDir, 'clips');
   const manifestFile = path.join(rootDir, 'manifest.json');
 
-  for (const d of [rootDir, originalDir, transcriptsDir, candidatesDir, renderedDir, srtDir, zipsDir]) {
+  for (const d of [rootDir, originalDir, transcriptsDir, candidatesDir, renderedDir, srtDir, zipsDir, clipsDir]) {
     if (!fs.existsSync(/*turbopackIgnore: true*/ d)) {
       fs.mkdirSync(d, { recursive: true });
     }
@@ -74,6 +76,7 @@ export function getProjectDirs(projectId: string): ProjectDirectories {
     renderedDir,
     srtDir,
     zipsDir,
+    clipsDir,
     manifestFile,
   };
 }

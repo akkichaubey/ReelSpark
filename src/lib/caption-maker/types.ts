@@ -28,7 +28,18 @@ export type HighlightAnimation =
   | 'underline'
   | 'color-change';
 
-export type ImageFitMode = 'cover' | 'contain' | 'blur';
+export type ImageFitMode = 'cover' | 'contain';
+
+export type ImagePosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
 
 export type PlatformPreset =
   | 'instagram-reel'
@@ -48,8 +59,22 @@ export interface OutputSettings {
 }
 
 export type CaptionPosition = 'top' | 'center' | 'bottom' | 'custom';
-export type TextAlignment = 'left' | 'center' | 'right';
+export type TextAlignment = 'left' | 'center' | 'right' | 'custom';
 export type FontWeight = 'normal' | 'medium' | 'semibold' | 'bold' | 'black';
+
+export type BackgroundStyle =
+  | 'none'
+  | 'solid-pill'
+  | 'frosted-glass'
+  | 'marker-bar'
+  | 'outline-pill';
+
+export type TextEffectType =
+  | 'none'
+  | 'drop-shadow'
+  | 'neon-glow'
+  | 'retro-3d'
+  | 'soft-ambient';
 
 export interface CaptionStyle {
   fontFamily: string;
@@ -60,7 +85,7 @@ export interface CaptionStyle {
   customX?: number; // 0 - 100% horizontal center
   customY?: number; // 0 - 100% vertical center
   textColor: string; // e.g. '#FFFFFF'
-  importantColor: string; // e.g. '#FACC15' (Amber/Yellow)
+  importantColor: string; // e.g. '#FCD905' (Vibrant Active Yellow)
   strokeColor: string; // e.g. '#000000'
   strokeWidth: number; // in pixels (default 4)
   shadowColor: string; // e.g. 'rgba(0,0,0,0.8)'
@@ -72,6 +97,20 @@ export interface CaptionStyle {
   highlightAnimation: HighlightAnimation;
   uppercase: boolean;
   showSafeArea: boolean;
+  // Modern VN / Instagram & CapCut Extensions
+  backgroundStyle?: BackgroundStyle;
+  backgroundOpacity?: number; // 0 to 1
+  backgroundRadius?: number;  // 0 to 999
+  letterSpacing?: number;     // in pixels (-2 to 12)
+  lineHeight?: number;        // e.g. 1.2 to 1.8
+  zoomScale?: number;         // Active word zoom scale multiplier: 1.0 (no zoom) to 1.40 (max zoom)
+  textOpacity?: number;       // Normal/inactive word opacity: 0.1 to 1.0 (default 0.65)
+  textEffect?: TextEffectType;
+  glowColor?: string;
+  glowSpread?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  activeWordBgColor?: string;
 }
 
 export interface ImageAsset {
@@ -84,6 +123,10 @@ export interface ImageAsset {
   height: number;
   format: string;
   fitMode: ImageFitMode;
+  position?: ImagePosition;
+  scale?: number;
+  mediaType?: 'image' | 'video';
+  duration?: number;
 }
 
 export interface AudioAsset {
@@ -96,6 +139,45 @@ export interface AudioAsset {
   format: string;
 }
 
+export type ThumbnailLayoutPosition = 'top' | 'center' | 'bottom' | 'custom';
+export type ThumbnailBadgeStyle = 'solid' | 'glow' | 'outline' | 'pill' | 'none';
+export type ThumbnailBackgroundType = 'project' | 'gradient' | 'color';
+
+export interface ThumbnailSettings {
+  title: string;
+  subtitle?: string;
+  badgeText?: string;
+  badgeStyle?: ThumbnailBadgeStyle;
+  badgeColor?: string;
+  preset: string;
+  fontFamily: string;
+  fontSize: number; // e.g. 76
+  fontWeight: string; // '700' | '800' | '900'
+  letterSpacing: number; // -2 to 10
+  textTransform: 'uppercase' | 'none' | 'capitalize';
+  textColor: string; // e.g. '#FFFFFF'
+  highlightColor: string; // default '#FCD905'
+  highlightWords: string[];
+  position: ThumbnailLayoutPosition;
+  customY?: number; // 10 to 90 (% of height)
+  textAlign: 'left' | 'center' | 'right';
+  overlayDarkness: number; // 0 to 0.95
+  overlayType?: 'linear-bottom' | 'linear-top' | 'radial-vignette' | 'full-dark';
+  strokeWidth: number; // 0 to 14
+  strokeColor: string;
+  shadowBlur: number; // 0 to 30
+  shadowColor: string;
+  boxBackground?: boolean;
+  boxBgColor?: string;
+  boxBgOpacity?: number;
+  brandingText?: string;
+  aspectRatio: '9:16' | '4:5' | '1:1' | '16:9';
+  backgroundType?: ThumbnailBackgroundType;
+  gradientPreset?: string;
+  customBgUrl?: string;
+  showSafeArea?: boolean;
+}
+
 export interface CaptionProject {
   id: string;
   title: string;
@@ -105,6 +187,8 @@ export interface CaptionProject {
   captionGroups: CaptionGroup[];
   captionStyle: CaptionStyle;
   outputSettings: OutputSettings;
+  thumbnailSettings?: ThumbnailSettings;
+  thumbnailUrl?: string;
   renderedVideoPath?: string;
   renderedVideoUrl?: string;
   renderedSrtPath?: string;
@@ -121,3 +205,4 @@ export interface TranscriptionResult {
 export interface TranscriptionProvider {
   transcribe(audioFilePath: string): Promise<TranscriptionResult>;
 }
+

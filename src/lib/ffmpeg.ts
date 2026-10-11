@@ -31,11 +31,12 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
     const videoStream = data.streams?.find((s: any) => s.codec_type === 'video');
     const audioStream = data.streams?.find((s: any) => s.codec_type === 'audio');
 
-    const duration = parseFloat(data.format?.duration || videoStream?.duration || '0');
-    const width = videoStream?.width || 0;
-    const height = videoStream?.height || 0;
+    const duration = parseFloat(data.format?.duration || videoStream?.duration || audioStream?.duration || '0');
+    const isAudioOnly = !videoStream && Boolean(audioStream);
+    const width = videoStream?.width || (isAudioOnly ? 1080 : 0);
+    const height = videoStream?.height || (isAudioOnly ? 1920 : 0);
     const sizeBytes = parseInt(data.format?.size || '0', 10);
-    const format = data.format?.format_name || 'unknown';
+    const format = data.format?.format_name || (isAudioOnly ? 'audio' : 'unknown');
 
     // Parse FPS from r_frame_rate e.g. "30/1" or "30000/1001"
     let fps = 30;
@@ -47,13 +48,15 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
     }
 
     let aspectRatio = '16:9';
-    if (width && height) {
+    if (videoStream && width && height) {
       const ratio = width / height;
       if (Math.abs(ratio - 16 / 9) < 0.1) aspectRatio = '16:9';
       else if (Math.abs(ratio - 9 / 16) < 0.1) aspectRatio = '9:16';
       else if (Math.abs(ratio - 4 / 3) < 0.1) aspectRatio = '4:3';
       else if (Math.abs(ratio - 1) < 0.1) aspectRatio = '1:1';
       else aspectRatio = `${width}:${height}`;
+    } else if (isAudioOnly) {
+      aspectRatio = 'Audio';
     }
 
     return {
@@ -153,14 +156,35 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     audioFilters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   }
 
-  const args: string[] = [
-    '-y',
-    '-ss', start.toFixed(3),
-    '-to', end.toFixed(3),
-    '-i', sourceVideoPath,
-  ];
+  const meta = await probeVideo(sourceVideoPath);
+  const isAudioOnly = !meta.videoCodec && meta.hasAudio;
 
-  if (filterParts.length > 0) {
+  const args: string[] = ['-y'];
+
+  if (isAudioOnly) {
+    args.push(
+      '-f', 'lavfi',
+      '-i', 'color=c=black:s=1080x1920:r=30',
+      '-ss', start.toFixed(3),
+      '-to', end.toFixed(3),
+      '-i', sourceVideoPath,
+      '-t', duration.toFixed(3)
+    );
+  } else {
+    args.push(
+      '-ss', start.toFixed(3),
+      '-to', end.toFixed(3),
+      '-i', sourceVideoPath
+    );
+  }
+
+  if (isAudioOnly) {
+    if (subtitlesAssPath && fs.existsSync(subtitlesAssPath)) {
+      const escapedAss = escapeFilterPath(subtitlesAssPath);
+      args.push('-vf', `ass='${escapedAss}'`);
+    }
+    args.push('-map', '0:v', '-map', '1:a');
+  } else if (filterParts.length > 0) {
     const combinedFilter = filterParts.join(';');
     // If complex graph with labels was used:
     if (combinedFilter.includes(';')) {
@@ -178,8 +202,10 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     '-c:v', 'libx264',
     '-preset', 'fast',
     '-crf', '22',
+    '-pix_fmt', 'yuv420p',
     '-c:a', 'aac',
     '-b:a', '192k',
+    '-shortest',
     '-movflags', '+faststart',
     outputPath
   );
@@ -299,3 +325,62 @@ export async function extractAudioForTranscription(videoPath: string, outputAudi
   await execFileAsync(ffmpegPath, args);
   return outputAudioPath;
 }
+
+export interface ExtractClipAudioOptions {
+  sourceVideoPath: string;
+  outputPath: string;
+  start: number;
+  end: number;
+  normalizeAudio?: boolean;
+}
+
+/**
+ * Extract an isolated audio segment from a video or audio file for a specific clip timeframe.
+ * Produces a high-quality 192k MP3 ready for playback, scrub timeline, and video render compositing.
+ */
+export async function extractClipAudio(options: ExtractClipAudioOptions): Promise<{
+  outputPath: string;
+  duration: number;
+}> {
+  const {
+    sourceVideoPath,
+    outputPath,
+    start,
+    end,
+    normalizeAudio = false,
+  } = options;
+
+  const ffmpegPath = getFfmpegPath();
+  const duration = Math.max(0.5, end - start);
+
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const args: string[] = [
+    '-y',
+    '-ss', start.toFixed(3),
+    '-to', end.toFixed(3),
+    '-i', sourceVideoPath,
+    '-vn',
+  ];
+
+  if (normalizeAudio) {
+    args.push('-af', 'loudnorm=I=-16:TP=-1.5:LRA=11');
+  }
+
+  args.push(
+    '-c:a', 'libmp3lame',
+    '-b:a', '192k',
+    outputPath
+  );
+
+  await execFileAsync(ffmpegPath, args);
+
+  return {
+    outputPath,
+    duration,
+  };
+}
+

@@ -55,27 +55,47 @@ export function generateAssSubtitles(
   const outlineColorAss = hexToAssColor(style.strokeColor);
   const shadowColorAss = hexToAssColor(style.shadowColor || '#000000', '80');
 
-  // Alignment: 2 = bottom-center, 5 = middle-center, 8 = top-center
+  const hasDevanagari = words.some((w) => /[\u0900-\u097F]/.test(w.text));
+  const selectedFont = style.fontFamily?.split(',')[0].replace(/["']/g, '').trim();
+  const fontFamily = selectedFont || (hasDevanagari ? 'Nirmala UI' : 'Arial');
+
+  const boldFlag =
+    style.fontWeight === 'bold' || style.fontWeight === 'black' || style.fontWeight === 'semibold'
+      ? -1
+      : 0;
+  const scaledShadow = Math.max(1, Math.round((style.shadowBlur || 6) * scaleFactor * 0.35));
+
+  // Alignment: 1=BL, 2=BC, 3=BR; 4=ML, 5=MC, 6=MR; 7=TL, 8=TC, 9=TR
   let alignment = 2;
-  let posX = Math.round(width / 2);
-  let posY = Math.round(height * 0.8); // default bottom
+  const isCustomX = style.textAlign === 'custom';
+  const alignCol = style.textAlign === 'left' ? 1 : style.textAlign === 'right' ? 3 : 2;
+
+  let posX = isCustomX
+    ? Math.round(((style.customX ?? 50) / 100) * width)
+    : style.textAlign === 'left'
+    ? Math.round(width * 0.08)
+    : style.textAlign === 'right'
+    ? Math.round(width * 0.92)
+    : Math.round(width / 2);
+
+  let posY = Math.round(height * 0.82); // default bottom
 
   if (style.position === 'top') {
-    alignment = 8;
+    alignment = style.textAlign === 'left' ? 7 : style.textAlign === 'right' ? 9 : 8;
     posY = Math.round(height * 0.18);
   } else if (style.position === 'center') {
-    alignment = 5;
+    alignment = style.textAlign === 'left' ? 4 : style.textAlign === 'right' ? 6 : 5;
     posY = Math.round(height * 0.5);
-  } else if (style.position === 'custom' && style.customX !== undefined && style.customY !== undefined) {
-    alignment = 5;
-    posX = Math.round((style.customX / 100) * width);
-    posY = Math.round((style.customY / 100) * height);
+  } else if (style.position === 'custom') {
+    alignment = style.textAlign === 'left' ? 4 : style.textAlign === 'right' ? 6 : 5;
+    posX = Math.round(((style.customX ?? 50) / 100) * width);
+    posY = Math.round(((style.customY ?? 75) / 100) * height);
+  } else {
+    alignment = alignCol;
   }
 
-  const fontFamily = style.fontFamily || 'Arial';
-  const boldFlag = style.fontWeight === 'bold' || style.fontWeight === 'black' ? -1 : 0;
-
-  // Header & Styles section
+  // Header & Styles section (Spacing: 0 is mandatory for Devanagari ligatures, otherwise style.letterSpacing)
+  const spacing = hasDevanagari ? 0 : Math.round(style.letterSpacing ?? 0);
   let ass = `[Script Info]
 Title: AI Reel Animated Captions
 ScriptType: v4.00+
@@ -86,8 +106,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontFamily},${scaledFontSize},${primaryColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},${boldFlag},0,0,0,100,100,1,0,1,${scaledStrokeWidth},2,${alignment},40,40,60,1
-Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,105,105,1,0,1,${scaledStrokeWidth + 1},3,${alignment},40,40,60,1
+Style: Default,${fontFamily},${scaledFontSize},${primaryColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},${boldFlag},0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth},${scaledShadow},${alignment},40,40,60,1
+Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth + 1},${scaledShadow},${alignment},40,40,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -103,18 +123,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
       const styleName = word.isImportant ? 'Important' : 'Default';
 
-      // Kinetic punch on important word or pop animation
-      let animTag = `\\pos(${posX},${posY})\\k${Math.max(1, Math.round((word.end - word.start) * 100))}`;
-      if (style.animationPreset === 'pop' || style.animationPreset === 'punch') {
-        animTag += `\\t(0,70,\\fscx118\\fscy118)\\t(70,140,\\fscx100\\fscy100)`;
-      } else if (style.animationPreset === 'kinetic') {
-        animTag += `\\t(0,50,\\fscx125\\fscy125)\\t(50,120,\\fscx100\\fscy100)`;
+      let animTag = `\\an${alignment}\\pos(${posX},${posY})`;
+      if (style.highlightAnimation !== 'color-change' && style.highlightAnimation !== 'none') {
+        const peakScale = Math.min(125, Math.round((style.zoomScale ?? 1.15) * 100));
+        if (style.animationPreset === 'pop') {
+          animTag += `\\fscx85\\fscy85\\t(0,70,\\fscx${peakScale}\\fscy${peakScale})\\t(70,140,\\fscx100\\fscy100)`;
+        } else if (style.animationPreset === 'punch' || style.animationPreset === 'kinetic') {
+          animTag += `\\fscx${peakScale}\\fscy${peakScale}\\t(0,80,\\fscx100\\fscy100)`;
+        }
       }
 
       ass += `Dialogue: 0,${startAss},${endAss},${styleName},,0,0,0,,{${animTag}}${text}\n`;
     }
   } else {
-    // Mode 2 & Mode 3: Phrase group with word highlighting
+    // Mode 2 & Mode 3: Phrase group with active word highlighting
     for (const group of groups) {
       for (let wIdx = 0; wIdx < group.words.length; wIdx++) {
         const activeWord = group.words[wIdx];
@@ -125,27 +147,39 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
           nextWord ? nextWord.start : Math.max(activeWord.end, group.end)
         );
 
-        // Build formatted line: active word has highlight styling
+        let activeScale = 100;
+        const highlightAnim = style.highlightAnimation || 'pop';
+        if (highlightAnim === 'pop') {
+          activeScale = Math.round((style.zoomScale ?? 1.15) * 100);
+        } else if (highlightAnim === 'background') {
+          activeScale = 104;
+        } else {
+          activeScale = 100; // Strictly flat normal text for color-change, none, underline
+        }
+
+        // Build formatted line: active word has highlight styling without \\k tags
         const lineParts = group.words.map((w, i) => {
           const raw = style.uppercase ? w.text.toUpperCase() : w.text;
           const isCurrent = i === wIdx;
-          const durationCs = Math.max(1, Math.round((w.end - w.start) * 100));
 
           if (isCurrent) {
-            const wordColor = w.isImportant ? importantColorAss : primaryColorAss;
-            let effect = `\\k${durationCs}\\c${wordColor}\\b1`;
-            if (style.animationPreset === 'pop' || style.animationPreset === 'punch') {
-              effect += `\\fscx112\\fscy112`;
-            }
-            return `{${effect}}${raw}{\\r}`;
+            const wordColor = importantColorAss;
+            const scaleTag = activeScale !== 100 ? `\\fscx${activeScale}\\fscy${activeScale}` : '';
+            const resetScale = activeScale !== 100 ? `\\fscx100\\fscy100` : '';
+            return `{\\c${wordColor}\\b1${scaleTag}}${raw}{${resetScale}\\b0}`;
           } else {
-            const dimColor = hexToAssColor(style.textColor, '40'); // semi-dim non-active words
-            return `{\\k${durationCs}\\c${dimColor}}${raw}{\\r}`;
+            const normalOpacity = style.textOpacity ?? 0.65;
+            const normalAlphaVal = Math.max(0, Math.min(255, Math.round((1 - normalOpacity) * 255)));
+            const normalAlphaHex = normalAlphaVal.toString(16).padStart(2, '0').toUpperCase();
+            const dimColor = w.isImportant
+              ? hexToAssColor(style.importantColor, normalAlphaHex)
+              : hexToAssColor(style.textColor, normalAlphaHex);
+            return `{\\c${dimColor}\\fscx100\\fscy100}${raw}`;
           }
         });
 
         const dialogueText = lineParts.join(' ');
-        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\pos(${posX},${posY})}${dialogueText}\n`;
+        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\an${alignment}\\pos(${posX},${posY})}${dialogueText}\n`;
       }
     }
   }

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
-    const type = formData.get('type') as 'image' | 'audio' | null;
+    const type = formData.get('type') as 'image' | 'video' | 'audio' | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -21,14 +21,22 @@ export async function POST(req: NextRequest) {
 
     // Check allowed extensions
     const imageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+    const videoExts = ['.mp4', '.mov', '.webm', '.mkv', '.avi'];
     const audioExts = ['.mp3', '.wav', '.m4a', '.aac', '.ogg'];
 
     const isImage = imageExts.includes(ext);
+    const isVideo = videoExts.includes(ext);
     const isAudio = audioExts.includes(ext);
 
     if (type === 'image' && !isImage) {
       return NextResponse.json(
         { error: 'Unsupported image format. Please upload JPG, PNG, or WEBP.' },
+        { status: 400 }
+      );
+    }
+    if (type === 'video' && !isVideo) {
+      return NextResponse.json(
+        { error: 'Unsupported video format. Please upload MP4, MOV, WEBM, or MKV.' },
         { status: 400 }
       );
     }
@@ -55,7 +63,41 @@ export async function POST(req: NextRequest) {
     const relativePath = `caption-maker/${assetId}/${safeName}`;
     const fileUrl = `/api/files/${relativePath}`;
 
-    if (isImage) {
+    if (isVideo) {
+      // Probe video duration
+      const duration = await probeAudioDuration(targetFilePath);
+      const videoAsset: ImageAsset = {
+        id: assetId,
+        fileUrl,
+        storagePath: targetFilePath,
+        fileName: file.name,
+        fileSize: file.size,
+        width: 1080,
+        height: 1920,
+        format: ext.replace('.', '').toUpperCase(),
+        fitMode: 'cover',
+        mediaType: 'video',
+        duration: Math.round(duration * 100) / 100,
+      };
+
+      // Also create companion audio asset from video audio track
+      const audioAsset: AudioAsset = {
+        id: `aud_${assetId}`,
+        fileUrl,
+        storagePath: targetFilePath,
+        fileName: `${file.name} (Audio)`,
+        fileSize: file.size,
+        duration: Math.round(duration * 100) / 100,
+        format: ext.replace('.', '').toUpperCase(),
+      };
+
+      return NextResponse.json({
+        success: true,
+        asset: videoAsset,
+        audioAsset,
+        type: 'video',
+      });
+    } else if (isImage) {
       // Basic dimension determination or default 1080x1920
       const imageAsset: ImageAsset = {
         id: assetId,
@@ -67,6 +109,7 @@ export async function POST(req: NextRequest) {
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
         fitMode: 'cover',
+        mediaType: 'image',
       };
       return NextResponse.json({ success: true, asset: imageAsset, type: 'image' });
     } else {
