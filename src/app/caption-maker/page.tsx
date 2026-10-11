@@ -21,7 +21,7 @@ import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import { TranscriptEditor } from '@/components/caption-maker/TranscriptEditor';
 import { CaptionTimeline } from '@/components/caption-maker/CaptionTimeline';
 import { CaptionStylePanel } from '@/components/caption-maker/CaptionStylePanel';
-import { ThumbnailStylePanel } from '@/components/caption-maker/ThumbnailStylePanel';
+import { ThumbnailStylePanel, ThumbnailSubTab } from '@/components/caption-maker/ThumbnailStylePanel';
 import { ThumbnailPreview } from '@/components/caption-maker/ThumbnailPreview';
 import { OutputSettingsPanel } from '@/components/caption-maker/OutputSettingsPanel';
 import { ExportModal } from '@/components/caption-maker/ExportModal';
@@ -66,6 +66,7 @@ export default function CaptionMakerPage() {
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
   const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('style');
   const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
+  const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('layout');
 
   // Modals
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -1074,6 +1075,14 @@ export default function CaptionMakerPage() {
                     showSafeArea: currentThumbSettings.showSafeArea === false ? true : false,
                   });
                 }}
+                onEditBadge={() => {
+                  setRightTab('thumbnail');
+                  setThumbnailSubTab('badge');
+                }}
+                onEditTitle={() => {
+                  setRightTab('thumbnail');
+                  setThumbnailSubTab('content');
+                }}
               />
             ) : (
               <CaptionPreview
@@ -1159,6 +1168,8 @@ export default function CaptionMakerPage() {
                 image={project.image}
                 onDownload={handleDownloadThumbnail}
                 onApplyAsReelImage={handleApplyThumbnailAsReelImage}
+                activeSubTab={thumbnailSubTab}
+                onSelectSubTab={setThumbnailSubTab}
               />
             ) : (
               <CaptionStylePanel

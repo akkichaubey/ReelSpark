@@ -1296,6 +1296,129 @@ async function runAllTests() {
     try { fs.rmdirSync(testDir); } catch {}
   });
 
+  // 34. Thumbnail Element Spacing & Enable/Disable Toggle
+  await test('Thumbnail element spacing adjustment and badge enable/disable toggle', async () => {
+    const { createDefaultThumbnailSettings, renderThumbnailToCanvas } = await import('../src/lib/caption-maker/thumbnail-presets');
+
+    const defaultSettings = createDefaultThumbnailSettings('Spacing Test');
+    assert.strictEqual(defaultSettings.badgeEnabled, true, 'Badge must be enabled by default');
+    assert.strictEqual(defaultSettings.badgeSpacing, 24, 'Badge to title spacing defaults to 24px');
+    assert.strictEqual(defaultSettings.subtitleSpacing, 24, 'Title to subtitle spacing defaults to 24px');
+    assert.strictEqual(defaultSettings.badgeShape, 'pill', 'Badge shape defaults to pill');
+
+    // Test disabled toggle
+    const disabledSettings = {
+      ...defaultSettings,
+      badgeEnabled: false,
+    };
+
+    const drawnTexts: string[] = [];
+    const mockCtx: any = {
+      canvas: { width: 1080, height: 1920 },
+      save: () => {},
+      restore: () => {},
+      fillRect: () => {},
+      clearRect: () => {},
+      beginPath: () => {},
+      closePath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arcTo: () => {},
+      quadraticCurveTo: () => {},
+      drawImage: () => {},
+      clip: () => {},
+      fill: () => {},
+      stroke: () => {},
+      measureText: (text: string) => ({ width: text.length * 12 }),
+      fillText: (text: string) => { drawnTexts.push(text); },
+      strokeText: () => {},
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+    };
+    const mockCanvas: any = {
+      getContext: () => mockCtx,
+      width: 0,
+      height: 0,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, disabledSettings);
+    assert.ok(!drawnTexts.includes('MUST WATCH'), 'Disabled badge must not be rendered to canvas');
+
+    // Test enabled with custom spacing and styling
+    drawnTexts.length = 0;
+    const customSettings = {
+      ...defaultSettings,
+      badgeEnabled: true,
+      badgeText: 'VIRAL',
+      badgeSpacing: 50,
+      badgeStyle: 'glow' as const,
+      badgeShape: 'rounded' as const,
+      badgeBorderRadius: 16,
+      badgeTextColor: '#FFFFFF',
+      badgeAutoTextColor: false,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, customSettings);
+    assert.ok(drawnTexts.join('').includes('VIRAL'), 'Enabled badge with custom text must be rendered to canvas');
+  });
+
+  await test('35. Thumbnail positioning options (Horizontal Alignment with custom X, Vertical Anchor with custom Y, and Safe Area overlay)', async () => {
+    const { createDefaultThumbnailSettings, renderThumbnailToCanvas } = await import('../src/lib/caption-maker/thumbnail-presets');
+    const settings = createDefaultThumbnailSettings('VIRAL THUMBNAIL TEST');
+    assert.strictEqual(settings.textAlign, 'center');
+    assert.strictEqual(settings.customX, 50);
+    assert.strictEqual(settings.showSafeArea, true);
+
+    const customPosSettings = {
+      ...settings,
+      textAlign: 'custom' as const,
+      customX: 35,
+      position: 'custom' as const,
+      customY: 65,
+      showSafeArea: true,
+      boxBackground: true,
+    };
+
+    const drawnTexts: string[] = [];
+    const mockCtx: any = {
+      canvas: { width: 1080, height: 1920 },
+      save: () => {},
+      restore: () => {},
+      fillRect: () => {},
+      clearRect: () => {},
+      beginPath: () => {},
+      closePath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arcTo: () => {},
+      quadraticCurveTo: () => {},
+      drawImage: () => {},
+      clip: () => {},
+      fill: () => {},
+      stroke: () => {},
+      measureText: (text: string) => ({ width: text.length * 12 }),
+      fillText: (text: string) => { drawnTexts.push(text); },
+      strokeText: () => {},
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+    };
+    const mockCanvas: any = {
+      getContext: () => mockCtx,
+      width: 0,
+      height: 0,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, customPosSettings);
+    assert.ok(drawnTexts.length > 0, 'Canvas should render elements with custom position');
+
+    // Test left & right alignments and top & bottom anchors
+    const leftTop = { ...settings, textAlign: 'left' as const, position: 'top' as const };
+    await renderThumbnailToCanvas(mockCanvas, leftTop);
+
+    const rightBottom = { ...settings, textAlign: 'right' as const, position: 'bottom' as const };
+    await renderThumbnailToCanvas(mockCanvas, rightBottom);
+  });
+
   console.log('\n======================================================');
   console.log(`📊 TEST SUITE RESULTS: ${passed} / ${total} TESTS PASSED`);
   console.log('======================================================\n');

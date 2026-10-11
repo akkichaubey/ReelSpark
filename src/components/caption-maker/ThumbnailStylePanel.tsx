@@ -31,7 +31,18 @@ import {
   CheckCircle2,
   SlidersHorizontal,
   ShieldAlert,
+  Square,
 } from 'lucide-react';
+
+export type ThumbnailSubTab =
+  | 'presets'
+  | 'content'
+  | 'text'
+  | 'badge'
+  | 'typography'
+  | 'effects'
+  | 'layout'
+  | 'position';
 
 interface ThumbnailStylePanelProps {
   settings: ThumbnailSettings;
@@ -41,6 +52,8 @@ interface ThumbnailStylePanelProps {
   image?: ImageAsset;
   onDownload?: (format: 'png' | 'jpeg') => void;
   onApplyAsReelImage?: () => void;
+  activeSubTab?: ThumbnailSubTab;
+  onSelectSubTab?: (tab: ThumbnailSubTab) => void;
 }
 
 export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
@@ -51,8 +64,27 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
   image,
   onDownload,
   onApplyAsReelImage,
+  activeSubTab,
+  onSelectSubTab,
 }) => {
-  const [activeTab, setActiveTab] = useState<'presets' | 'content' | 'badge' | 'typography' | 'layout'>('presets');
+  const normalizeTab = (
+    tab: ThumbnailSubTab
+  ): 'presets' | 'content' | 'badge' | 'typography' | 'layout' => {
+    if (tab === 'text') return 'content';
+    if (tab === 'effects') return 'typography';
+    if (tab === 'position') return 'layout';
+    return tab;
+  };
+
+  const [internalTab, setInternalTab] = useState<
+    'presets' | 'content' | 'badge' | 'typography' | 'layout'
+  >('layout');
+  const activeTab = normalizeTab((activeSubTab ?? internalTab) as ThumbnailSubTab);
+  const setActiveTab = (tab: ThumbnailSubTab) => {
+    const normalized = normalizeTab(tab);
+    setInternalTab(normalized);
+    onSelectSubTab?.(tab);
+  };
   const [isFontPickerOpen, setIsFontPickerOpen] = useState<boolean>(false);
   const [fontSearchQuery, setFontSearchQuery] = useState<string>('');
   const [appliedNotice, setAppliedNotice] = useState<boolean>(false);
@@ -106,6 +138,9 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
       brandingText: settings.brandingText,
       position: settings.position,
       customY: settings.customY,
+      textAlign: settings.textAlign,
+      customX: settings.customX,
+      showSafeArea: settings.showSafeArea,
       aspectRatio: settings.aspectRatio,
       backgroundType: settings.backgroundType,
     });
@@ -178,25 +213,26 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
       <div className="flex items-center border-b border-zinc-800 bg-zinc-950/50 p-1 text-[11px]">
         {[
           { id: 'presets', label: 'Presets', icon: Wand2 },
-          { id: 'content', label: 'Title', icon: Type },
-          { id: 'badge', label: 'Badge', icon: Tag },
-          { id: 'typography', label: 'Style', icon: Palette },
-          { id: 'layout', label: 'Layout', icon: Layout },
+          { id: 'content', label: 'Text', icon: Type },
+          { id: 'typography', label: 'Effects', icon: Sparkles },
+          { id: 'badge', label: 'Badge', icon: Square },
+          { id: 'layout', label: 'Position', icon: Layout },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 py-1.5 px-2 rounded-lg font-medium flex items-center justify-center gap-1 transition-all ${
+              className={`flex-1 py-1.5 px-1.5 rounded-lg font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-zinc-800 text-amber-300 font-semibold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                  ? 'bg-zinc-800 text-amber-300 font-semibold shadow-sm border border-amber-500/50'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 border border-transparent'
               }`}
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-zinc-400'}`} />
-              <span>{tab.label}</span>
+              <span className="truncate">{tab.label}</span>
             </button>
           );
         })}
@@ -207,6 +243,45 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
         {/* SUB-TAB 1: 1-CLICK PRESETS */}
         {activeTab === 'presets' && (
           <div className="space-y-3">
+            {/* Quick Customize Current Elements Banner */}
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Customize Active Elements</span>
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {settings.preset ? settings.preset.toUpperCase() : 'CUSTOM'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('layout')}
+                  className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-500/30 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                >
+                  <Layout className="w-3 h-3 text-amber-400" />
+                  <span>Position</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('badge')}
+                  className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                >
+                  <Square className="w-3 h-3 text-amber-400" />
+                  <span>Badge</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('content')}
+                  className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-200 border border-zinc-700 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                >
+                  <Type className="w-3 h-3 text-amber-400" />
+                  <span>Text</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="font-semibold text-zinc-200">
                 1-Click Viral Thumbnail Templates
@@ -369,91 +444,459 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
         {/* SUB-TAB 3: BADGE PILL */}
         {activeTab === 'badge' && (
           <div className="space-y-3.5">
-            <div className="flex items-center justify-between">
-              <label className="font-semibold text-zinc-200 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-amber-400" />
-                Badge Pill Tag
-              </label>
-              {settings.badgeText && (
+            {/* Enable / Disable Toggle Header */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-xl transition-colors ${
+                    settings.badgeEnabled !== false
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+                  }`}
+                >
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <label
+                    className="font-bold text-xs text-zinc-100 block cursor-pointer select-none"
+                    onClick={() => update({ badgeEnabled: settings.badgeEnabled === false ? true : false })}
+                  >
+                    Hook Badge Pill
+                  </label>
+                  <span className="text-[10px] text-zinc-400 block">
+                    {settings.badgeEnabled !== false ? 'Active & visible on thumbnail' : 'Disabled / hidden from thumbnail'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.badgeEnabled !== false}
+                onClick={() => update({ badgeEnabled: settings.badgeEnabled === false ? true : false })}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  settings.badgeEnabled !== false ? 'bg-amber-400' : 'bg-zinc-700'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    settings.badgeEnabled !== false ? 'translate-x-5' : 'translate-x-0 bg-zinc-300'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* When Disabled State Notice */}
+            {settings.badgeEnabled === false && (
+              <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-center space-y-2">
+                <Tag className="w-7 h-7 text-zinc-600 mx-auto" />
+                <p className="text-xs font-semibold text-zinc-300">Badge Element is Currently Disabled</p>
+                <p className="text-[11px] text-zinc-500 max-w-xs mx-auto">
+                  The hook badge and its spacing are hidden from the thumbnail cover. Enable it above to customize and display.
+                </p>
                 <button
                   type="button"
-                  onClick={() => update({ badgeText: '' })}
-                  className="text-[10px] text-red-400 hover:underline"
+                  onClick={() => update({ badgeEnabled: true })}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5 mt-1 cursor-pointer"
                 >
-                  Clear badge
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Enable Badge Element</span>
                 </button>
-              )}
-            </div>
-
-            <input
-              type="text"
-              value={settings.badgeText || ''}
-              onChange={(e) => update({ badgeText: e.target.value })}
-              placeholder="e.g. MUST WATCH, PART 1, VIRAL"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 text-xs focus:border-amber-400 focus:outline-none font-bold tracking-wider"
-            />
-
-            {/* Quick Badge Chips */}
-            <div>
-              <span className="text-[10px] text-zinc-500 mb-1.5 block">Popular Badges:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_BADGES.map((badge) => (
-                  <button
-                    key={badge}
-                    type="button"
-                    onClick={() => update({ badgeText: badge })}
-                    className={`px-2 py-1 rounded-md text-[10px] font-semibold border transition-all ${
-                      settings.badgeText === badge
-                        ? 'bg-amber-400 text-black border-amber-400 font-bold'
-                        : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-zinc-600'
-                    }`}
-                  >
-                    {badge}
-                  </button>
-                ))}
               </div>
-            </div>
+            )}
 
-            {/* Badge Style & Color */}
-            {settings.badgeText && (
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
-                <span className="font-semibold text-zinc-200 block">
-                  Badge Appearance
-                </span>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 mb-1 block">
-                      Badge Style
+            {/* When Enabled: Full Customization & Spacing */}
+            {settings.badgeEnabled !== false && (
+              <>
+                {/* 1. Element Spacing Adjustment (Badge to Title) */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                      Spacing to Title (Element Gap)
                     </label>
-                    <select
-                      value={settings.badgeStyle || 'solid'}
-                      onChange={(e) => update({ badgeStyle: e.target.value as any })}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-zinc-200 text-xs focus:outline-none"
-                    >
-                      <option value="solid">Solid Fill</option>
-                      <option value="glow">Neon Glow</option>
-                      <option value="outline">Outlined Pill</option>
-                    </select>
+                    <span className="font-mono text-[11px] text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      {settings.badgeSpacing ?? 24}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={2}
+                    value={settings.badgeSpacing ?? 24}
+                    onChange={(e) => update({ badgeSpacing: Number(e.target.value) })}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] text-zinc-500 mr-1">Quick Presets:</span>
+                    {[
+                      { label: 'Tight', val: 8 },
+                      { label: 'Normal', val: 24 },
+                      { label: 'Relaxed', val: 44 },
+                      { label: 'Wide', val: 68 },
+                    ].map((p) => (
+                      <button
+                        key={p.val}
+                        type="button"
+                        onClick={() => update({ badgeSpacing: p.val })}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
+                          (settings.badgeSpacing ?? 24) === p.val
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                        }`}
+                      >
+                        {p.label} ({p.val}px)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Badge Text Input & Popular Viral Tags */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-zinc-200 text-xs flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-400" />
+                      Badge Text / Hook
+                    </label>
+                    {settings.badgeText && (
+                      <button
+                        type="button"
+                        onClick={() => update({ badgeText: '' })}
+                        className="text-[10px] text-red-400 hover:underline cursor-pointer"
+                      >
+                        Clear text
+                      </button>
+                    )}
                   </div>
 
+                  <input
+                    type="text"
+                    value={settings.badgeText || ''}
+                    onChange={(e) => update({ badgeText: e.target.value })}
+                    placeholder="e.g. MUST WATCH, PART 1, VIRAL"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 text-xs focus:border-amber-400 focus:outline-none font-bold tracking-wider"
+                  />
+
+                  {/* Quick Badge Chips */}
                   <div>
-                    <label className="text-[10px] text-zinc-400 mb-1 block">
-                      Badge Color
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={settings.badgeColor || '#FCD905'}
-                        onChange={(e) => update({ badgeColor: e.target.value })}
-                        className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer"
-                      />
-                      <span className="font-mono text-[11px] text-amber-300 font-bold">
-                        {settings.badgeColor || '#FCD905'}
-                      </span>
+                    <span className="text-[10px] text-zinc-500 mb-1.5 block">Popular Hook Badges:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_BADGES.map((badge) => (
+                        <button
+                          key={badge}
+                          type="button"
+                          onClick={() => update({ badgeText: badge })}
+                          className={`px-2 py-1 rounded-md text-[10px] font-semibold border transition-all cursor-pointer ${
+                            settings.badgeText === badge
+                              ? 'bg-amber-400 text-black border-amber-400 font-bold'
+                              : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-zinc-600'
+                          }`}
+                        >
+                          {badge}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
-              </div>
+
+                {/* 3. Badge Style & Shape Customization */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <span className="font-bold text-xs text-zinc-200 block">
+                    Badge Style & Shape
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[10px] text-zinc-400 mb-1 block">
+                        Visual Style
+                      </label>
+                      <select
+                        value={settings.badgeStyle || 'solid'}
+                        onChange={(e) => update({ badgeStyle: e.target.value as any })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-zinc-200 text-xs focus:outline-none"
+                      >
+                        <option value="solid">Solid Fill (Punchy)</option>
+                        <option value="glow">Neon Glow (Vibrant)</option>
+                        <option value="outline">Outlined Pill</option>
+                        <option value="glass">Frosted Glass</option>
+                        <option value="gradient">Vibrant Gradient</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-zinc-400 mb-1 block">
+                        Badge Shape
+                      </label>
+                      <select
+                        value={settings.badgeShape || 'pill'}
+                        onChange={(e) => update({ badgeShape: e.target.value as any })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-zinc-200 text-xs focus:outline-none"
+                      >
+                        <option value="pill">Pill (Fully Rounded)</option>
+                        <option value="rounded">Rounded Card</option>
+                        <option value="sharp">Sharp Rectangle</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {settings.badgeShape === 'rounded' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Corner Radius</label>
+                        <span className="text-[10px] font-mono text-amber-300 font-bold">
+                          {settings.badgeBorderRadius ?? 10}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={2}
+                        max={24}
+                        value={settings.badgeBorderRadius ?? 10}
+                        onChange={(e) => update({ badgeBorderRadius: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {settings.badgeStyle === 'glow' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Neon Glow Blur</label>
+                        <span className="text-[10px] font-mono text-amber-300 font-bold">
+                          {settings.badgeGlowBlur ?? 18}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={6}
+                        max={36}
+                        value={settings.badgeGlowBlur ?? 18}
+                        onChange={(e) => update({ badgeGlowBlur: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Colors & Contrast Customization */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <span className="font-bold text-xs text-zinc-200 block">
+                    Colors & Palette
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Background Color */}
+                    <div>
+                      <label className="text-[10px] text-zinc-400 mb-1 block">
+                        Background Color
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={settings.badgeColor || '#FCD905'}
+                          onChange={(e) => update({ badgeColor: e.target.value })}
+                          className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer"
+                        />
+                        <span className="font-mono text-[11px] text-amber-300 font-bold">
+                          {settings.badgeColor || '#FCD905'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Text Color */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400 block">
+                          Text Color
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => update({ badgeAutoTextColor: !settings.badgeAutoTextColor })}
+                          className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            settings.badgeAutoTextColor !== false
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                          }`}
+                        >
+                          {settings.badgeAutoTextColor !== false ? 'Auto (Contrast)' : 'Custom'}
+                        </button>
+                      </div>
+
+                      {settings.badgeAutoTextColor !== false ? (
+                        <span className="text-[10px] text-zinc-500 italic block pt-1">
+                          Auto black/white contrast
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={settings.badgeTextColor || '#000000'}
+                            onChange={(e) => update({ badgeTextColor: e.target.value, badgeAutoTextColor: false })}
+                            className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer"
+                          />
+                          <span className="font-mono text-[11px] text-zinc-300 font-bold">
+                            {settings.badgeTextColor || '#000000'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Color Swatches */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-zinc-500 mr-1">Swatches:</span>
+                    {[
+                      '#FCD905',
+                      '#EF4444',
+                      '#3B82F6',
+                      '#10B981',
+                      '#8B5CF6',
+                      '#EC4899',
+                      '#FFFFFF',
+                      '#18181B',
+                    ].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => update({ badgeColor: c })}
+                        style={{ backgroundColor: c }}
+                        className={`w-5 h-5 rounded-full border border-white/20 transition-transform cursor-pointer ${
+                          settings.badgeColor === c ? 'scale-125 ring-2 ring-amber-400' : 'hover:scale-110'
+                        }`}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Border Width & Color */}
+                  <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-zinc-850">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Border Width</label>
+                        <span className="text-[10px] font-mono text-zinc-300 font-bold">
+                          {settings.badgeBorderWidth ?? (settings.badgeStyle === 'outline' ? 2.5 : 0)}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={6}
+                        step={0.5}
+                        value={settings.badgeBorderWidth ?? (settings.badgeStyle === 'outline' ? 2.5 : 0)}
+                        onChange={(e) => update({ badgeBorderWidth: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-zinc-400 mb-1 block">Border Color</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={settings.badgeBorderColor || '#FFFFFF'}
+                          onChange={(e) => update({ badgeBorderColor: e.target.value })}
+                          className="w-6 h-6 rounded border border-zinc-700 bg-transparent cursor-pointer"
+                        />
+                        <span className="font-mono text-[10px] text-zinc-400">
+                          {settings.badgeBorderColor || '#FFFFFF'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Typography & Dimensions Customization */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <span className="font-bold text-xs text-zinc-200 block">
+                    Typography & Padding
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Font Size</label>
+                        <span className="text-[10px] font-mono text-amber-300 font-bold">
+                          {settings.badgeFontSize ?? 26}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={16}
+                        max={48}
+                        value={settings.badgeFontSize ?? 26}
+                        onChange={(e) => update({ badgeFontSize: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-zinc-400 mb-1 block">Font Weight</label>
+                      <select
+                        value={settings.badgeFontWeight || '800'}
+                        onChange={(e) => update({ badgeFontWeight: e.target.value })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-200 text-xs focus:outline-none"
+                      >
+                        <option value="700">Bold (700)</option>
+                        <option value="800">Extra Bold (800)</option>
+                        <option value="900">Black (900)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Horizontal Padding</label>
+                        <span className="text-[10px] font-mono text-zinc-300 font-bold">
+                          {settings.badgePaddingX ?? 18}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={8}
+                        max={40}
+                        value={settings.badgePaddingX ?? 18}
+                        onChange={(e) => update({ badgePaddingX: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-zinc-400">Vertical Padding</label>
+                        <span className="text-[10px] font-mono text-zinc-300 font-bold">
+                          {settings.badgePaddingY ?? 9}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={2}
+                        max={20}
+                        value={settings.badgePaddingY ?? 9}
+                        onChange={(e) => update({ badgePaddingY: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] text-zinc-400">Letter Spacing</label>
+                      <span className="text-[10px] font-mono text-zinc-300 font-bold">
+                        {settings.badgeLetterSpacing ?? 1}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-1}
+                      max={8}
+                      value={settings.badgeLetterSpacing ?? 1}
+                      onChange={(e) => update({ badgeLetterSpacing: Number(e.target.value) })}
+                      className="w-full accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -673,95 +1116,176 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
           </div>
         )}
 
-        {/* SUB-TAB 5: LAYOUT & BACKGROUND */}
+        {/* SUB-TAB 5: POSITION, ALIGNMENT & SAFE AREA GUIDES */}
         {activeTab === 'layout' && (
-          <div className="space-y-3.5">
-            {/* Vertical Placement */}
+          <div className="space-y-4">
+            {/* Horizontal Alignment */}
             <div>
-              <label className="font-semibold text-zinc-200 mb-1.5 block">
-                Vertical Placement
-              </label>
+              <label className="block text-zinc-300 font-medium mb-1.5">Horizontal Alignment</label>
               <div className="grid grid-cols-4 gap-1.5">
-                {(['top', 'center', 'bottom', 'custom'] as const).map((pos) => (
+                {(
+                  [
+                    { id: 'left', icon: AlignLeft, label: 'Left' },
+                    { id: 'center', icon: AlignCenter, label: 'Center' },
+                    { id: 'right', icon: AlignRight, label: 'Right' },
+                    { id: 'custom', icon: SlidersHorizontal, label: 'Custom' },
+                  ] as const
+                ).map(({ id, icon: Icon, label }) => (
                   <button
-                    key={pos}
+                    key={id}
                     type="button"
-                    onClick={() => update({ position: pos })}
-                    className={`py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
-                      settings.position === pos
-                        ? 'bg-amber-400 text-black font-bold'
-                        : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                    onClick={() => update({ textAlign: id })}
+                    className={`py-1.5 rounded-lg border text-center font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                      settings.textAlign === id
+                        ? 'bg-amber-500 text-black border-amber-400 font-semibold'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
                     }`}
                   >
-                    {pos}
+                    <Icon className="w-3.5 h-3.5" />
+                    <span className="text-[11px]">{label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {settings.textAlign === 'custom' && (
+                <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
+                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                    <span>Horizontal Position (X%)</span>
+                    <span className="font-mono text-amber-400">{settings.customX ?? 50}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="90"
+                    step="1"
+                    value={settings.customX ?? 50}
+                    onChange={(e) => update({ customX: Number(e.target.value) })}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                    <span>10% (Left)</span>
+                    <span>50% (Center)</span>
+                    <span>90% (Right)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Vertical Anchor */}
+            <div>
+              <label className="block text-zinc-300 font-medium mb-1.5">Vertical Anchor</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {(
+                  [
+                    { id: 'top', label: 'Top' },
+                    { id: 'center', label: 'Center' },
+                    { id: 'bottom', label: 'Bottom' },
+                    { id: 'custom', label: 'Custom' },
+                  ] as const
+                ).map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => update({ position: pos.id })}
+                    className={`py-1.5 rounded-lg border text-center font-medium transition-all cursor-pointer ${
+                      settings.position === pos.id
+                        ? 'bg-amber-500 text-black border-amber-400 font-semibold'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-[11px]">{pos.label}</span>
                   </button>
                 ))}
               </div>
 
               {settings.position === 'custom' && (
-                <div className="mt-2.5 p-2 rounded-lg bg-zinc-950 border border-zinc-800">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-zinc-400">Vertical Offset (Y%)</span>
-                    <span className="text-[10px] font-mono text-amber-300 font-bold">
-                      {settings.customY ?? 50}%
-                    </span>
+                <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
+                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                    <span>Vertical Position (Y%)</span>
+                    <span className="font-mono text-amber-400">{settings.customY ?? 50}%</span>
                   </div>
                   <input
                     type="range"
-                    min={15}
-                    max={85}
+                    min="10"
+                    max="90"
+                    step="1"
                     value={settings.customY ?? 50}
                     onChange={(e) => update({ customY: Number(e.target.value) })}
                     className="w-full accent-amber-400 cursor-pointer"
                   />
+                  <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                    <span>10% (Top)</span>
+                    <span>50% (Center)</span>
+                    <span>90% (Bottom)</span>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Horizontal Alignment */}
-            <div>
-              <label className="font-semibold text-zinc-200 mb-1.5 block">
-                Horizontal Alignment
-              </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => update({ textAlign: 'left' })}
-                  className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    settings.textAlign === 'left'
-                      ? 'bg-amber-400 text-black font-bold'
-                      : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <AlignLeft className="w-3.5 h-3.5" />
-                  <span>Left</span>
-                </button>
+            {/* Safe Area Overlay Guide Toggle */}
+            <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400" />
+                <div>
+                  <p className="font-medium text-zinc-200 text-xs">Safe Area Overlay</p>
+                  <p className="text-[10px] text-zinc-500">
+                    Highlights 9:16 Instagram/TikTok button & caption dead zones
+                  </p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.showSafeArea !== false}
+                onChange={(e) => update({ showSafeArea: e.target.checked })}
+                className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
+              />
+            </div>
 
-                <button
-                  type="button"
-                  onClick={() => update({ textAlign: 'center' })}
-                  className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    settings.textAlign === 'center'
-                      ? 'bg-amber-400 text-black font-bold'
-                      : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <AlignCenter className="w-3.5 h-3.5" />
-                  <span>Center</span>
-                </button>
+            {/* Element Vertical Spacing */}
+            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                  Element Vertical Spacing
+                </label>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => update({ textAlign: 'right' })}
-                  className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    settings.textAlign === 'right'
-                      ? 'bg-amber-400 text-black font-bold'
-                      : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <AlignRight className="w-3.5 h-3.5" />
-                  <span>Right</span>
-                </button>
+              {/* Badge to Title Spacing */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-zinc-400">Badge to Title Gap</span>
+                  <span className="text-[10px] font-mono text-amber-300 font-bold">
+                    {settings.badgeSpacing ?? 24}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={2}
+                  value={settings.badgeSpacing ?? 24}
+                  onChange={(e) => update({ badgeSpacing: Number(e.target.value) })}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+
+              {/* Title to Subtitle Spacing */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-zinc-400">Title to Subtitle Gap</span>
+                  <span className="text-[10px] font-mono text-amber-300 font-bold">
+                    {settings.subtitleSpacing ?? 24}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={2}
+                  value={settings.subtitleSpacing ?? 24}
+                  onChange={(e) => update({ subtitleSpacing: Number(e.target.value) })}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
               </div>
             </div>
 

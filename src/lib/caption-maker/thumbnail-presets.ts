@@ -3,6 +3,7 @@
 import {
   ThumbnailSettings,
   ThumbnailBadgeStyle,
+  ThumbnailBadgeShape,
   ThumbnailLayoutPosition,
   ThumbnailBackgroundType,
   ImageAsset,
@@ -11,6 +12,7 @@ import {
 export type {
   ThumbnailSettings,
   ThumbnailBadgeStyle,
+  ThumbnailBadgeShape,
   ThumbnailLayoutPosition,
   ThumbnailBackgroundType,
 };
@@ -284,6 +286,21 @@ export function createDefaultThumbnailSettings(
     badgeText: 'MUST WATCH',
     badgeStyle: 'solid',
     badgeColor: '#FCD905',
+    badgeEnabled: true,
+    badgeSpacing: 24,
+    badgeShape: 'pill',
+    badgeBorderRadius: 10,
+    badgeBorderWidth: 0,
+    badgeBorderColor: '#FFFFFF',
+    badgeTextColor: '#000000',
+    badgeAutoTextColor: true,
+    badgeFontSize: 26,
+    badgeFontWeight: '800',
+    badgeLetterSpacing: 1,
+    badgePaddingX: 18,
+    badgePaddingY: 9,
+    badgeGlowBlur: 18,
+    subtitleSpacing: 24,
     preset: 'hormozi',
     fontFamily,
     fontSize: 78,
@@ -296,6 +313,7 @@ export function createDefaultThumbnailSettings(
     position,
     customY,
     textAlign: 'center',
+    customX: 50,
     overlayDarkness: 0,
     overlayType: 'radial-vignette',
     strokeWidth: 8,
@@ -614,16 +632,27 @@ export async function renderThumbnailToCanvas(
   const lineHeight = fontSize * 1.18;
   const totalTitleHeight = lines.length * lineHeight;
 
-  // 5. Measure Badge Pill if present
+  // 5. Measure Badge Pill if present and enabled
   let badgeHeight = 0;
   let badgeWidth = 0;
-  const badgeText = settings.badgeText?.trim() || '';
-  const badgeFontSize = Math.max(22, Math.round(fontSize * 0.34));
+  const isBadgeActive =
+    settings.badgeEnabled !== false &&
+    Boolean(settings.badgeText?.trim()) &&
+    settings.badgeStyle !== 'none';
+  const badgeText = isBadgeActive ? settings.badgeText!.trim() : '';
+  const badgeFontSize = settings.badgeFontSize || Math.max(22, Math.round(fontSize * 0.34));
+  const badgePaddingX = settings.badgePaddingX ?? 18;
+  const badgePaddingY = settings.badgePaddingY ?? 9;
+  const badgeLetterSpacing = settings.badgeLetterSpacing ?? 1;
 
-  if (badgeText) {
-    ctx.font = `800 ${badgeFontSize}px "${fontFamily}", -apple-system, sans-serif`;
-    badgeWidth = ctx.measureText(badgeText).width + 36;
-    badgeHeight = badgeFontSize + 18;
+  if (isBadgeActive) {
+    const badgeWeight = settings.badgeFontWeight || '800';
+    ctx.font = `${badgeWeight} ${badgeFontSize}px "${fontFamily}", -apple-system, sans-serif`;
+    const measuredTextWidth =
+      ctx.measureText(badgeText).width +
+      badgeLetterSpacing * Math.max(0, badgeText.length - 1);
+    badgeWidth = measuredTextWidth + badgePaddingX * 2;
+    badgeHeight = badgeFontSize + badgePaddingY * 2;
   }
 
   // 6. Measure Subtitle if present
@@ -637,8 +666,8 @@ export async function renderThumbnailToCanvas(
   }
 
   // 7. Calculate Block Y Position
-  const spacingBetweenBadgeAndTitle = badgeText ? 24 : 0;
-  const spacingBetweenTitleAndSubtitle = subtitleText ? 24 : 0;
+  const spacingBetweenBadgeAndTitle = isBadgeActive ? (settings.badgeSpacing ?? 24) : 0;
+  const spacingBetweenTitleAndSubtitle = subtitleText ? (settings.subtitleSpacing ?? 24) : 0;
   const totalContentHeight =
     badgeHeight +
     spacingBetweenBadgeAndTitle +
@@ -669,7 +698,16 @@ export async function renderThumbnailToCanvas(
     const maxLineW = Math.max(...lines.map((l) => l.totalWidth), badgeWidth);
     const boxW = Math.min(width * 0.92, maxLineW + boxPaddingX * 2);
     const boxH = totalContentHeight + boxPaddingY * 2;
-    const boxX = (width - boxW) / 2;
+    let boxX = (width - boxW) / 2;
+    if (settings.textAlign === 'left') {
+      boxX = width * 0.08 - boxPaddingX / 2;
+    } else if (settings.textAlign === 'right') {
+      boxX = width * 0.92 - boxW + boxPaddingX / 2;
+    } else if (settings.textAlign === 'custom') {
+      const customXPercent = (settings.customX ?? 50) / 100;
+      boxX = width * customXPercent - boxW / 2;
+    }
+    boxX = Math.max(width * 0.02, Math.min(width * 0.98 - boxW, boxX));
     const boxY = blockStartY - boxPaddingY;
 
     ctx.save();
@@ -691,49 +729,115 @@ export async function renderThumbnailToCanvas(
   let currentY = blockStartY;
 
   // 9. Draw Badge Pill
-  if (badgeText) {
+  if (isBadgeActive) {
     const badgeBg = settings.badgeColor || '#FCD905';
     let badgeX = 0;
     if (settings.textAlign === 'left') {
       badgeX = width * 0.08;
     } else if (settings.textAlign === 'right') {
       badgeX = width * 0.92 - badgeWidth;
+    } else if (settings.textAlign === 'custom') {
+      const customXPercent = (settings.customX ?? 50) / 100;
+      badgeX = width * customXPercent - badgeWidth / 2;
     } else {
       badgeX = (width - badgeWidth) / 2;
     }
+    badgeX = Math.max(width * 0.04, Math.min(width * 0.96 - badgeWidth, badgeX));
 
     ctx.save();
-    ctx.font = `800 ${badgeFontSize}px "${fontFamily}", -apple-system, sans-serif`;
+    const badgeWeight = settings.badgeFontWeight || '800';
+    ctx.font = `${badgeWeight} ${badgeFontSize}px "${fontFamily}", -apple-system, sans-serif`;
     ctx.textBaseline = 'middle';
 
+    const glowBlur = settings.badgeGlowBlur ?? (settings.badgeStyle === 'glow' ? 20 : 8);
     if (settings.badgeStyle === 'glow') {
       ctx.shadowColor = badgeBg;
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = glowBlur;
+      ctx.shadowOffsetY = 0;
     } else {
       ctx.shadowColor = 'rgba(0,0,0,0.4)';
       ctx.shadowBlur = 8;
       ctx.shadowOffsetY = 2;
     }
 
+    // Determine shape & corner radius
+    const shape = settings.badgeShape || 'pill';
+    const radius =
+      shape === 'sharp'
+        ? 0
+        : shape === 'rounded'
+        ? (settings.badgeBorderRadius ?? 10)
+        : badgeHeight / 2;
+
+    const borderWidth = settings.badgeBorderWidth ?? (settings.badgeStyle === 'outline' ? 2.5 : 0);
+    const borderColor = settings.badgeBorderColor || (settings.badgeStyle === 'outline' ? badgeBg : 'rgba(255,255,255,0.25)');
+
     if (settings.badgeStyle === 'outline') {
-      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, badgeHeight / 2);
+      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, radius);
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fill();
-      ctx.strokeStyle = badgeBg;
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth || 2.5;
       ctx.stroke();
-
-      ctx.fillStyle = badgeBg;
-      ctx.fillText(badgeText, badgeX + 18, currentY + badgeHeight / 2);
+    } else if (settings.badgeStyle === 'glass') {
+      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, radius);
+      ctx.fillStyle = 'rgba(24, 24, 27, 0.75)';
+      ctx.fill();
+      ctx.strokeStyle = borderColor || 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = borderWidth || 1.5;
+      ctx.stroke();
+    } else if (settings.badgeStyle === 'gradient') {
+      const grad = ctx.createLinearGradient(badgeX, currentY, badgeX + badgeWidth, currentY + badgeHeight);
+      grad.addColorStop(0, badgeBg);
+      grad.addColorStop(1, '#FF7A00');
+      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, radius);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      if (borderWidth > 0) {
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = borderWidth;
+        ctx.stroke();
+      }
     } else {
-      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, badgeHeight / 2);
+      drawRoundRect(ctx, badgeX, currentY, badgeWidth, badgeHeight, radius);
       ctx.fillStyle = badgeBg;
       ctx.fill();
+      if (borderWidth > 0) {
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = borderWidth;
+        ctx.stroke();
+      }
+    }
 
-      // Contrasting text color: black if bright badge, white if dark
-      const isBright = badgeBg.toUpperCase() === '#FCD905' || badgeBg.toUpperCase() === '#00F0FF' || badgeBg.toUpperCase() === '#FFFFFF';
-      ctx.fillStyle = isBright ? '#000000' : '#FFFFFF';
-      ctx.fillText(badgeText, badgeX + 18, currentY + badgeHeight / 2);
+    // Determine Contrasting Text Color
+    let textColor = settings.badgeTextColor;
+    if (!textColor || settings.badgeAutoTextColor) {
+      if (settings.badgeStyle === 'outline') {
+        textColor = badgeBg;
+      } else if (settings.badgeStyle === 'glass') {
+        textColor = '#FFFFFF';
+      } else {
+        const isBright =
+          badgeBg.toUpperCase() === '#FCD905' ||
+          badgeBg.toUpperCase() === '#00F0FF' ||
+          badgeBg.toUpperCase() === '#FFFFFF' ||
+          badgeBg.toUpperCase() === '#00E676';
+        textColor = isBright ? '#000000' : '#FFFFFF';
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = textColor;
+    const textCenterY = currentY + badgeHeight / 2;
+
+    if (badgeLetterSpacing > 0) {
+      let charX = badgeX + badgePaddingX;
+      for (const char of badgeText) {
+        ctx.fillText(char, charX, textCenterY);
+        charX += ctx.measureText(char).width + badgeLetterSpacing;
+      }
+    } else {
+      ctx.fillText(badgeText, badgeX + badgePaddingX, textCenterY);
     }
 
     ctx.restore();
@@ -750,9 +854,13 @@ export async function renderThumbnailToCanvas(
       startX = width * 0.08;
     } else if (settings.textAlign === 'right') {
       startX = width * 0.92 - line.totalWidth;
+    } else if (settings.textAlign === 'custom') {
+      const customXPercent = (settings.customX ?? 50) / 100;
+      startX = width * customXPercent - line.totalWidth / 2;
     } else {
       startX = (width - line.totalWidth) / 2;
     }
+    startX = Math.max(width * 0.04, Math.min(width * 0.96 - line.totalWidth, startX));
 
     let tokenX = startX;
     for (let i = 0; i < line.tokens.length; i++) {
@@ -803,9 +911,13 @@ export async function renderThumbnailToCanvas(
       subX = width * 0.08;
     } else if (settings.textAlign === 'right') {
       subX = width * 0.92 - subWidth;
+    } else if (settings.textAlign === 'custom') {
+      const customXPercent = (settings.customX ?? 50) / 100;
+      subX = width * customXPercent - subWidth / 2;
     } else {
       subX = (width - subWidth) / 2;
     }
+    subX = Math.max(width * 0.04, Math.min(width * 0.96 - subWidth, subX));
 
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
     ctx.shadowBlur = 10;

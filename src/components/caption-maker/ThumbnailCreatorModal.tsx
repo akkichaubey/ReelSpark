@@ -34,6 +34,8 @@ import {
   Tv,
   Layers,
   Wand2,
+  ShieldAlert,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface ThumbnailCreatorModalProps {
@@ -535,99 +537,237 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     />
                   </div>
 
-                  {/* Viral Badge Pill */}
-                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <label className="font-semibold text-zinc-200 flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-amber-400" />
-                        Badge Pill Tag
-                      </label>
-                      {settings.badgeText && (
-                        <button
-                          onClick={() =>
-                            setSettings((prev) => ({ ...prev, badgeText: '' }))
-                          }
-                          className="text-[10px] text-red-400 hover:underline"
-                        >
-                          Clear badge
-                        </button>
-                      )}
-                    </div>
-
-                    <input
-                      type="text"
-                      value={settings.badgeText || ''}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, badgeText: e.target.value }))
-                      }
-                      placeholder="e.g. MUST WATCH, PART 1, VIRAL"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-zinc-100 text-xs focus:border-amber-400 focus:outline-none font-bold tracking-wider"
-                    />
-
-                    {/* Quick Badge Chips */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {QUICK_BADGES.map((badge) => (
-                        <button
-                          key={badge}
-                          onClick={() =>
-                            setSettings((prev) => ({ ...prev, badgeText: badge }))
-                          }
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
-                            settings.badgeText === badge
-                              ? 'bg-amber-400 text-black border-amber-400'
-                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-500'
-                          }`}
-                        >
-                          {badge}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Badge Style and Color */}
-                    {settings.badgeText && (
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
+                  {/* Viral Badge Pill with Enable Toggle & Full Customization */}
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                    {/* Enable / Disable Toggle Header */}
+                    <div className="flex items-center justify-between pb-2 border-b border-zinc-850">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-amber-400" />
                         <div>
-                          <label className="text-[10px] text-zinc-400 mb-1 block">
-                            Badge Style
+                          <label className="font-semibold text-zinc-100 text-xs block cursor-pointer select-none">
+                            Hook Badge Pill
                           </label>
-                          <select
-                            value={settings.badgeStyle || 'solid'}
+                          <span className="text-[10px] text-zinc-400 block">
+                            {settings.badgeEnabled !== false ? 'Visible on thumbnail' : 'Disabled / hidden'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={settings.badgeEnabled !== false}
+                        onClick={() =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            badgeEnabled: prev.badgeEnabled === false ? true : false,
+                          }))
+                        }
+                        className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                          settings.badgeEnabled !== false ? 'bg-amber-400' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-black shadow ring-0 transition duration-200 ease-in-out ${
+                            settings.badgeEnabled !== false ? 'translate-x-5' : 'translate-x-0 bg-zinc-300'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {settings.badgeEnabled !== false && (
+                      <>
+                        {/* Spacing to Title Slider */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-semibold text-zinc-200">
+                              Spacing to Title (Element Gap)
+                            </label>
+                            <span className="font-mono text-[10px] text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                              {settings.badgeSpacing ?? 24}px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={2}
+                            value={settings.badgeSpacing ?? 24}
                             onChange={(e) =>
                               setSettings((prev) => ({
                                 ...prev,
-                                badgeStyle: e.target.value as any,
+                                badgeSpacing: Number(e.target.value),
                               }))
                             }
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-200 text-xs"
-                          >
-                            <option value="solid">Solid Fill</option>
-                            <option value="glow">Neon Glow</option>
-                            <option value="outline">Outlined Pill</option>
-                          </select>
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                          <div className="flex flex-wrap items-center gap-1">
+                            {[
+                              { label: 'Tight', val: 8 },
+                              { label: 'Normal', val: 24 },
+                              { label: 'Relaxed', val: 44 },
+                              { label: 'Wide', val: 68 },
+                            ].map((p) => (
+                              <button
+                                key={p.val}
+                                type="button"
+                                onClick={() =>
+                                  setSettings((prev) => ({
+                                    ...prev,
+                                    badgeSpacing: p.val,
+                                  }))
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                                  (settings.badgeSpacing ?? 24) === p.val
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                                }`}
+                              >
+                                {p.label} ({p.val}px)
+                              </button>
+                            ))}
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] text-zinc-400 mb-1 block">
-                            Badge Color
-                          </label>
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="color"
-                              value={settings.badgeColor || '#FCD905'}
+                        {/* Badge Text Input */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] text-zinc-400 block">
+                              Badge Text
+                            </label>
+                            {settings.badgeText && (
+                              <button
+                                onClick={() =>
+                                  setSettings((prev) => ({ ...prev, badgeText: '' }))
+                                }
+                                className="text-[10px] text-red-400 hover:underline"
+                              >
+                                Clear text
+                              </button>
+                            )}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={settings.badgeText || ''}
+                            onChange={(e) =>
+                              setSettings((prev) => ({ ...prev, badgeText: e.target.value }))
+                            }
+                            placeholder="e.g. MUST WATCH, PART 1, VIRAL"
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-zinc-100 text-xs focus:border-amber-400 focus:outline-none font-bold tracking-wider"
+                          />
+
+                          {/* Quick Badge Chips */}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {QUICK_BADGES.map((badge) => (
+                              <button
+                                key={badge}
+                                type="button"
+                                onClick={() =>
+                                  setSettings((prev) => ({ ...prev, badgeText: badge }))
+                                }
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
+                                  settings.badgeText === badge
+                                    ? 'bg-amber-400 text-black border-amber-400 font-bold'
+                                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-500'
+                                }`}
+                              >
+                                {badge}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Badge Style, Shape & Colors */}
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-850 text-xs">
+                          <div>
+                            <label className="text-[10px] text-zinc-400 mb-1 block">
+                              Badge Style
+                            </label>
+                            <select
+                              value={settings.badgeStyle || 'solid'}
                               onChange={(e) =>
                                 setSettings((prev) => ({
                                   ...prev,
-                                  badgeColor: e.target.value,
+                                  badgeStyle: e.target.value as any,
                                 }))
                               }
-                              className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer"
-                            />
-                            <span className="font-mono text-[10px] text-zinc-300">
-                              {settings.badgeColor || '#FCD905'}
-                            </span>
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-200 text-xs"
+                            >
+                              <option value="solid">Solid Fill</option>
+                              <option value="glow">Neon Glow</option>
+                              <option value="outline">Outlined Pill</option>
+                              <option value="glass">Frosted Glass</option>
+                              <option value="gradient">Vibrant Gradient</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 mb-1 block">
+                              Badge Shape
+                            </label>
+                            <select
+                              value={settings.badgeShape || 'pill'}
+                              onChange={(e) =>
+                                setSettings((prev) => ({
+                                  ...prev,
+                                  badgeShape: e.target.value as any,
+                                }))
+                              }
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-200 text-xs"
+                            >
+                              <option value="pill">Pill (Full Round)</option>
+                              <option value="rounded">Rounded Card</option>
+                              <option value="sharp">Sharp Rectangle</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 mb-1 block">
+                              Background Color
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                value={settings.badgeColor || '#FCD905'}
+                                onChange={(e) =>
+                                  setSettings((prev) => ({
+                                    ...prev,
+                                    badgeColor: e.target.value,
+                                  }))
+                                }
+                                className="w-6 h-6 rounded border border-zinc-700 bg-transparent cursor-pointer"
+                              />
+                              <span className="font-mono text-[10px] text-zinc-300">
+                                {settings.badgeColor || '#FCD905'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-zinc-400 mb-1 block">
+                              Text Color
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                value={settings.badgeTextColor || '#000000'}
+                                onChange={(e) =>
+                                  setSettings((prev) => ({
+                                    ...prev,
+                                    badgeTextColor: e.target.value,
+                                    badgeAutoTextColor: false,
+                                  }))
+                                }
+                                className="w-6 h-6 rounded border border-zinc-700 bg-transparent cursor-pointer"
+                              />
+                              <span className="font-mono text-[10px] text-zinc-300">
+                                {settings.badgeTextColor || '#000000'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </>
                     )}
                   </div>
 
@@ -962,41 +1102,101 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               {/* TAB 4: LAYOUT & BACKGROUND */}
               {activeTab === 'layout' && (
                 <div className="space-y-4">
-                  {/* Vertical Position */}
+                  {/* Horizontal Alignment */}
                   <div>
-                    <label className="font-semibold text-zinc-200 mb-1.5 block">
-                      Vertical Placement
-                    </label>
+                    <label className="block text-zinc-300 font-medium mb-1.5">Horizontal Alignment</label>
                     <div className="grid grid-cols-4 gap-1.5">
-                      {(['top', 'center', 'bottom', 'custom'] as const).map((pos) => (
+                      {(
+                        [
+                          { id: 'left', icon: AlignLeft, label: 'Left' },
+                          { id: 'center', icon: AlignCenter, label: 'Center' },
+                          { id: 'right', icon: AlignRight, label: 'Right' },
+                          { id: 'custom', icon: SlidersHorizontal, label: 'Custom' },
+                        ] as const
+                      ).map(({ id, icon: Icon, label }) => (
                         <button
-                          key={pos}
-                          onClick={() =>
-                            setSettings((prev) => ({ ...prev, position: pos }))
-                          }
-                          className={`py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
-                            settings.position === pos
-                              ? 'bg-amber-400 text-black font-bold'
-                              : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                          key={id}
+                          type="button"
+                          onClick={() => setSettings((prev) => ({ ...prev, textAlign: id }))}
+                          className={`py-1.5 rounded-lg border text-center font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                            settings.textAlign === id
+                              ? 'bg-amber-500 text-black border-amber-400 font-semibold'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
                           }`}
                         >
-                          {pos}
+                          <Icon className="w-3.5 h-3.5" />
+                          <span className="text-[11px]">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {settings.textAlign === 'custom' && (
+                      <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
+                        <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                          <span>Horizontal Position (X%)</span>
+                          <span className="font-mono text-amber-400">{settings.customX ?? 50}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10"
+                          max="90"
+                          step="1"
+                          value={settings.customX ?? 50}
+                          onChange={(e) =>
+                            setSettings((prev) => ({
+                              ...prev,
+                              customX: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                          <span>10% (Left)</span>
+                          <span>50% (Center)</span>
+                          <span>90% (Right)</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vertical Anchor */}
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1.5">Vertical Anchor</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(
+                        [
+                          { id: 'top', label: 'Top' },
+                          { id: 'center', label: 'Center' },
+                          { id: 'bottom', label: 'Bottom' },
+                          { id: 'custom', label: 'Custom' },
+                        ] as const
+                      ).map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() => setSettings((prev) => ({ ...prev, position: pos.id }))}
+                          className={`py-1.5 rounded-lg border text-center font-medium transition-all cursor-pointer ${
+                            settings.position === pos.id
+                              ? 'bg-amber-500 text-black border-amber-400 font-semibold'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-[11px]">{pos.label}</span>
                         </button>
                       ))}
                     </div>
 
                     {settings.position === 'custom' && (
-                      <div className="mt-2.5 p-2 rounded-lg bg-zinc-950 border border-zinc-800">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] text-zinc-400">Vertical Offset (Y%)</span>
-                          <span className="text-[10px] font-mono text-amber-300 font-bold">
-                            {settings.customY ?? 50}%
-                          </span>
+                      <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
+                        <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                          <span>Vertical Position (Y%)</span>
+                          <span className="font-mono text-amber-400">{settings.customY ?? 50}%</span>
                         </div>
                         <input
                           type="range"
-                          min={15}
-                          max={85}
+                          min="10"
+                          max="90"
+                          step="1"
                           value={settings.customY ?? 50}
                           onChange={(e) =>
                             setSettings((prev) => ({
@@ -1006,58 +1206,37 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           }
                           className="w-full accent-amber-400 cursor-pointer"
                         />
+                        <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                          <span>10% (Top)</span>
+                          <span>50% (Center)</span>
+                          <span>90% (Bottom)</span>
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Horizontal Alignment */}
-                  <div>
-                    <label className="font-semibold text-zinc-200 mb-1.5 block">
-                      Horizontal Alignment
-                    </label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        onClick={() =>
-                          setSettings((prev) => ({ ...prev, textAlign: 'left' }))
-                        }
-                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                          settings.textAlign === 'left'
-                            ? 'bg-amber-400 text-black font-bold'
-                            : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        <AlignLeft className="w-3.5 h-3.5" />
-                        <span>Left</span>
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          setSettings((prev) => ({ ...prev, textAlign: 'center' }))
-                        }
-                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                          settings.textAlign === 'center'
-                            ? 'bg-amber-400 text-black font-bold'
-                            : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        <AlignCenter className="w-3.5 h-3.5" />
-                        <span>Center</span>
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          setSettings((prev) => ({ ...prev, textAlign: 'right' }))
-                        }
-                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                          settings.textAlign === 'right'
-                            ? 'bg-amber-400 text-black font-bold'
-                            : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        <AlignRight className="w-3.5 h-3.5" />
-                        <span>Right</span>
-                      </button>
+                  {/* Safe Area Overlay Guide Toggle */}
+                  <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      <div>
+                        <p className="font-medium text-zinc-200 text-xs">Safe Area Overlay</p>
+                        <p className="text-[10px] text-zinc-500">
+                          Highlights 9:16 Instagram/TikTok button & caption dead zones
+                        </p>
+                      </div>
                     </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.showSafeArea !== false}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          showSafeArea: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
+                    />
                   </div>
 
                   {/* Dark Vignette / Contrast Overlay */}

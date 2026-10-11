@@ -9,7 +9,7 @@ import {
 } from '@/lib/caption-maker/thumbnail-presets';
 import { ImageAsset, ImagePosition, OutputSettings } from '@/lib/caption-maker/types';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
-import { Download, Sparkles } from 'lucide-react';
+import { Download, Sparkles, Tag, Type, SlidersHorizontal, Edit3 } from 'lucide-react';
 
 // Exact 1:1 position alignment map matching CaptionPreview.tsx
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -32,6 +32,8 @@ interface ThumbnailPreviewProps {
   onDownload?: (format: 'png' | 'jpeg') => void;
   onApplyAsReelImage?: () => void;
   onToggleSafeArea?: () => void;
+  onEditBadge?: () => void;
+  onEditTitle?: () => void;
 }
 
 export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
@@ -41,6 +43,8 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   onDownload,
   onApplyAsReelImage,
   onToggleSafeArea,
+  onEditBadge,
+  onEditTitle,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -119,21 +123,28 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
     }
   };
 
-  // Vertical placement matching Video Reel caption anchor coordinates 1:1
+  // Vertical & Horizontal placement matching Video Reel caption anchor coordinates 1:1
   const getTitlePositionStyles = (): React.CSSProperties => {
+    const isCustomX = settings.textAlign === 'custom';
+    const posX = isCustomX ? `${settings.customX ?? 50}%` : '50%';
+
+    let topVal = '50%';
+    let yTranslate = '-50%';
     if (settings.position === 'top') {
-      return { top: '18%', left: '50%', transform: 'translate(-50%, 0)' };
+      topVal = '18%';
+      yTranslate = '0';
+    } else if (settings.position === 'bottom') {
+      topVal = '82%';
+      yTranslate = '-100%';
+    } else if (settings.position === 'custom') {
+      topVal = `${settings.customY ?? 50}%`;
+      yTranslate = '-50%';
     }
-    if (settings.position === 'center') {
-      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-    }
-    if (settings.position === 'bottom') {
-      return { top: '82%', left: '50%', transform: 'translate(-50%, -100%)' };
-    }
+
     return {
-      top: `${settings.customY ?? 50}%`,
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
+      top: topVal,
+      left: posX,
+      transform: `translate(-50%, ${yTranslate})`,
     };
   };
 
@@ -173,8 +184,9 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
     settings.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Montserrat';
   const effectiveFontFamily = `"${cleanPrimaryFont}", "Nirmala UI", "Segoe UI", sans-serif`;
 
+  const effectiveTextAlign = settings.textAlign === 'custom' ? 'center' : (settings.textAlign || 'center');
   const justifyAlign =
-    settings.textAlign === 'left' ? 'flex-start' : settings.textAlign === 'right' ? 'flex-end' : 'center';
+    effectiveTextAlign === 'left' ? 'flex-start' : effectiveTextAlign === 'right' ? 'flex-end' : 'center';
 
   const handleApplyCover = () => {
     onApplyAsReelImage?.();
@@ -333,7 +345,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             flexDirection: 'column',
             alignItems: justifyAlign,
             justifyContent: 'center',
-            textAlign: settings.textAlign || 'center',
+            textAlign: effectiveTextAlign,
           }}
           className="absolute z-20 pointer-events-none transition-all duration-150"
         >
@@ -361,30 +373,59 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
                   }
             }
           >
-            {/* Quick Badge if present */}
-            {settings.badgeText && settings.badgeText.trim() && (
+            {/* Quick Badge if present and enabled */}
+            {settings.badgeEnabled !== false && settings.badgeText && settings.badgeText.trim() && settings.badgeStyle !== 'none' && (
               <div
+                onClick={onEditBadge}
+                role="button"
+                tabIndex={0}
+                title="Click to edit badge text, colors & spacing"
                 style={{
                   backgroundColor:
                     settings.badgeStyle === 'outline'
-                      ? 'transparent'
+                      ? 'rgba(0,0,0,0.6)'
+                      : settings.badgeStyle === 'glass'
+                      ? 'rgba(24,24,27,0.75)'
+                      : settings.badgeStyle === 'gradient'
+                      ? undefined
                       : settings.badgeColor || '#FCD905',
-                  color: settings.badgeStyle === 'outline' ? (settings.badgeColor || '#FCD905') : '#000000',
+                  backgroundImage:
+                    settings.badgeStyle === 'gradient'
+                      ? `linear-gradient(135deg, ${settings.badgeColor || '#FCD905'} 0%, #FF7A00 100%)`
+                      : undefined,
+                  color: (() => {
+                    if (settings.badgeTextColor && !settings.badgeAutoTextColor) return settings.badgeTextColor;
+                    if (settings.badgeStyle === 'outline') return settings.badgeBorderColor || settings.badgeColor || '#FCD905';
+                    if (settings.badgeStyle === 'glass') return '#FFFFFF';
+                    const bg = (settings.badgeColor || '#FCD905').toUpperCase();
+                    const isBright = bg === '#FCD905' || bg === '#00F0FF' || bg === '#FFFFFF' || bg === '#00E676';
+                    return isBright ? '#000000' : '#FFFFFF';
+                  })(),
                   border:
                     settings.badgeStyle === 'outline'
-                      ? `2px solid ${settings.badgeColor || '#FCD905'}`
+                      ? `${Math.max(1, Math.round((settings.badgeBorderWidth ?? 2.5) * previewScale))}px solid ${settings.badgeBorderColor || settings.badgeColor || '#FCD905'}`
+                      : (settings.badgeBorderWidth ?? 0) > 0
+                      ? `${Math.max(1, Math.round(settings.badgeBorderWidth! * previewScale))}px solid ${settings.badgeBorderColor || 'rgba(255,255,255,0.25)'}`
+                      : settings.badgeStyle === 'glass'
+                      ? '1px solid rgba(255,255,255,0.2)'
                       : 'none',
                   boxShadow:
                     settings.badgeStyle === 'glow'
-                      ? `0 0 16px ${settings.badgeColor || '#FCD905'}`
+                      ? `0 0 ${Math.round((settings.badgeGlowBlur ?? 18) * previewScale)}px ${settings.badgeColor || '#FCD905'}`
                       : '0 4px 10px rgba(0,0,0,0.5)',
-                  fontSize: `${Math.max(10, Math.round(previewFontSize * 0.32))}px`,
-                  borderRadius: '9999px',
-                  padding: `${Math.round(4 * previewScale)}px ${Math.round(12 * previewScale)}px`,
-                  marginBottom: `${Math.round(8 * previewScale)}px`,
-                  letterSpacing: '1px',
+                  fontSize: `${Math.max(10, Math.round((settings.badgeFontSize ?? 26) * previewScale))}px`,
+                  fontWeight: Number(settings.badgeFontWeight) || 800,
+                  borderRadius:
+                    settings.badgeShape === 'sharp'
+                      ? '2px'
+                      : settings.badgeShape === 'rounded'
+                      ? `${Math.round((settings.badgeBorderRadius ?? 10) * previewScale)}px`
+                      : '9999px',
+                  padding: `${Math.max(2, Math.round((settings.badgePaddingY ?? 9) * previewScale))}px ${Math.max(6, Math.round((settings.badgePaddingX ?? 18) * previewScale))}px`,
+                  marginBottom: `${Math.round((settings.badgeSpacing ?? 24) * previewScale)}px`,
+                  letterSpacing: `${Math.round((settings.badgeLetterSpacing ?? 1) * previewScale)}px`,
                 }}
-                className="font-black uppercase inline-block font-sans"
+                className="uppercase inline-block font-sans transition-all duration-150 pointer-events-auto cursor-pointer hover:scale-105 hover:ring-2 hover:ring-amber-400 active:scale-95 select-none"
               >
                 {settings.badgeText}
               </div>
@@ -392,6 +433,10 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
 
             {/* Title Words with Multi-line Wrap & Active #FCD905 Highlighting */}
             <div
+              onClick={onEditTitle}
+              role="button"
+              tabIndex={0}
+              title="Click to edit title text"
               style={{
                 fontFamily: effectiveFontFamily,
                 fontSize: `${previewFontSize}px`,
@@ -407,11 +452,11 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
                   previewShadowBlur > 0
                     ? `0 4px ${previewShadowBlur}px ${settings.shadowColor || 'rgba(0,0,0,0.85)'}`
                     : 'none',
-                textAlign: settings.textAlign || 'center',
+                textAlign: effectiveTextAlign,
                 columnGap: `${Math.max(6, Math.round(previewFontSize * 0.28))}px`,
                 rowGap: `${Math.max(4, Math.round(previewFontSize * 0.20))}px`,
               }}
-              className={`inline-flex flex-wrap items-center ${
+              className={`inline-flex flex-wrap items-center pointer-events-auto cursor-pointer hover:opacity-90 select-none ${
                 settings.textAlign === 'left'
                   ? 'justify-start'
                   : settings.textAlign === 'right'
@@ -425,14 +470,18 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             {/* Subtitle if present */}
             {settings.subtitle && settings.subtitle.trim() && (
               <p
+                onClick={onEditTitle}
+                role="button"
+                tabIndex={0}
+                title="Click to edit subtitle"
                 style={{
                   fontFamily: effectiveFontFamily,
                   fontSize: `${Math.max(11, Math.round(previewFontSize * 0.38))}px`,
                   color: 'rgba(255, 255, 255, 0.90)',
                   textShadow: '0 2px 8px rgba(0,0,0,0.8)',
-                  marginTop: `${Math.round(8 * previewScale)}px`,
+                  marginTop: `${Math.round((settings.subtitleSpacing ?? 24) * previewScale)}px`,
                 }}
-                className="font-medium tracking-wide text-center"
+                className="font-medium tracking-wide text-center pointer-events-auto cursor-pointer hover:text-amber-200 select-none"
               >
                 {settings.subtitle}
               </p>
@@ -440,31 +489,45 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
           </div>
         </div>
 
-        {/* 5. Live Badge Indicator & Safe Area Switcher */}
+        {/* 5. Live Badge Indicator & Edit / Safe Area Controls */}
         <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/75 backdrop-blur-md border border-amber-500/30 text-[10px] font-bold text-amber-300 flex items-center gap-1.5 pointer-events-none z-30 shadow-md">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
           LIVE THUMBNAIL COVER
         </div>
 
-        {onToggleSafeArea && (
-          <button
-            type="button"
-            onClick={onToggleSafeArea}
-            className={`absolute top-3 right-3 px-2 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono transition-all z-30 cursor-pointer flex items-center gap-1.5 shadow-md ${
-              settings.showSafeArea !== false
-                ? 'bg-sky-950/80 border-sky-400/50 text-sky-300 hover:text-sky-200'
-                : 'bg-black/75 border-zinc-700 text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Toggle Safe Area Guides Overlay"
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                settings.showSafeArea !== false ? 'bg-sky-400 animate-pulse' : 'bg-zinc-500'
+        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-30">
+          {onEditBadge && (
+            <button
+              type="button"
+              onClick={onEditBadge}
+              className="px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-black font-bold text-[10px] flex items-center gap-1 shadow-md cursor-pointer transition-all active:scale-95"
+              title="Edit Badge Pill & Spacing"
+            >
+              <SlidersHorizontal className="w-3 h-3 stroke-[2.5]" />
+              <span>Edit Badge & Spacing</span>
+            </button>
+          )}
+
+          {onToggleSafeArea && (
+            <button
+              type="button"
+              onClick={onToggleSafeArea}
+              className={`px-2 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-md ${
+                settings.showSafeArea !== false
+                  ? 'bg-sky-950/80 border-sky-400/50 text-sky-300 hover:text-sky-200'
+                  : 'bg-black/75 border-zinc-700 text-zinc-400 hover:text-zinc-200'
               }`}
-            />
-            <span>SAFE AREA: {settings.showSafeArea !== false ? 'ON' : 'OFF'}</span>
-          </button>
-        )}
+              title="Toggle Safe Area Guides Overlay"
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  settings.showSafeArea !== false ? 'bg-sky-400 animate-pulse' : 'bg-zinc-500'
+                }`}
+              />
+              <span>SAFE AREA: {settings.showSafeArea !== false ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+        </div>
 
         {/* 6. Offscreen Canvas for High-Resolution Export & Video Merging */}
         <canvas
@@ -474,10 +537,34 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
       </div>
 
       {/* Preset, Dimensions & Quick Actions underneath preview */}
-      <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
-        <span className="capitalize text-zinc-300 font-medium">
-          {settings.preset ? settings.preset.replace('-', ' ') : 'Custom'} ({settings.aspectRatio})
-        </span>
+      <div className="flex flex-wrap items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 gap-2 text-xs text-zinc-400 font-mono">
+        <div className="flex items-center gap-1.5">
+          <span className="capitalize text-zinc-300 font-medium">
+            {settings.preset ? settings.preset.replace('-', ' ') : 'Custom'} ({settings.aspectRatio})
+          </span>
+          {onEditBadge && (
+            <button
+              type="button"
+              onClick={onEditBadge}
+              className="flex items-center gap-1 text-[11px] font-sans font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-all cursor-pointer"
+              title="Edit Badge Pill & Spacing"
+            >
+              <Tag className="w-3 h-3" />
+              <span>Edit Badge</span>
+            </button>
+          )}
+          {onEditTitle && (
+            <button
+              type="button"
+              onClick={onEditTitle}
+              className="flex items-center gap-1 text-[11px] font-sans font-bold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2 py-0.5 rounded border border-zinc-700 transition-all cursor-pointer"
+              title="Edit Title Text"
+            >
+              <Type className="w-3 h-3 text-amber-400" />
+              <span>Edit Title</span>
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           {onToggleSafeArea && (

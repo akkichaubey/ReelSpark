@@ -140,7 +140,8 @@ export interface AudioAsset {
 }
 
 export type ThumbnailLayoutPosition = 'top' | 'center' | 'bottom' | 'custom';
-export type ThumbnailBadgeStyle = 'solid' | 'glow' | 'outline' | 'pill' | 'none';
+export type ThumbnailBadgeStyle = 'solid' | 'glow' | 'outline' | 'pill' | 'glass' | 'gradient' | 'none';
+export type ThumbnailBadgeShape = 'pill' | 'rounded' | 'sharp';
 export type ThumbnailBackgroundType = 'project' | 'gradient' | 'color';
 
 export interface ThumbnailSettings {
@@ -149,6 +150,21 @@ export interface ThumbnailSettings {
   badgeText?: string;
   badgeStyle?: ThumbnailBadgeStyle;
   badgeColor?: string;
+  badgeEnabled?: boolean;
+  badgeSpacing?: number;
+  badgeShape?: ThumbnailBadgeShape;
+  badgeBorderRadius?: number;
+  badgeBorderWidth?: number;
+  badgeBorderColor?: string;
+  badgeTextColor?: string;
+  badgeAutoTextColor?: boolean;
+  badgeFontSize?: number;
+  badgeFontWeight?: string;
+  badgeLetterSpacing?: number;
+  badgePaddingX?: number;
+  badgePaddingY?: number;
+  badgeGlowBlur?: number;
+  subtitleSpacing?: number;
   preset: string;
   fontFamily: string;
   fontSize: number; // e.g. 76
@@ -160,7 +176,8 @@ export interface ThumbnailSettings {
   highlightWords: string[];
   position: ThumbnailLayoutPosition;
   customY?: number; // 10 to 90 (% of height)
-  textAlign: 'left' | 'center' | 'right';
+  textAlign: 'left' | 'center' | 'right' | 'custom';
+  customX?: number; // 10 to 90 (% of width)
   overlayDarkness: number; // 0 to 0.95
   overlayType?: 'linear-bottom' | 'linear-top' | 'radial-vignette' | 'full-dark';
   strokeWidth: number; // 0 to 14
