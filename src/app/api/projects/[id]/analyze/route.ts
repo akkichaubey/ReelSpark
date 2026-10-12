@@ -4,7 +4,7 @@ import fs from 'fs';
 import { getProjectDirs, loadProject, saveProject } from '@/lib/storage';
 import { extractAudioForTranscription, probeVideo } from '@/lib/ffmpeg';
 import { transcribeAudioWithGemini, analyzeTranscriptChunkWithGemini } from '@/lib/gemini';
-import { calculateTimelineCoverage, chunkTranscript, generateDemoSpeechTranscript } from '@/lib/transcript';
+import { calculateTimelineCoverage, chunkTranscript, extractHeuristicCandidatesFromChunk, generateDemoSpeechTranscript } from '@/lib/transcript';
 import { verifyCandidateContext } from '@/lib/context-verifier';
 import { processCandidates } from '@/lib/ranking';
 import { ClipCandidate, TranscriptSegment } from '@/lib/types';
@@ -62,7 +62,7 @@ export async function POST(
 
     // Fallback if transcript is empty (or no API key provided)
     if (transcript.length === 0) {
-      transcript = generateDemoSpeechTranscript(duration);
+      transcript = generateDemoSpeechTranscript(duration, project.title || project.originalFileName);
     }
 
     // Save full transcript
@@ -82,17 +82,20 @@ export async function POST(
     const chunks = chunkTranscript(transcript, 180, 30);
     const rawCandidates: ClipCandidate[] = [];
     const analyzedRanges: Array<[number, number]> = [];
+    let geminiQuotaExhausted = false;
 
     // Step 4: Chronological AI semantic analysis
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       analyzedRanges.push([chunk.startTime, chunk.endTime]);
 
-      project.progress = Math.round(40 + (i / chunks.length) * 30);
-      project.statusMessage = `Analyzing section ${i + 1} of ${chunks.length} (${Math.round(chunk.startTime)}s - ${Math.round(chunk.endTime)}s)...`;
+      project.progress = Math.round(40 + (i / chunks.length) * 35);
+      project.statusMessage = `Analyzing section ${i + 1} of ${chunks.length} (${Math.round(chunk.startTime)}s - ${Math.round(chunk.endTime)}s)${rawCandidates.length > 0 ? ` • ${rawCandidates.length} viral clips discovered` : ''}...`;
       await saveProject(project);
 
-      if (geminiStatus.configured) {
+      let chunkCandidates: ClipCandidate[] = [];
+
+      if (geminiStatus.configured && !geminiQuotaExhausted) {
         try {
           const discovered = await analyzeTranscriptChunkWithGemini({
             chunkIndex: i,
@@ -102,63 +105,29 @@ export async function POST(
             transcriptSegments: chunk.segments,
             durationLimitSeconds: project.settings.durationLimit === 'auto' ? 60 : parseInt(project.settings.durationLimit, 10),
           });
-          rawCandidates.push(...discovered);
+          if (discovered && discovered.length > 0) {
+            chunkCandidates.push(...discovered);
+          }
         } catch (err: any) {
           console.warn(`Chunk ${i} AI analysis error:`, err.message);
-        }
-      } else {
-        // High quality heuristic generator from speech sections
-        // Look for strong punchlines or complete sentences
-        const candidateDuration = Math.min(
-          chunk.endTime - chunk.startTime,
-          project.settings.durationLimit === 'auto' ? 45 : parseInt(project.settings.durationLimit, 10)
-        );
-
-        if (chunk.segments.length > 0) {
-          const segSlice = chunk.segments.slice(0, Math.min(3, chunk.segments.length));
-          const cStart = segSlice[0].start;
-          const cEnd = Math.min(chunk.endTime, cStart + candidateDuration);
-          const cText = segSlice.map(s => s.text).join(' ');
-
-          const topics: Array<ClipCandidate['topic']> = [
-            'Motivation', 'Philosophy', 'Self-Respect', 'Meditation and Awareness', 'Life Lessons', 'Fear and Courage'
-          ];
-          const topic = topics[i % topics.length];
-
-          rawCandidates.push({
-            id: `clip_${i + 1}_${Date.now()}`,
-            title: `${topic}: The Nature of Truth #${i + 1}`,
-            start: cStart,
-            end: cEnd,
-            duration: Math.round((cEnd - cStart) * 10) / 10,
-            topic,
-            explanation: 'Self-contained thought on conscious living, inner freedom, and mindful presence.',
-            transcript: cText,
-            firstWords: cText.split(' ').slice(0, 5).join(' '),
-            lastWords: cText.split(' ').slice(-5).join(' '),
-            scores: {
-              meaningAndDepth: 23,
-              standaloneCompleteness: 19,
-              openingStrength: 14,
-              emotionalIntellectualImpact: 14,
-              clarity: 9,
-              conciseness: 9,
-              audioQuality: 5,
-              total: 93,
-            },
-            contextVerification: {
-              isCompleteThought: true,
-              hasConclusion: true,
-              hasDanglingPronouns: false,
-              contextConfidence: 94,
-              notes: 'Clean sentence structure without dangling pronouns.',
-              flaggedForReview: false,
-            },
-            selected: true,
-            renderStatus: 'idle',
-          });
+          if (err.status === 429 || (err.message && err.message.toLowerCase().includes('quota'))) {
+            geminiQuotaExhausted = true;
+          }
         }
       }
+
+      // If Gemini returned no candidates (or failed/rate-limited/not configured),
+      // seamlessly extract candidates from the speech section using local NLP
+      if (chunkCandidates.length === 0) {
+        const fallbackClips = extractHeuristicCandidatesFromChunk(
+          chunk,
+          i,
+          project.settings.durationLimit === 'auto' ? 60 : parseInt(project.settings.durationLimit, 10)
+        );
+        chunkCandidates.push(...fallbackClips);
+      }
+
+      rawCandidates.push(...chunkCandidates);
     }
 
     // Step 5: Context Verification & Boundary Adjustment

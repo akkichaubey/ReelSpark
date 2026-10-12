@@ -13,6 +13,7 @@ import {
   Upload,
   CheckCircle2,
   Music,
+  Loader2,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
 
@@ -131,8 +132,17 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               disabled={isAnalyzing || isYouTubeMissingLocal}
               className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>{isAnalyzing ? 'Analyzing Video...' : 'Run Full AI Analysis'}</span>
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-zinc-900" />
+                  <span>Analyzing Video ({project.progress}%)...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Run Full AI Analysis</span>
+                </>
+              )}
             </button>
           ) : (
             <>
@@ -197,14 +207,26 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
 
       {/* Progress Bar & Status message */}
       {(project.status !== 'COMPLETED' || project.statusMessage) && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-zinc-400">
-            <span>{project.statusMessage || 'Processing...'}</span>
-            <span className="font-semibold text-white">{project.progress}%</span>
+        <div className="space-y-2 p-3.5 rounded-xl bg-zinc-900/60 border border-white/5">
+          <div className="flex items-center justify-between text-xs text-zinc-300">
+            <span className="flex items-center space-x-2 font-medium">
+              {project.status !== 'COMPLETED' && (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
+                </span>
+              )}
+              <span className="text-zinc-200">{project.statusMessage || 'Processing...'}</span>
+            </span>
+            <span className="font-bold text-white bg-white/10 px-2 py-0.5 rounded-md text-[11px]">
+              {project.progress}%
+            </span>
           </div>
-          <div className="w-full h-2 rounded-full bg-zinc-900 border border-white/5 overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-zinc-950 border border-white/10 overflow-hidden p-0.5">
             <div
-              className="h-full bg-gradient-to-r from-rose-500 via-indigo-500 via-sky-400 to-emerald-400 transition-all duration-300 rounded-full"
+              className={`h-full bg-gradient-to-r from-rose-500 via-indigo-500 via-sky-400 to-emerald-400 transition-all duration-500 rounded-full ${
+                project.status !== 'COMPLETED' ? 'animate-pulse' : ''
+              }`}
               style={{ width: `${Math.max(2, project.progress)}%` }}
             />
           </div>

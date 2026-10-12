@@ -16,6 +16,7 @@ import { TimelineCoverageBar } from '@/components/TimelineCoverageBar';
 import { SemanticSearchBox } from '@/components/SemanticSearchBox';
 import { TopicFilterBar } from '@/components/TopicFilterBar';
 import { ClipCard } from '@/components/ClipCard';
+import { AnalysisProgressCard } from '@/components/AnalysisProgressCard';
 import { VideoPlayerModal } from '@/components/VideoPlayerModal';
 import { ClipEditorModal } from '@/components/ClipEditorModal';
 import { SubtitlePreviewModal } from '@/components/SubtitlePreviewModal';
@@ -94,6 +95,9 @@ export default function DashboardPage() {
         setProjects((prev) =>
           prev.map((p) => (p.id === data.project.id ? data.project : p))
         );
+        if (data.project.status === 'COMPLETED' || data.project.status === 'FAILED') {
+          setIsAnalyzing(false);
+        }
       }
     } catch (err) {
       console.error('Failed to refresh project:', err);
@@ -136,10 +140,11 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Auto-poll when processing
+  // Auto-poll when processing or analyzing (1s interval for real-time progress)
   useEffect(() => {
     if (!activeProject) return;
     const isBusy =
+      isAnalyzing ||
       activeProject.status === 'TRANSCRIBING' ||
       activeProject.status === 'ANALYZING' ||
       activeProject.status === 'RANKING' ||
@@ -150,16 +155,27 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       refreshActiveProject(activeProject.id);
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeProject, refreshActiveProject]);
+  }, [activeProject?.id, activeProject?.status, isAnalyzing, refreshActiveProject]);
 
   // Handler: Run Full AI Analysis
   const handleRunAnalysis = async () => {
     if (!activeProject) return;
     try {
       setIsAnalyzing(true);
+      // Immediately clear stale 100% progress and transition to TRANSCRIBING
+      setActiveProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'TRANSCRIBING',
+              progress: 5,
+              statusMessage: 'Extracting audio & initializing AI speech transcription...',
+            }
+          : null
+      );
       showToast('Starting speech transcription and full video semantic analysis...', 'info');
 
       const res = await fetch(`/api/projects/${activeProject.id}/analyze`, {
@@ -649,6 +665,15 @@ export default function DashboardPage() {
               />
             )}
 
+            {/* Live Progress Card when analyzing */}
+            {(isAnalyzing ||
+              activeProject.status === 'TRANSCRIBING' ||
+              activeProject.status === 'ANALYZING' ||
+              activeProject.status === 'RANKING' ||
+              activeProject.status === 'VERIFYING') && (
+              <AnalysisProgressCard project={activeProject} />
+            )}
+
             {/* 5. Ranked Clip Cards Grid */}
             {displayCandidates.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -679,7 +704,11 @@ export default function DashboardPage() {
                   View all clips
                 </button>
               </div>
-            ) : (
+            ) : !(isAnalyzing ||
+                activeProject.status === 'TRANSCRIBING' ||
+                activeProject.status === 'ANALYZING' ||
+                activeProject.status === 'RANKING' ||
+                activeProject.status === 'VERIFYING') ? (
               <div className="p-12 text-center glass-panel rounded-2xl border border-white/10 space-y-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/10 text-white flex items-center justify-center mx-auto">
                   <Sparkles className="w-8 h-8" />
@@ -696,7 +725,7 @@ export default function DashboardPage() {
                   {isAnalyzing ? 'Analyzing Media...' : 'Run Full AI Analysis'}
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </main>
