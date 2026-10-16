@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { X, Play, Pause, RotateCcw, Volume2, VolumeX, Download, Scissors, Repeat, Award } from 'lucide-react';
 import { ClipCandidate, Project } from '@/lib/types';
 import { getBilingualCandidateData } from '@/lib/bilingual';
@@ -32,6 +32,49 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   const [loopClip, setLoopClip] = useState(true);
   const [playerLang, setPlayerLang] = useState<'en' | 'hi'>('en');
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
+  const [syncedSegments, setSyncedSegments] = useState<
+    Array<{ start: number; end: number; textHindi?: string; textEnglish?: string }> | null
+  >(() => (candidate as any)?.syncedSegments || null);
+
+  // Dynamically ensure acoustic-locked segments are loaded for ANY clip played in the modal
+  useEffect(() => {
+    if (!candidate || !project?.id) return;
+    const existing = (candidate as any).syncedSegments;
+    if (Array.isArray(existing) && existing.length > 0) {
+      setSyncedSegments(existing);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/projects/${project.id}/clip-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipId: candidate.id,
+        start: candidate.start,
+        end: candidate.end,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data?.success && Array.isArray(data.syncedSegments) && data.syncedSegments.length > 0) {
+          setSyncedSegments(data.syncedSegments);
+          (candidate as any).syncedSegments = data.syncedSegments;
+          if (data.rawTranscriptHindi) {
+            candidate.transcriptHindi = data.rawTranscriptHindi;
+            candidate.transcript = data.rawTranscriptHindi;
+          }
+          if (data.rawTranscriptEnglish) {
+            candidate.transcriptEnglish = data.rawTranscriptEnglish;
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [candidate, project?.id]);
 
   // Determine video source URL
   const isRendered = candidate ? (candidate.renderStatus === 'completed' && !!candidate.renderedVideoPath) : false;
@@ -54,18 +97,12 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     const video = videoRef.current;
     if (!video || !candidate) return;
 
-    const handleLoadedMetadata = () => {
-      video.currentTime = clipStart;
-      video.playbackRate = playbackRate;
-      video.play().catch(() => {});
-      setIsPlaying(true);
-    };
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
+    const syncPlaybackState = () => {
+      const t = video.currentTime;
+      setCurrentTime(t);
 
       // Loop or stop at clip boundary
-      if (video.currentTime >= clipEnd) {
+      if (t >= clipEnd) {
         if (loopClip) {
           video.currentTime = clipStart;
           video.play().catch(() => {});
@@ -75,32 +112,115 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         }
       }
 
-      // Update subtitle overlay
-      const absoluteSec = isRendered ? candidate.start + video.currentTime : video.currentTime;
+      // 1. Prefer dynamic acoustic-locked syncedSegments for this clip (relative time 0..duration)
+      if (syncedSegments && syncedSegments.length > 0) {
+        const relSec = isRendered ? t : Math.max(0, t - candidate.start);
+        const activeSynced = syncedSegments.find(
+          (s) => relSec >= s.start && relSec <= s.end
+        );
+        if (activeSynced) {
+          setCurrentSubtitle(
+            playerLang === 'en'
+              ? activeSynced.textEnglish || activeSynced.textHindi || ''
+              : activeSynced.textHindi || activeSynced.textEnglish || ''
+          );
+        } else {
+          setCurrentSubtitle('');
+        }
+        return;
+      }
+
+      // 2. Fallback to project.transcript segments
+      const absoluteSec = isRendered ? candidate.start + t : t;
       const activeSeg = project.transcript.find(
         (s) => absoluteSec >= s.start && absoluteSec <= s.end
       );
-      setCurrentSubtitle(activeSeg ? activeSeg.text : '');
+      if (activeSeg) {
+        const segAny = activeSeg as unknown as { text: string; textEn?: string };
+        setCurrentSubtitle(
+          playerLang === 'en' && segAny.textEn ? segAny.textEn : activeSeg.text
+        );
+      } else {
+        setCurrentSubtitle('');
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      video.currentTime = clipStart;
+      video.playbackRate = playbackRate;
+      safePlay();
+      setIsPlaying(true);
+      syncPlaybackState();
     };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('timeupdate', syncPlaybackState);
+
+    let rafId: number | null = null;
+    const tick = () => {
+      if (!video.paused && !video.ended) {
+        syncPlaybackState();
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('timeupdate', syncPlaybackState);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      try {
+        video.pause();
+      } catch {}
     };
-  }, [clipStart, clipEnd, isRendered, candidate, project.transcript, loopClip, playbackRate]);
+  }, [clipStart, clipEnd, isRendered, candidate, project.transcript, loopClip, playbackRate, playerLang, syncedSegments]);
+
+  const handleClose = useCallback(() => {
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {}
+    }
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+        } catch {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [handleClose]);
+
+  const safePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch((err) => {
+          // Swallow benign media AbortError
+          if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
+            console.warn('Video playback error:', err);
+          }
+        });
+      }
+    } catch {}
+  };
 
   if (!candidate) return null;
 
@@ -108,10 +228,12 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     const video = videoRef.current;
     if (!video) return;
     if (isPlaying) {
-      video.pause();
+      try {
+        video.pause();
+      } catch {}
       setIsPlaying(false);
     } else {
-      video.play();
+      safePlay();
       setIsPlaying(true);
     }
   };
@@ -128,7 +250,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = clipStart;
-    video.play();
+    safePlay();
     setIsPlaying(true);
   };
 
@@ -154,7 +276,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         {/* Pinned Top-Right Close Button */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-white/10 transition-all z-30 shadow-lg flex items-center justify-center cursor-pointer group"
           title="Close Player (Esc)"
           aria-label="Close Player"
@@ -222,7 +344,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onClose();
+                  handleClose();
                   onEdit(candidate);
                 }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-white/10 transition-colors"

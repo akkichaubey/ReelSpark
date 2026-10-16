@@ -140,9 +140,9 @@ export async function renderRemotionReelVideo(
     words,
     style,
     outputSettings,
-    imageFitMode = 'cover',
-    imagePosition = 'center',
-    imageScale = 85,
+    imageFitMode = 'contain',
+    imagePosition = 'bottom-left',
+    imageScale = 100,
     mediaType,
     onProgress,
   } = options;

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, PlusCircle } from 'lucide-react';
+import { Film, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, PlusCircle, ChevronDown } from 'lucide-react';
 
 interface NavbarProps {
   systemStatus: {
@@ -12,12 +12,14 @@ interface NavbarProps {
   } | null;
   onNewProject: () => void;
   onRefreshSystem: () => void;
+  onOpenGeminiModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   systemStatus,
   onNewProject,
   onRefreshSystem,
+  onOpenGeminiModal,
 }) => {
   const pathname = usePathname();
   const isCaptionMaker = pathname === '/caption-maker';
@@ -87,18 +89,27 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* Gemini Indicator */}
-        <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-zinc-900/80 border border-white/10 text-xs">
-          <Sparkles className="w-3.5 h-3.5 text-zinc-200" />
-          <span className="text-zinc-400 font-medium">AI Engine:</span>
+        {/* Gemini Model Selector Indicator */}
+        <button
+          onClick={onOpenGeminiModal}
+          title="Click to Choose Gemini AI Model & Configure Engine"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 hover:border-sky-400/40 text-xs transition-all group shadow-sm cursor-pointer"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+          <span className="text-zinc-400 font-medium hidden sm:inline">AI Model:</span>
           {systemStatus?.gemini.configured ? (
-            <span className="text-white font-semibold">{systemStatus.gemini.model}</span>
+            <span className="text-white font-semibold flex items-center gap-1">
+              <span>{systemStatus.gemini.model}</span>
+              <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
+            </span>
           ) : (
-            <span className="text-amber-400 font-semibold" title="Running in intelligent local speech mode. Configure GEMINI_API_KEY in .env for full multimodal API.">
-              Local Heuristic / Demo Mode
+            <span className="text-amber-400 font-semibold flex items-center gap-1" title="Running in intelligent local speech mode. Click to configure API key or choose model.">
+              <span>{systemStatus?.gemini.model || 'gemini-3.8-flash'}</span>
+              <span className="text-[10px] text-amber-500 font-normal hidden xl:inline">(Demo)</span>
+              <ChevronDown className="w-3 h-3 text-amber-400/70" />
             </span>
           )}
-        </div>
+        </button>
 
         {/* Refresh System button */}
         <button

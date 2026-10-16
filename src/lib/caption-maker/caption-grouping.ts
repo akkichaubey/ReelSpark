@@ -19,12 +19,31 @@ export function groupTranscriptWords(
 
     // Check pause between previous word and current word
     const pauseDuration = prevWord ? Math.max(0, word.start - prevWord.end) : 0;
-    const prevEndsSentence = prevWord && /[.!?।,]/.test(prevWord.text.trim().slice(-1));
+    const prevEndsSentence = prevWord && /[.!?।,;:]/.test(prevWord.text.trim().slice(-1));
+
+    // Avoid leaving a 1-word orphan at the end of a 5-word clause (prefer 3+2 over 4+1)
+    const nextWord = words[i + 1];
+    const currentEndsSentence = /[.!?।,;:]/.test(word.text.trim().slice(-1));
+    const pauseAfterCurrent = nextWord ? Math.max(0, nextWord.start - word.end) : 1;
+    const wouldLeaveSingleWordOrphan =
+      maxWordsPerGroup >= 4 &&
+      currentGroupWords.length === maxWordsPerGroup - 1 &&
+      !prevEndsSentence &&
+      pauseDuration < 0.06 &&
+      !currentEndsSentence &&
+      pauseAfterCurrent < 0.06 &&
+      Boolean(
+        nextWord &&
+          (/[.!?।,;:]/.test(nextWord.text.trim().slice(-1)) ||
+            !words[i + 2] ||
+            Math.max(0, words[i + 2].start - nextWord.end) >= 0.06)
+      );
 
     const shouldBreak =
       currentGroupWords.length >= maxWordsPerGroup ||
-      (currentGroupWords.length >= 2 && prevEndsSentence) ||
-      (currentGroupWords.length >= 1 && pauseDuration >= 0.45);
+      wouldLeaveSingleWordOrphan ||
+      (currentGroupWords.length >= 1 && prevEndsSentence) ||
+      (currentGroupWords.length >= 1 && pauseDuration >= 0.06);
 
     if (shouldBreak && currentGroupWords.length > 0) {
       groups.push(buildCaptionGroup(currentGroupWords, `group_${groups.length + 1}`));

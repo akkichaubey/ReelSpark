@@ -17,7 +17,16 @@ export interface CaptionGroup {
 
 export type CaptionMode = 'word-by-word' | 'phrase-highlight' | 'kinetic';
 
-export type AnimationPreset = 'clean' | 'pop' | 'kinetic' | 'punch' | 'minimal';
+export type AnimationPreset =
+  | 'clean'
+  | 'pop'
+  | 'kinetic'
+  | 'punch'
+  | 'minimal'
+  | 'words-slide-up'
+  | 'words-rotate-in'
+  | 'letters-slide-up'
+  | 'letters-slide-down';
 
 export type HighlightAnimation =
   | 'none'
@@ -104,7 +113,7 @@ export interface CaptionStyle {
   letterSpacing?: number;     // in pixels (-2 to 12)
   lineHeight?: number;        // e.g. 1.2 to 1.8
   zoomScale?: number;         // Active word zoom scale multiplier: 1.0 (no zoom) to 1.40 (max zoom)
-  textOpacity?: number;       // Normal/inactive word opacity: 0.1 to 1.0 (default 0.65)
+  textOpacity?: number;       // Normal/inactive word opacity: 0.1 to 1.0 (default 1.0)
   textEffect?: TextEffectType;
   glowColor?: string;
   glowSpread?: number;
@@ -195,6 +204,13 @@ export interface ThumbnailSettings {
   showSafeArea?: boolean;
 }
 
+export interface SyncedPhraseSegment {
+  start: number;
+  end: number;
+  textHindi: string;
+  textEnglish: string;
+}
+
 export interface CaptionProject {
   id: string;
   title: string;
@@ -209,12 +225,26 @@ export interface CaptionProject {
   renderedVideoPath?: string;
   renderedVideoUrl?: string;
   renderedSrtPath?: string;
+  rawTranscriptHindi?: string;
+  rawTranscriptEnglish?: string;
+  preferredLanguage?: 'en' | 'hi';
+  sourceClipId?: string;
+  syncedSegments?: SyncedPhraseSegment[];
+  isAudioSynced?: boolean;
+  syncVersion?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface TranscriptionResult {
   transcript: TranscriptWord[];
+  wordsHindi?: TranscriptWord[];
+  wordsEnglish?: TranscriptWord[];
+  rawTranscriptHindi?: string;
+  rawTranscriptEnglish?: string;
+  titleHindi?: string;
+  titleEnglish?: string;
+  syncedSegments?: SyncedPhraseSegment[];
   language?: string;
   duration?: number;
 }
@@ -222,4 +252,5 @@ export interface TranscriptionResult {
 export interface TranscriptionProvider {
   transcribe(audioFilePath: string): Promise<TranscriptionResult>;
 }
+
 

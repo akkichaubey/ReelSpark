@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import { getProjectDirs, loadProject, saveProject } from '@/lib/storage';
-import { extractAudioForTranscription, probeVideo } from '@/lib/ffmpeg';
+import { extractAudioForTranscription, probeVideo, detectSpeechIntervals, SpeechInterval } from '@/lib/ffmpeg';
 import { transcribeAudioWithGemini, analyzeTranscriptChunkWithGemini } from '@/lib/gemini';
 import { calculateTimelineCoverage, chunkTranscript, extractHeuristicCandidatesFromChunk, generateDemoSpeechTranscript } from '@/lib/transcript';
 import { verifyCandidateContext } from '@/lib/context-verifier';
 import { processCandidates } from '@/lib/ranking';
 import { ClipCandidate, TranscriptSegment } from '@/lib/types';
-import { checkGeminiStatus } from '@/lib/config';
+import { checkGeminiStatus, getGeminiModel } from '@/lib/config';
 
 export async function POST(
   req: NextRequest,
@@ -28,6 +28,14 @@ export async function POST(
       }, { status: 400 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const chosenModel = body?.model || project.settings?.aiModel || getGeminiModel();
+
+    if (!project.settings) {
+      project.settings = {} as any;
+    }
+    project.settings.aiModel = chosenModel;
+
     const dirs = getProjectDirs(project.id);
     const geminiStatus = checkGeminiStatus();
 
@@ -37,32 +45,41 @@ export async function POST(
     }
     const duration = project.videoMetadata.duration || 60;
 
-    // Step 2: Speech-to-Text Transcription Pipeline
+    // Step 2: Speech-to-Text Transcription Pipeline with Hardware Acoustic Speech Intervals
     project.status = 'TRANSCRIBING';
     project.progress = 15;
-    project.statusMessage = 'Extracting audio and generating timestamped speech-to-text transcript...';
+    project.statusMessage = `Extracting audio and generating timestamped speech-to-text transcript with ${chosenModel}...`;
     await saveProject(project);
 
     let transcript: TranscriptSegment[] = [];
+    let detectedIntervals: SpeechInterval[] = [];
 
-    if (geminiStatus.configured && project.videoMetadata.hasAudio) {
+    if (project.videoMetadata.hasAudio) {
+      const tempAudioPath = path.join(dirs.rootDir, 'extracted_audio.mp3');
       try {
-        const tempAudioPath = path.join(dirs.rootDir, 'extracted_audio.mp3');
         await extractAudioForTranscription(project.localVideoPath, tempAudioPath);
-        transcript = await transcribeAudioWithGemini(tempAudioPath);
+        const { intervals } = await detectSpeechIntervals(tempAudioPath);
+        detectedIntervals = intervals;
 
-        // cleanup temp audio
-        if (fs.existsSync(tempAudioPath)) {
-          await fs.promises.unlink(tempAudioPath).catch(() => {});
+        if (geminiStatus.configured) {
+          transcript = await transcribeAudioWithGemini(tempAudioPath, chosenModel, detectedIntervals);
         }
       } catch (err: any) {
         console.warn('Gemini audio transcription fallback to speech transcript:', err.message);
+      } finally {
+        if (fs.existsSync(tempAudioPath)) {
+          await fs.promises.unlink(tempAudioPath).catch(() => {});
+        }
       }
     }
 
-    // Fallback if transcript is empty (or no API key provided)
+    // Fallback if transcript is empty (or no API key provided), locked to hardware speech intervals
     if (transcript.length === 0) {
-      transcript = generateDemoSpeechTranscript(duration, project.title || project.originalFileName);
+      transcript = generateDemoSpeechTranscript(
+        duration,
+        project.title || project.originalFileName,
+        detectedIntervals
+      );
     }
 
     // Save full transcript
@@ -104,7 +121,7 @@ export async function POST(
             transcriptText: chunk.text,
             transcriptSegments: chunk.segments,
             durationLimitSeconds: project.settings.durationLimit === 'auto' ? 60 : parseInt(project.settings.durationLimit, 10),
-          });
+          }, chosenModel);
           if (discovered && discovered.length > 0) {
             chunkCandidates.push(...discovered);
           }

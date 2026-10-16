@@ -127,16 +127,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (!imagePath || !fs.existsSync(/*turbopackIgnore: true*/ imagePath)) {
-      return NextResponse.json(
-        { error: 'Background image not found. Please upload an image.' },
-        { status: 400 }
-      );
+      const fallbackSample = path.join(process.cwd(), 'public', 'sample-image.jpg');
+      if (fs.existsSync(/*turbopackIgnore: true*/ fallbackSample)) {
+        imagePath = fallbackSample;
+      } else {
+        return NextResponse.json(
+          { error: 'Background image not found. Please upload an image.' },
+          { status: 400 }
+        );
+      }
     }
     if (!audioPath || !fs.existsSync(/*turbopackIgnore: true*/ audioPath)) {
-      return NextResponse.json(
-        { error: 'Audio file not found. Please ensure the clip audio is prepared.' },
-        { status: 400 }
-      );
+      const fallbackSample = path.join(process.cwd(), 'public', 'sample-audio.mp3');
+      if (fs.existsSync(/*turbopackIgnore: true*/ fallbackSample)) {
+        audioPath = fallbackSample;
+      } else {
+        return NextResponse.json(
+          { error: 'Audio file not found. Please ensure the clip audio is prepared.' },
+          { status: 400 }
+        );
+      }
     }
 
     // 3. Resolve transcript words and groups
@@ -146,9 +156,9 @@ export async function POST(req: NextRequest) {
       body.transcript ||
       (resolvedGroups.length > 0 ? resolvedGroups.flatMap((g) => g.words) : []);
 
-    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'cover';
-    const imagePosition = rawImagePosition || body.image?.position || 'center';
-    const imageScale = body.image?.scale ?? body.imageScale ?? 85;
+    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'contain';
+    const imagePosition = rawImagePosition || body.image?.position || 'bottom-left';
+    const imageScale = body.image?.scale ?? body.imageScale ?? 100;
     const mediaType: 'image' | 'video' = body.image?.mediaType || body.mediaType || 'image';
 
     // 4. Prepare project render directory

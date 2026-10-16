@@ -1,8 +1,9 @@
 'use strict';
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CaptionProject } from '@/lib/caption-maker/types';
+import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
 import {
   X,
   Download,
@@ -13,6 +14,7 @@ import {
   Loader2,
   Sparkles,
   Zap,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface ExportModalProps {
@@ -58,6 +60,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     'intro_and_poster' | 'intro_hook' | 'poster_only'
   >('intro_and_poster');
   const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(0.000001);
+
+  const preFlight = useMemo(() => validateAndHealReelProject(project), [project]);
 
   if (!isOpen) return null;
 
@@ -251,6 +255,47 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* State 4: Ready to Render / Pre-flight details */}
           {!isRendering && !renderResult?.videoUrl && !renderResult?.error && (
             <div className="space-y-4">
+              {/* 5-Point AI Pre-Render Verification Card */}
+              <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/25 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>AI Pre-Render Verification & Sync Check</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    {preFlight.needsServerAudioSync
+                      ? 'Auto-Sync on Start'
+                      : preFlight.autoFixedCount > 0
+                      ? `Auto-Healed (${preFlight.autoFixedCount})`
+                      : '100% Verified'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+                  {preFlight.checks.map((chk) => (
+                    <div
+                      key={chk.id}
+                      className="flex items-center justify-between bg-zinc-950/70 px-2.5 py-1.5 rounded-lg border border-zinc-800/80"
+                    >
+                      <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+                        <CheckCircle2
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            chk.status === 'error'
+                              ? 'text-rose-400'
+                              : chk.status === 'warning'
+                              ? 'text-amber-400'
+                              : 'text-emerald-400'
+                          }`}
+                        />
+                        {chk.label}
+                      </span>
+                      <span className="text-zinc-400 font-mono text-[10px] truncate max-w-[58%] text-right">
+                        {chk.detail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Engine Selection */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-zinc-300 block">

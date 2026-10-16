@@ -48,11 +48,13 @@ export function generateAssSubtitles(
   // Compute font size scaled proportionally to 1080p width
   const scaleFactor = width / 1080;
   const scaledFontSize = Math.round(style.fontSize * scaleFactor);
-  const scaledStrokeWidth = Math.max(1, Math.round(style.strokeWidth * scaleFactor));
+  const scaledStrokeWidth = (style.strokeWidth ?? 0) > 0 ? Math.max(1, Math.round(style.strokeWidth * scaleFactor)) : 0;
+  const importantOutline = scaledStrokeWidth > 0 ? scaledStrokeWidth + 1 : 0;
 
   const primaryColorAss = hexToAssColor(style.textColor);
   const importantColorAss = hexToAssColor(style.importantColor);
   const outlineColorAss = hexToAssColor(style.strokeColor);
+  const effect = style.textEffect || 'none';
   const shadowColorAss = hexToAssColor(style.shadowColor || '#000000', '80');
 
   const hasDevanagari = words.some((w) => /[\u0900-\u097F]/.test(w.text));
@@ -63,7 +65,10 @@ export function generateAssSubtitles(
     style.fontWeight === 'bold' || style.fontWeight === 'black' || style.fontWeight === 'semibold'
       ? -1
       : 0;
-  const scaledShadow = Math.max(1, Math.round((style.shadowBlur || 6) * scaleFactor * 0.35));
+  const scaledShadow =
+    !effect || effect === 'none'
+      ? 0
+      : Math.max(1, Math.round((style.shadowBlur || 6) * scaleFactor * 0.35));
 
   // Alignment: 1=BL, 2=BC, 3=BR; 4=ML, 5=MC, 6=MR; 7=TL, 8=TC, 9=TR
   let alignment = 2;
@@ -89,7 +94,7 @@ export function generateAssSubtitles(
   } else if (style.position === 'custom') {
     alignment = style.textAlign === 'left' ? 4 : style.textAlign === 'right' ? 6 : 5;
     posX = Math.round(((style.customX ?? 50) / 100) * width);
-    posY = Math.round(((style.customY ?? 75) / 100) * height);
+    posY = Math.round(((style.customY ?? 20) / 100) * height);
   } else {
     alignment = alignCol;
   }
@@ -107,7 +112,7 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,${fontFamily},${scaledFontSize},${primaryColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},${boldFlag},0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth},${scaledShadow},${alignment},40,40,60,1
-Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth + 1},${scaledShadow},${alignment},40,40,60,1
+Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,100,100,${spacing},0,1,${importantOutline},${scaledShadow},${alignment},40,40,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -130,6 +135,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
           animTag += `\\fscx85\\fscy85\\t(0,70,\\fscx${peakScale}\\fscy${peakScale})\\t(70,140,\\fscx100\\fscy100)`;
         } else if (style.animationPreset === 'punch' || style.animationPreset === 'kinetic') {
           animTag += `\\fscx${peakScale}\\fscy${peakScale}\\t(0,80,\\fscx100\\fscy100)`;
+        } else if (style.animationPreset === 'words-rotate-in') {
+          animTag += `\\frx-75\\t(0,120,\\frx0)`;
+        } else if (style.animationPreset === 'words-slide-up' || style.animationPreset === 'letters-slide-up') {
+          animTag += `\\fscy30\\t(0,90,\\fscy100)`;
+        } else if (style.animationPreset === 'letters-slide-down') {
+          animTag += `\\fscy150\\t(0,90,\\fscy100)`;
         }
       }
 
@@ -168,7 +179,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             const resetScale = activeScale !== 100 ? `\\fscx100\\fscy100` : '';
             return `{\\c${wordColor}\\b1${scaleTag}}${raw}{${resetScale}\\b0}`;
           } else {
-            const normalOpacity = style.textOpacity ?? 0.65;
+            const normalOpacity = style.textOpacity ?? 1.0;
             const normalAlphaVal = Math.max(0, Math.min(255, Math.round((1 - normalOpacity) * 255)));
             const normalAlphaHex = normalAlphaVal.toString(16).padStart(2, '0').toUpperCase();
             const dimColor = w.isImportant
@@ -179,7 +190,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         });
 
         const dialogueText = lineParts.join(' ');
-        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\an${alignment}\\pos(${posX},${posY})}${dialogueText}\n`;
+        let groupMotionTag = '';
+        if (style.animationPreset === 'words-rotate-in') {
+          groupMotionTag = '\\frx-65\\t(0,120,\\frx0)';
+        } else if (style.animationPreset === 'words-slide-up' || style.animationPreset === 'letters-slide-up') {
+          groupMotionTag = '\\fscy30\\t(0,90,\\fscy100)';
+        } else if (style.animationPreset === 'letters-slide-down') {
+          groupMotionTag = '\\fscy140\\t(0,90,\\fscy100)';
+        }
+        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\an${alignment}\\pos(${posX},${posY})${groupMotionTag}}${dialogueText}\n`;
       }
     }
   }

@@ -27,7 +27,7 @@ export interface RenderReelOptions {
 /**
  * Get exact pad (X, Y) and overlay (X, Y) coordinate expressions for all 9 positioning options.
  */
-export function getImagePositionPadCoords(position: ImagePosition = 'center'): {
+export function getImagePositionPadCoords(position: ImagePosition = 'bottom-left'): {
   padX: string;
   padY: string;
   overlayX: string;
@@ -53,7 +53,7 @@ export function getImagePositionPadCoords(position: ImagePosition = 'center'): {
     case 'bottom-right':
       return { padX: '(ow-iw)', padY: '(oh-ih)', overlayX: '(W-w)', overlayY: '(H-h)' };
     default:
-      return { padX: '(ow-iw)/2', padY: '(oh-ih)/2', overlayX: '(W-w)/2', overlayY: '(H-h)/2' };
+      return { padX: '0', padY: '(oh-ih)', overlayX: '0', overlayY: '(H-h)' };
   }
 }
 
@@ -91,15 +91,15 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     words,
     style,
     outputSettings,
-    imageFitMode = 'cover',
-    imagePosition = 'center',
-    imageScale = 85,
+    imageFitMode = 'contain',
+    imagePosition = 'bottom-left',
+    imageScale = 100,
     onProgress,
   } = options;
 
   const ffmpeg = getFfmpegPath();
   const { width, height } = outputSettings;
-  const scalePct = Math.max(0.4, Math.min(1, (imageScale || 85) / 100));
+  const scalePct = Math.max(0.4, Math.min(1, (imageScale ?? 100) / 100));
   const targetW = Math.round(width * scalePct);
   const targetH = Math.round(height * scalePct);
 

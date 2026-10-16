@@ -120,6 +120,7 @@ export interface ProjectSettings {
   normalizeAudio: boolean;
   burnSubtitles: boolean;
   subtitleStyle: SubtitleStyle;
+  aiModel?: string;
 }
 
 export interface Project {

@@ -53,7 +53,7 @@ export async function POST(
     let candidates: ClipCandidate[] = [];
     if (geminiStatus.configured) {
       try {
-        candidates = await analyzeYouTubeWithGemini(youtubeUrl);
+        candidates = await analyzeYouTubeWithGemini(youtubeUrl, project.settings?.aiModel);
       } catch (geminiErr: any) {
         console.warn('Gemini YouTube direct analysis notice:', geminiErr.message);
         // Fallback or retry

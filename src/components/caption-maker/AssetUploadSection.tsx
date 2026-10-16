@@ -213,12 +213,12 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         {image ? (
           <div className="space-y-3">
             <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/60 aspect-[16/9] flex items-center justify-center group">
-              {image.fitMode === 'contain' ? (
+              {(image.fitMode || 'contain') === 'contain' ? (
                 <div
                   className="w-full h-full flex p-1.5 transition-all duration-200"
                   style={{
-                    justifyContent: POS_ALIGNMENT[image.position || 'center'].justifyContent,
-                    alignItems: POS_ALIGNMENT[image.position || 'center'].alignItems,
+                    justifyContent: POS_ALIGNMENT[image.position || 'bottom-left'].justifyContent,
+                    alignItems: POS_ALIGNMENT[image.position || 'bottom-left'].alignItems,
                   }}
                 >
                   {isVideo ? (
@@ -227,8 +227,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       muted
                       playsInline
                       style={{
-                        maxWidth: `${image.scale ?? 85}%`,
-                        maxHeight: `${image.scale ?? 85}%`,
+                        maxWidth: `${image.scale ?? 100}%`,
+                        maxHeight: `${image.scale ?? 100}%`,
                         width: 'auto',
                         height: 'auto',
                         objectFit: 'contain',
@@ -241,8 +241,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       src={image.fileUrl}
                       alt={image.fileName}
                       style={{
-                        maxWidth: `${image.scale ?? 85}%`,
-                        maxHeight: `${image.scale ?? 85}%`,
+                        maxWidth: `${image.scale ?? 100}%`,
+                        maxHeight: `${image.scale ?? 100}%`,
                         width: 'auto',
                         height: 'auto',
                         objectFit: 'contain',
@@ -312,7 +312,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     type="button"
                     onClick={() => onFitModeChange(mode)}
                     className={`px-2 py-0.5 rounded uppercase transition-all cursor-pointer ${
-                      image.fitMode === mode
+                      (image.fitMode || 'contain') === mode
                         ? 'bg-white text-zinc-950 font-bold shadow-sm'
                         : 'text-zinc-400 hover:text-white'
                     }`}
@@ -324,7 +324,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </div>
 
             {/* 9 Positioning Options when Contain is selected */}
-            {image.fitMode === 'contain' && (
+            {(image.fitMode || 'contain') === 'contain' && (
               <div className="pt-2.5 border-t border-white/5 space-y-2.5 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-zinc-300 font-medium flex items-center space-x-1.5">
@@ -332,14 +332,14 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     <span>Contain Position</span>
                   </span>
                   <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 font-semibold">
-                    {CONTAIN_POSITIONS.find((p) => p.id === (image.position || 'center'))?.label || 'Center'}
+                    {CONTAIN_POSITIONS.find((p) => p.id === (image.position || 'bottom-left'))?.label || 'Bottom Left'}
                   </span>
                 </div>
 
                 {/* 3x3 Grid with 9 Positioning Options */}
                 <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-zinc-950/80 rounded-xl border border-white/10">
                   {CONTAIN_POSITIONS.map((pos) => {
-                    const isSelected = (image.position || 'center') === pos.id;
+                    const isSelected = (image.position || 'bottom-left') === pos.id;
                     const IconComponent = pos.Icon;
                     return (
                       <button
@@ -374,7 +374,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       <span>Media Scale</span>
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 font-bold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                      {image.scale ?? 85}%
+                      {image.scale ?? 100}%
                     </span>
                   </div>
 
@@ -386,7 +386,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       { label: 'Mid 70%', val: 70 },
                       { label: 'Mini 50%', val: 50 },
                     ].map((preset) => {
-                      const isActive = (image.scale ?? 85) === preset.val;
+                      const isActive = (image.scale ?? 100) === preset.val;
                       return (
                         <button
                           key={preset.val}
@@ -412,7 +412,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       min="40"
                       max="100"
                       step="5"
-                      value={image.scale ?? 85}
+                      value={image.scale ?? 100}
                       onChange={(e) => onScaleChange?.(Number(e.target.value))}
                       className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
                     />

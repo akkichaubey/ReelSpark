@@ -66,17 +66,35 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     ));
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
     if (isPlaying) {
-      videoRef.current.play().catch(() => {});
+      try {
+        const p = video.play();
+        if (p !== undefined) {
+          p.catch(() => {});
+        }
+      } catch {}
     } else {
-      videoRef.current.pause();
+      try {
+        video.pause();
+      } catch {}
     }
   }, [isPlaying]);
 
   useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+        } catch {}
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!videoRef.current) return;
-    if (Math.abs(videoRef.current.currentTime - currentTime) > 0.3) {
+    if (Math.abs(videoRef.current.currentTime - currentTime) > 0.12) {
       videoRef.current.currentTime = currentTime;
     }
   }, [currentTime]);
@@ -110,38 +128,46 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     captionStyle.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Inter';
   const effectiveFontFamily = `"${cleanPrimaryFont}", "Nirmala UI", "Segoe UI", sans-serif`;
 
-  // Active word and active caption group identification matching ASS dialogue timing
+  // Active word and active caption group identification locked to exact acoustic speech intervals
   const activeGroup = captionGroups.find(
     (g) => currentTime >= g.start && currentTime <= g.end
   );
 
+  // Only bridge tiny micro-gaps (< 0.08s) between continuous groups in the same clause;
+  // never show captions early before speech starts or linger during real pauses.
   const displayGroup =
     activeGroup ||
-    captionGroups.find(
-      (g) => Math.abs(currentTime - g.start) < 0.25 || Math.abs(currentTime - g.end) < 0.25
-    );
+    captionGroups.find((g, idx) => {
+      const next = captionGroups[idx + 1];
+      if (next && next.start - g.end <= 0.08) {
+        return currentTime > g.end && currentTime < next.start;
+      }
+      return false;
+    });
 
   // Find active word inside group with seamless interval matching ASS dialogue timings
   let displayWord: TranscriptWord | undefined;
   if (displayGroup && displayGroup.words.length > 0) {
-    displayWord = displayGroup.words.find((w, idx) => {
-      const next = displayGroup.words[idx + 1];
-      const start = w.start;
-      const end = next ? next.start : Math.max(w.end, displayGroup.end);
-      return currentTime >= start && currentTime < end;
-    }) || displayGroup.words[0];
+    displayWord =
+      displayGroup.words.find((w, idx) => {
+        const next = displayGroup.words[idx + 1];
+        const start = w.start;
+        const end = next ? next.start : Math.max(w.end, displayGroup.end);
+        return currentTime >= start && currentTime <= end;
+      }) ||
+      (currentTime < displayGroup.words[0].start
+        ? displayGroup.words[0]
+        : displayGroup.words[displayGroup.words.length - 1]);
   } else {
     displayWord = transcript.find(
       (w) => currentTime >= w.start && currentTime <= w.end
-    ) || transcript.find(
-      (w) => Math.abs(currentTime - w.start) < 0.25 || Math.abs(currentTime - w.end) < 0.25
     );
   }
 
   // Dynamic scaling relative to 1080p canvas width (matches ASS output scaling perfectly)
   const previewScale = (containerWidth || 360) / 1080;
   const previewFontSize = Math.max(12, Math.round(captionStyle.fontSize * previewScale));
-  const previewStrokeWidth = Math.max(1, Math.round(captionStyle.strokeWidth * previewScale));
+  const previewStrokeWidth = (captionStyle.strokeWidth ?? 0) > 0 ? Math.max(1, Math.round(captionStyle.strokeWidth * previewScale)) : 0;
   const previewShadowBlur = Math.round((captionStyle.shadowBlur || 6) * previewScale);
 
   // Aspect ratio calculation
@@ -176,7 +202,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       return { top: '82%', left: posX, transform: 'translate(-50%, -100%)' };
     }
     return {
-      top: `${captionStyle.customY ?? 75}%`,
+      top: `${captionStyle.customY ?? 20}%`,
       left: posX,
       transform: 'translate(-50%, -50%)',
     };
@@ -188,8 +214,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
 
   // Compute text shadow / neon glow based on textEffect
   const getTextShadow = (): string => {
-    const effect = captionStyle.textEffect || 'drop-shadow';
-    if (effect === 'none') return 'none';
+    const effect = captionStyle.textEffect || 'none';
+    if (!effect || effect === 'none') return 'none';
     if (effect === 'neon-glow') {
       const glow = captionStyle.glowColor || captionStyle.importantColor || '#FCD905';
       const blur = previewShadowBlur || 12;
@@ -280,12 +306,12 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       >
         {/* 1. Background Media Layer (Video or Image) */}
         {image ? (
-          image.fitMode === 'contain' ? (
+          (image.fitMode || 'contain') === 'contain' ? (
             <div
               className="absolute inset-0 flex p-3 overflow-hidden"
               style={{
-                justifyContent: posAlignment[image.position || 'center'].justifyContent,
-                alignItems: posAlignment[image.position || 'center'].alignItems,
+                justifyContent: posAlignment[image.position || 'bottom-left'].justifyContent,
+                alignItems: posAlignment[image.position || 'bottom-left'].alignItems,
               }}
             >
               {isVideo ? (
@@ -296,8 +322,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   muted
                   loop
                   style={{
-                    maxWidth: `${image.scale ?? 85}%`,
-                    maxHeight: `${image.scale ?? 85}%`,
+                    maxWidth: `${image.scale ?? 100}%`,
+                    maxHeight: `${image.scale ?? 100}%`,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
@@ -310,8 +336,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   src={image.fileUrl}
                   alt="contained-bg"
                   style={{
-                    maxWidth: `${image.scale ?? 85}%`,
-                    maxHeight: `${image.scale ?? 85}%`,
+                    maxWidth: `${image.scale ?? 100}%`,
+                    maxHeight: `${image.scale ?? 100}%`,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
@@ -373,47 +399,111 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
           }}
           className="absolute z-20 pointer-events-none transition-all"
         >
+          {/* Rohaid Ali CodePen GSAP Text Animation Keyframes */}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                @keyframes gsapWordsSlideUp {
+                  0% { opacity: 0; transform: translateY(100%); }
+                  100% { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes gsapWordsRotateIn {
+                  0% { opacity: 0; transform: perspective(1000px) rotateX(-90deg); }
+                  100% { opacity: 1; transform: perspective(1000px) rotateX(0deg); }
+                }
+                @keyframes gsapLettersSlideUp {
+                  0% { opacity: 0; transform: translateY(100%); }
+                  100% { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes gsapLettersSlideDown {
+                  0% { opacity: 0; transform: translateY(-100%); }
+                  100% { opacity: 1; transform: translateY(0); }
+                }
+              `,
+            }}
+          />
+
           {captionStyle.captionMode === 'word-by-word' ? (
             // Mode 1: Word-by-Word Solo Display
-            displayWord && (
-              <div
-                style={{
-                  fontFamily: effectiveFontFamily,
-                  fontSize: `${previewFontSize}px`,
-                  fontWeight:
-                    captionStyle.fontWeight === 'black'
-                      ? 900
-                      : captionStyle.fontWeight === 'bold'
-                      ? 700
-                      : captionStyle.fontWeight === 'semibold'
-                      ? 600
-                      : captionStyle.fontWeight === 'medium'
-                      ? 500
-                      : 400,
-                  color: displayWord.isImportant
-                    ? captionStyle.importantColor
-                    : captionStyle.textColor,
-                  WebkitTextStroke: `${previewStrokeWidth}px ${captionStyle.strokeColor}`,
-                  paintOrder: 'stroke fill',
-                  textShadow: getTextShadow(),
-                  lineHeight: previewLineHeight,
-                  letterSpacing: previewLetterSpacing,
-                  whiteSpace: 'nowrap',
-                  transform:
-                    captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
-                      ? 'none'
-                      : `scale(${Math.min(1.2, captionStyle.zoomScale ?? 1.15)})`,
-                  ...getBackgroundStyles(),
-                }}
-                className="inline-block transition-transform duration-75"
-              >
-                {captionStyle.uppercase ? displayWord.text.toUpperCase() : displayWord.text}
-              </div>
-            )
+            displayWord && (() => {
+              const animPreset = captionStyle.animationPreset;
+              const isLetterPreset = animPreset?.startsWith('letters-');
+              const soloWordText = captionStyle.uppercase ? displayWord.text.toUpperCase() : displayWord.text;
+
+              let soloAnimStyle: React.CSSProperties = {};
+              if (animPreset === 'words-slide-up') {
+                soloAnimStyle = {
+                  animation: 'gsapWordsSlideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+                };
+              } else if (animPreset === 'words-rotate-in') {
+                soloAnimStyle = {
+                  transformOrigin: '50% 100%',
+                  animation: 'gsapWordsRotateIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both',
+                };
+              }
+
+              return (
+                <div
+                  key={displayWord.id}
+                  style={{
+                    fontFamily: effectiveFontFamily,
+                    fontSize: `${previewFontSize}px`,
+                    fontWeight:
+                      captionStyle.fontWeight === 'black'
+                        ? 900
+                        : captionStyle.fontWeight === 'bold'
+                        ? 700
+                        : captionStyle.fontWeight === 'semibold'
+                        ? 600
+                        : captionStyle.fontWeight === 'medium'
+                        ? 500
+                        : 400,
+                    color: displayWord.isImportant
+                      ? captionStyle.importantColor
+                      : captionStyle.textColor,
+                    WebkitTextStroke: previewStrokeWidth > 0 ? `${previewStrokeWidth}px ${captionStyle.strokeColor}` : 'none',
+                    paintOrder: 'stroke fill',
+                    textShadow: getTextShadow(),
+                    lineHeight: previewLineHeight,
+                    letterSpacing: previewLetterSpacing,
+                    whiteSpace: 'nowrap',
+                    overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
+                    transform:
+                      captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
+                        ? 'none'
+                        : `scale(${Math.min(1.2, captionStyle.zoomScale ?? 1.15)})`,
+                    ...getBackgroundStyles(),
+                    ...soloAnimStyle,
+                  }}
+                  className="inline-block transition-transform duration-75"
+                >
+                  {isLetterPreset ? (
+                    soloWordText.split('').map((char, cIdx) => (
+                      <span
+                        key={cIdx}
+                        style={{
+                          display: 'inline-block',
+                          animation:
+                            animPreset === 'letters-slide-down'
+                              ? 'gsapLettersSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) both'
+                              : 'gsapLettersSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both',
+                          animationDelay: `${cIdx * 0.025}s`,
+                        }}
+                      >
+                        {char}
+                      </span>
+                    ))
+                  ) : (
+                    soloWordText
+                  )}
+                </div>
+              );
+            })()
           ) : (
             // Mode 2 & Mode 3: Phrase Highlight
             displayGroup && (
               <div
+                key={displayGroup.id}
                 style={{
                   fontFamily: effectiveFontFamily,
                   fontSize: `${previewFontSize}px`,
@@ -427,7 +517,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                       : captionStyle.fontWeight === 'medium'
                       ? 500
                       : 400,
-                  WebkitTextStroke: `${previewStrokeWidth}px ${captionStyle.strokeColor}`,
+                  WebkitTextStroke: previewStrokeWidth > 0 ? `${previewStrokeWidth}px ${captionStyle.strokeColor}` : 'none',
                   paintOrder: 'stroke fill',
                   textShadow: getTextShadow(),
                   lineHeight: previewLineHeight,
@@ -456,7 +546,6 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   const isGlowFlash = isCurrent && highlightAnim === 'glow';
 
                   // Determine active word zoom:
-                  // Flat text for color-change, none, or underline
                   let effectiveScale = 1.0;
                   if (isCurrent) {
                     if (highlightAnim === 'pop') {
@@ -489,6 +578,23 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     activeTextShadow = `0 0 4px ${glowCol}, 0 0 12px ${glowCol}, 0 0 20px ${glowCol}`;
                   }
 
+                  const animPreset = captionStyle.animationPreset;
+                  const isLetterPreset = animPreset?.startsWith('letters-');
+
+                  let wordAnimStyle: React.CSSProperties = {};
+                  if (animPreset === 'words-slide-up') {
+                    wordAnimStyle = {
+                      animation: 'gsapWordsSlideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+                      animationDelay: `${idx * 0.08}s`,
+                    };
+                  } else if (animPreset === 'words-rotate-in') {
+                    wordAnimStyle = {
+                      transformOrigin: '50% 100%',
+                      animation: 'gsapWordsRotateIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both',
+                      animationDelay: `${idx * 0.08}s`,
+                    };
+                  }
+
                   return (
                     <span
                       key={w.id || `${w.text}-${idx}`}
@@ -497,10 +603,10 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         backgroundColor: wordBg,
                         padding: isWordPillActive ? '2px 8px' : undefined,
                         borderRadius: isWordPillActive ? `${Math.round(8 * previewScale)}px` : undefined,
-                        opacity: isCurrent ? 1 : (captionStyle.textOpacity ?? 0.65),
+                        opacity: isCurrent ? 1 : (captionStyle.textOpacity ?? 1.0),
                         display: 'inline-block',
                         whiteSpace: 'nowrap',
-                        transformOrigin: 'center center',
+                        transformOrigin: animPreset === 'words-rotate-in' ? '50% 100%' : 'center center',
                         transform: effectiveScale !== 1.0 ? `scale(${effectiveScale})` : undefined,
                         marginLeft: extraMargin > 0 ? `${extraMargin}px` : undefined,
                         marginRight: extraMargin > 0 ? `${extraMargin}px` : undefined,
@@ -508,10 +614,30 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         textDecorationColor: isUnderline ? captionStyle.importantColor : undefined,
                         textUnderlineOffset: isUnderline ? '4px' : undefined,
                         textShadow: activeTextShadow,
+                        overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
+                        ...wordAnimStyle,
                       }}
                       className="transition-all duration-75"
                     >
-                      {wordText}
+                      {isLetterPreset ? (
+                        wordText.split('').map((char, cIdx) => (
+                          <span
+                            key={cIdx}
+                            style={{
+                              display: 'inline-block',
+                              animation:
+                                animPreset === 'letters-slide-down'
+                                  ? 'gsapLettersSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) both'
+                                  : 'gsapLettersSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both',
+                              animationDelay: `${(idx * 0.08) + (cIdx * 0.025)}s`,
+                            }}
+                          >
+                            {char}
+                          </span>
+                        ))
+                      ) : (
+                        wordText
+                      )}
                     </span>
                   );
                 })}
@@ -534,14 +660,6 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             )}
           </div>
         </button>
-
-        {/* 5. Audio Player Element (Controlled by parent) */}
-        {audioUrl && (
-          <audio
-            src={audioUrl}
-            className="hidden"
-          />
-        )}
       </div>
 
       {/* Preset & Time Badge underneath preview */}

@@ -43,15 +43,15 @@ export function getCssObjectPosition(position?: ImagePosition): string {
     case 'bottom-right':
       return 'right bottom';
     default:
-      return 'center center';
+      return 'left bottom';
   }
 }
 
 export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
   imageSrc,
-  fitMode = 'cover',
-  position = 'center',
-  scale = 85,
+  fitMode = 'contain',
+  position = 'bottom-left',
+  scale = 100,
   mediaType,
 }) => {
   if (!imageSrc) {
@@ -73,9 +73,9 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
           imageSrc.includes('type=video'))
     );
 
-  const align = posAlignment[position || 'center'];
+  const align = posAlignment[position || 'bottom-left'];
 
-  if (fitMode === 'contain') {
+  if ((fitMode || 'contain') === 'contain') {
     return (
       <AbsoluteFill
         style={{

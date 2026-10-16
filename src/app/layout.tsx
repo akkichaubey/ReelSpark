@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { MediaErrorHandler } from '@/components/MediaErrorHandler';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -23,7 +24,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark h-full antialiased">
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">{children}</body>
+      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
+        <MediaErrorHandler />
+        {children}
+      </body>
     </html>
   );
 }

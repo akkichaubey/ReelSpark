@@ -68,8 +68,8 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
 
   // Compute text shadow / neon glow based on textEffect
   const getTextShadow = (): string => {
-    const effect = style.textEffect || 'drop-shadow';
-    if (effect === 'none') return 'none';
+    const effect = style.textEffect || 'none';
+    if (!effect || effect === 'none') return 'none';
     if (effect === 'neon-glow') {
       const glow = style.glowColor || style.importantColor || '#FCD905';
       const blur = shadowBlur || 12;
@@ -162,7 +162,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
       return { top: '82%', left: posX, transform: 'translateX(-50%)' };
     }
     return {
-      top: `${style.customY ?? 75}%`,
+      top: `${style.customY ?? 20}%`,
       left: posX,
       transform: 'translate(-50%, -50%)',
     };
@@ -202,27 +202,121 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
         words.forEach((w) => {
           const target = `.w-item-${w.id}`;
           const activeColor = style.importantColor;
-
-          // Initially invisible
-          gsap.set(target, { autoAlpha: 0, scale: 0.85 });
-
-          // Appearance animation at w.start
-          tl.to(target, { autoAlpha: 1, scale: targetScale, color: activeColor, duration: 0.06, ease: 'power2.out' }, w.start);
-
-          // Disappearance at w.end
+          const animPreset = style.animationPreset;
           const exitTime = Math.max(w.start + 0.15, w.end);
-          tl.to(target, { autoAlpha: 0, scale: 0.9, duration: 0.05, ease: 'power1.in' }, exitTime);
+
+          if (animPreset === 'words-slide-up') {
+            gsap.set(target, { autoAlpha: 0, yPercent: 100, scale: targetScale, color: activeColor });
+            tl.to(target, { autoAlpha: 1, yPercent: 0, duration: 0.22, ease: 'back.out(2)' }, w.start);
+            tl.to(target, { autoAlpha: 0, yPercent: -40, duration: 0.06, ease: 'power1.in' }, exitTime);
+          } else if (animPreset === 'words-rotate-in') {
+            gsap.set(target, { autoAlpha: 0, rotationX: -90, transformPerspective: 1000, transformOrigin: '50% 100%', scale: targetScale, color: activeColor });
+            tl.to(target, { autoAlpha: 1, rotationX: 0, duration: 0.25, ease: 'power2.out' }, w.start);
+            tl.to(target, { autoAlpha: 0, rotationX: 45, duration: 0.06, ease: 'power1.in' }, exitTime);
+          } else if (animPreset === 'letters-slide-up') {
+            gsap.set(target, { autoAlpha: 1, scale: targetScale, color: activeColor });
+            const charTargets = `.w-item-${w.id} .char-item`;
+            gsap.set(charTargets, { autoAlpha: 0, yPercent: 100 });
+            tl.to(charTargets, { autoAlpha: 1, yPercent: 0, duration: 0.16, ease: 'power2.out', stagger: 0.02 }, w.start);
+            tl.to(target, { autoAlpha: 0, duration: 0.05, ease: 'power1.in' }, exitTime);
+          } else if (animPreset === 'letters-slide-down') {
+            gsap.set(target, { autoAlpha: 1, scale: targetScale, color: activeColor });
+            const charTargets = `.w-item-${w.id} .char-item`;
+            gsap.set(charTargets, { autoAlpha: 0, yPercent: -100 });
+            tl.to(charTargets, { autoAlpha: 1, yPercent: 0, duration: 0.16, ease: 'power2.out', stagger: 0.02 }, w.start);
+            tl.to(target, { autoAlpha: 0, duration: 0.05, ease: 'power1.in' }, exitTime);
+          } else {
+            // Default appearance
+            gsap.set(target, { autoAlpha: 0, scale: 0.85 });
+            tl.to(target, { autoAlpha: 1, scale: targetScale, color: activeColor, duration: 0.06, ease: 'power2.out' }, w.start);
+            tl.to(target, { autoAlpha: 0, scale: 0.9, duration: 0.05, ease: 'power1.in' }, exitTime);
+          }
         });
       } else {
         // Mode 2 & Mode 3: Phrase Groups with Word Highlights
         captionGroups.forEach((group, gIdx) => {
           const groupSelector = `.c-group-${gIdx}`;
+          const animPreset = style.animationPreset;
+          const groupDuration = group.end - group.start;
 
           // Initially invisible
           gsap.set(groupSelector, { autoAlpha: 0 });
 
           // Group visible window
           tl.to(groupSelector, { autoAlpha: 1, duration: 0.06, ease: 'power2.out' }, group.start);
+
+          // Rohaid Ali CodePen GSAP text animation effects at group.start:
+          const isGsapTextMotion =
+            animPreset === 'words-slide-up' ||
+            animPreset === 'words-rotate-in' ||
+            animPreset?.startsWith('letters-');
+
+          if (animPreset === 'words-slide-up') {
+            const wordTargets = group.words.map((w) => `.w-span-${w.id}`);
+            const dur = Math.min(0.45, groupDuration * 0.4);
+            gsap.set(wordTargets, { yPercent: 100, autoAlpha: 0 });
+            tl.to(
+              wordTargets,
+              {
+                yPercent: 0,
+                autoAlpha: 1,
+                duration: dur,
+                ease: 'back.out(2)',
+                stagger: 0.08,
+              },
+              group.start
+            );
+          } else if (animPreset === 'words-rotate-in') {
+            const wordTargets = group.words.map((w) => `.w-span-${w.id}`);
+            const dur = Math.min(0.55, groupDuration * 0.45);
+            gsap.set(wordTargets, {
+              rotationX: -90,
+              transformPerspective: 1000,
+              transformOrigin: '50% 100%',
+              autoAlpha: 0,
+            });
+            tl.to(
+              wordTargets,
+              {
+                rotationX: 0,
+                autoAlpha: 1,
+                duration: dur,
+                ease: 'power2.out',
+                stagger: 0.08,
+              },
+              group.start
+            );
+          } else if (animPreset === 'letters-slide-up') {
+            const charTargets = `.c-group-${gIdx} .char-item`;
+            const dur = Math.min(0.3, groupDuration * 0.35);
+            gsap.set(charTargets, { yPercent: 100, autoAlpha: 0 });
+            tl.to(
+              charTargets,
+              {
+                yPercent: 0,
+                autoAlpha: 1,
+                duration: dur,
+                ease: 'power2.out',
+                stagger: 0.025,
+              },
+              group.start
+            );
+          } else if (animPreset === 'letters-slide-down') {
+            const charTargets = `.c-group-${gIdx} .char-item`;
+            const dur = Math.min(0.3, groupDuration * 0.35);
+            gsap.set(charTargets, { yPercent: -100, autoAlpha: 0 });
+            tl.to(
+              charTargets,
+              {
+                yPercent: 0,
+                autoAlpha: 1,
+                duration: dur,
+                ease: 'power2.out',
+                stagger: 0.025,
+              },
+              group.start
+            );
+          }
 
           // Word highlighting within group
           group.words.forEach((w, wIdx) => {
@@ -250,17 +344,27 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
               ? Math.round((targetScale - 1) * 0.45 * fontSize)
               : 0;
 
-            const normalOpacity = style.textOpacity ?? 0.65;
+            const normalOpacity = style.textOpacity ?? 1.0;
 
-            // Initially dimmed
-            gsap.set(wordSelector, {
-              color: baseColor,
-              backgroundColor: 'transparent',
-              opacity: normalOpacity,
-              scale: 1.0,
-              marginLeft: 0,
-              marginRight: 0,
-            });
+            // Initially set base appearance
+            if (!isGsapTextMotion) {
+              gsap.set(wordSelector, {
+                color: baseColor,
+                backgroundColor: 'transparent',
+                opacity: normalOpacity,
+                scale: 1.0,
+                marginLeft: 0,
+                marginRight: 0,
+              });
+            } else {
+              gsap.set(wordSelector, {
+                color: baseColor,
+                backgroundColor: 'transparent',
+                scale: 1.0,
+                marginLeft: 0,
+                marginRight: 0,
+              });
+            }
 
             // At w.start: Pop/Punch/Glow to active state
             const targetColor = isWordBadge ? '#000000' : activeColor;
@@ -300,7 +404,8 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
     }, rootRef);
 
     return () => ctx.revert();
-  }, [captionGroups, words, style, currentTime, fontSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captionGroups, words, style, fontSize]);
 
   // Synchronize GSAP seek on frame update
   useLayoutEffect(() => {
@@ -357,6 +462,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
         >
           {words.map((w) => {
             const text = style.uppercase ? w.text.toUpperCase() : w.text;
+            const isLetterPreset = style.animationPreset?.startsWith('letters-');
             return (
               <div
                 key={w.id}
@@ -373,11 +479,27 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                       ? 'translate(-100%, -50%)'
                       : 'translate(0, -50%)',
                   whiteSpace: 'nowrap',
+                  overflow: isLetterPreset || style.animationPreset === 'words-slide-up' ? 'hidden' : 'visible',
                   color: style.textColor,
                   ...getBackgroundStyles(),
                 }}
               >
-                {text}
+                {isLetterPreset ? (
+                  text.split('').map((char, cIdx) => (
+                    <span
+                      key={cIdx}
+                      className="char-item"
+                      style={{
+                        display: 'inline-block',
+                        willChange: 'transform, opacity',
+                      }}
+                    >
+                      {char}
+                    </span>
+                  ))
+                ) : (
+                  text
+                )}
               </div>
             );
           })}
@@ -423,6 +545,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                   {group.words.map((w) => {
                     const text = style.uppercase ? w.text.toUpperCase() : w.text;
                     const isWordBadge = style.highlightAnimation === 'background' || Boolean(style.activeWordBgColor);
+                    const isLetterPreset = style.animationPreset?.startsWith('letters-');
                     return (
                       <span
                         key={w.id}
@@ -432,12 +555,28 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                           display: 'inline-block',
                           whiteSpace: 'nowrap',
                           transformOrigin: 'center center',
+                          overflow: isLetterPreset || style.animationPreset === 'words-slide-up' ? 'hidden' : 'visible',
                           borderRadius: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
                           padding: isWordBadge ? `${Math.round(2 * scaleFactor)}px ${Math.round(8 * scaleFactor)}px` : undefined,
                           willChange: 'transform, color, opacity, background-color',
                         }}
                       >
-                        {text}
+                        {isLetterPreset ? (
+                          text.split('').map((char, cIdx) => (
+                            <span
+                              key={cIdx}
+                              className="char-item"
+                              style={{
+                                display: 'inline-block',
+                                willChange: 'transform, opacity',
+                              }}
+                            >
+                              {char}
+                            </span>
+                          ))
+                        ) : (
+                          text
+                        )}
                       </span>
                     );
                   })}

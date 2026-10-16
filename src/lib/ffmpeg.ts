@@ -384,3 +384,165 @@ export async function extractClipAudio(options: ExtractClipAudioOptions): Promis
   };
 }
 
+export interface SpeechInterval {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+/**
+ * Dynamically detect exact hardware acoustic speech intervals from any audio/video file
+ * using FFmpeg silencedetect filter. Returns non-silent speech windows [start, end] in seconds.
+ */
+export async function detectSpeechIntervals(
+  audioFilePath: string,
+  noiseDb = -25,
+  minSilenceSec = 0.24
+): Promise<{ totalDuration: number; intervals: SpeechInterval[] }> {
+  if (!fs.existsSync(audioFilePath)) {
+    return { totalDuration: 0, intervals: [] };
+  }
+
+  let totalDuration = 0;
+  try {
+    const meta = await probeVideo(audioFilePath);
+    totalDuration = meta.duration || 0;
+  } catch {
+    totalDuration = 0;
+  }
+
+  let detectedMeanVolume: number | null = null;
+  let detectedMaxVolume: number | null = null;
+
+  const runPass = async (db: number, includeVolumeDetect = false): Promise<SpeechInterval[]> => {
+    const ffmpegPath = getFfmpegPath();
+    const filterChain = includeVolumeDetect
+      ? `volumedetect,silencedetect=noise=${db}dB:d=${minSilenceSec}`
+      : `silencedetect=noise=${db}dB:d=${minSilenceSec}`;
+    const args = [
+      '-hide_banner',
+      '-i',
+      audioFilePath,
+      '-af',
+      filterChain,
+      '-f',
+      'null',
+      '-',
+    ];
+
+    let stderr = '';
+    await new Promise<void>((resolve) => {
+      const proc = spawn(ffmpegPath, args);
+      proc.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      proc.on('close', () => resolve());
+      proc.on('error', () => resolve());
+    });
+
+    if (!totalDuration) {
+      const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+      if (durMatch) {
+        totalDuration =
+          parseInt(durMatch[1], 10) * 3600 +
+          parseInt(durMatch[2], 10) * 60 +
+          parseFloat(durMatch[3]);
+      }
+    }
+
+    if (includeVolumeDetect) {
+      const meanMatch = stderr.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      if (meanMatch) detectedMeanVolume = parseFloat(meanMatch[1]);
+      const maxMatch = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      if (maxMatch) detectedMaxVolume = parseFloat(maxMatch[1]);
+    }
+
+    const silences: Array<{ start: number; end: number }> = [];
+    let currentSilenceStart: number | null = null;
+
+    const lines = stderr.split(/\r?\n/);
+    for (const line of lines) {
+      const startMatch = line.match(/silence_start:\s*(-?\d+(?:\.\d+)?)/);
+      if (startMatch) {
+        currentSilenceStart = Math.max(0, parseFloat(startMatch[1]));
+      }
+      const endMatch = line.match(/silence_end:\s*(-?\d+(?:\.\d+)?)/);
+      if (endMatch) {
+        const sEnd = Math.max(0, parseFloat(endMatch[1]));
+        const sStart = currentSilenceStart !== null ? currentSilenceStart : 0;
+        if (sEnd - sStart >= minSilenceSec) {
+          silences.push({ start: sStart, end: sEnd });
+        }
+        currentSilenceStart = null;
+      }
+    }
+
+    if (currentSilenceStart !== null && totalDuration - currentSilenceStart >= minSilenceSec) {
+      silences.push({ start: currentSilenceStart, end: totalDuration });
+    }
+
+    if (silences.length === 0) {
+      return totalDuration > 0
+        ? [{ start: 0, end: Number(totalDuration.toFixed(2)), duration: Number(totalDuration.toFixed(2)) }]
+        : [];
+    }
+
+    const speechIntervals: SpeechInterval[] = [];
+    let cursor = 0;
+
+    for (const sil of silences) {
+      if (sil.start - cursor >= 0.18) {
+        const s = Number(cursor.toFixed(2));
+        const e = Number(sil.start.toFixed(2));
+        speechIntervals.push({
+          start: s,
+          end: e,
+          duration: Number((e - s).toFixed(2)),
+        });
+      }
+      cursor = Math.max(cursor, sil.end);
+    }
+
+    if (totalDuration - cursor >= 0.18) {
+      const s = Number(cursor.toFixed(2));
+      const e = Number(totalDuration.toFixed(2));
+      speechIntervals.push({
+        start: s,
+        end: e,
+        duration: Number((e - s).toFixed(2)),
+      });
+    }
+
+    return speechIntervals;
+  };
+
+  let intervals = await runPass(noiseDb, true);
+  const totalSpeechSec = intervals.reduce((acc, iv) => acc + iv.duration, 0);
+
+  // Dynamic volume-adaptive retry:
+  // Case A: Quiet audio where fixed noiseDb treated almost everything as silence (0 intervals or < 15% speech)
+  if ((intervals.length === 0 || (totalDuration > 3 && totalSpeechSec < totalDuration * 0.15)) && detectedMeanVolume !== null) {
+    const quietAdaptiveDb = Math.max(-50, Math.min(noiseDb - 5, Math.round(detectedMeanVolume - 4)));
+    const retryQuiet = await runPass(quietAdaptiveDb, false);
+    if (retryQuiet.length > 0) {
+      intervals = retryQuiet;
+    }
+  }
+  // Case B: Loud audio / background music where fixed noiseDb missed pauses (only 1 giant interval for > 5s audio)
+  else if (intervals.length <= 1 && totalDuration > 5) {
+    const loudAdaptiveDb =
+      detectedMeanVolume !== null
+        ? Math.max(-22, Math.min(-14, Math.round(detectedMeanVolume - 2)))
+        : -20;
+    if (loudAdaptiveDb !== noiseDb) {
+      const retryLoud = await runPass(loudAdaptiveDb, false);
+      if (retryLoud.length > intervals.length) {
+        intervals = retryLoud;
+      }
+    }
+  }
+
+  return { totalDuration, intervals };
+}
+
+

@@ -206,8 +206,9 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
             </span>
           )}
 
-          <span className="bg-zinc-900/80 px-2.5 py-1 rounded-lg border border-white/5 text-zinc-300">
-            Engine: Gemini 2.5 Flash
+          <span className="bg-zinc-900/80 px-2.5 py-1 rounded-lg border border-white/5 text-zinc-300 flex items-center space-x-1">
+            <Sparkles className="w-3 h-3 text-sky-400" />
+            <span>Engine: {project.settings?.aiModel || 'gemini-3.8-flash'}</span>
           </span>
         </div>
 

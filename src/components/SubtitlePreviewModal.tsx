@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Subtitles, Copy, Check } from 'lucide-react';
 import { ClipCandidate, Project, SubtitleStyle } from '@/lib/types';
 import { generateSrtForClip } from '@/lib/srt';
@@ -20,10 +20,55 @@ export const SubtitlePreviewModal: React.FC<SubtitlePreviewModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [style, setStyle] = useState<SubtitleStyle>(project.settings.subtitleStyle);
+  const [syncedSegments, setSyncedSegments] = useState<
+    Array<{ start: number; end: number; textHindi?: string; textEnglish?: string }>
+  >((candidate as any)?.syncedSegments || []);
+
+  useEffect(() => {
+    if (!candidate || !project?.id) return;
+    let active = true;
+    const existing = (candidate as any)?.syncedSegments;
+    if (Array.isArray(existing) && existing.length > 0) {
+      setSyncedSegments(existing);
+    }
+
+    fetch(`/api/projects/${project.id}/clip-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipId: candidate.id,
+        start: candidate.start,
+        end: candidate.end,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.success && Array.isArray(data.syncedSegments) && data.syncedSegments.length > 0) {
+          setSyncedSegments(data.syncedSegments);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [candidate?.id, project?.id]);
+
+  const srtContent = useMemo(() => {
+    if (!candidate) return '';
+    if (syncedSegments.length > 0) {
+      const absSegments = syncedSegments.map((s, idx) => ({
+        id: `sync_${idx + 1}`,
+        start: candidate.start + s.start,
+        end: candidate.start + s.end,
+        text: s.textHindi || s.textEnglish || '',
+      }));
+      return generateSrtForClip(absSegments, candidate.start, candidate.end);
+    }
+    return generateSrtForClip(project.transcript, candidate.start, candidate.end);
+  }, [candidate, syncedSegments, project.transcript]);
 
   if (!candidate) return null;
-
-  const srtContent = generateSrtForClip(project.transcript, candidate.start, candidate.end);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(srtContent);

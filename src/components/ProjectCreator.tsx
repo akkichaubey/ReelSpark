@@ -31,6 +31,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
     aspectRatio: 'original',
     normalizeAudio: true,
     burnSubtitles: false,
+    aiModel: 'gemini-3.8-flash',
     subtitleStyle: {
       fontSize: 28,
       fontColor: '#FFFFFF',
@@ -426,6 +427,29 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Gemini Model Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs text-zinc-400 font-medium">
+                      Gemini AI Model (Speech & Clip Discovery)
+                    </label>
+                    <span className="text-[10px] text-sky-400 font-medium">Google GenAI</span>
+                  </div>
+                  <select
+                    value={settings.aiModel || 'gemini-3.8-flash'}
+                    onChange={(e) => setSettings({ ...settings, aiModel: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-white/10 text-white text-xs focus:outline-none focus:border-sky-400"
+                  >
+                    <option value="gemini-3.8-flash">Gemini 3.8 Flash (Default / Recommended - Ultra Fast)</option>
+                    <option value="gemini-3.0-flash">Gemini 3.0 Flash (Next-Gen Performance)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast & High Precision)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (Production Standard - Multimodal)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (High Quota Limits)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning & Nuance)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Frontier AI - Maximum Intelligence)</option>
+                  </select>
                 </div>
 
                 {/* Toggles */}

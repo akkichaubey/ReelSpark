@@ -154,7 +154,8 @@ export function searchTranscript(
  */
 export function generateDemoSpeechTranscript(
   totalDurationSeconds: number,
-  titleOrHint?: string
+  titleOrHint?: string,
+  speechIntervals?: Array<{ start: number; end: number; duration: number }>
 ): TranscriptSegment[] {
   const isHindi = Boolean(titleOrHint && /[\u0900-\u097F]/.test(titleOrHint));
 
@@ -189,6 +190,20 @@ export function generateDemoSpeechTranscript(
   ];
 
   const excerpts = isHindi ? hindiExcerpts : oshoExcerpts;
+
+  // If hardware speech intervals were detected from the real video audio, lock segments directly to them!
+  if (speechIntervals && speechIntervals.length > 0) {
+    return speechIntervals.map((iv, idx) => ({
+      id: `seg_${idx + 1}`,
+      start: Number(iv.start.toFixed(2)),
+      end: Number(iv.end.toFixed(2)),
+      text: excerpts[idx % excerpts.length],
+      textEn: oshoExcerpts[idx % oshoExcerpts.length],
+      speaker: 'Speaker',
+      confidence: 0.98,
+    }));
+  }
+
   const segments: TranscriptSegment[] = [];
   const duration = Math.max(30, totalDurationSeconds);
   let currentTime = 0;

@@ -154,30 +154,59 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 <span className="text-[10px] text-zinc-500">Auto-styles fonts, glow & layout</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {REEL_STYLE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => applyPreset(preset.style)}
-                    className="group relative p-2.5 rounded-xl border border-zinc-800 bg-zinc-950/70 hover:border-amber-400/60 hover:bg-zinc-900/80 transition-all text-left flex flex-col justify-between cursor-pointer shadow-sm hover:shadow-amber-500/10"
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <span className="font-semibold text-zinc-100 text-[11px] group-hover:text-amber-300 transition-colors">
-                        {preset.name}
+                {REEL_STYLE_PRESETS.map((preset) => {
+                  const isActive =
+                    (preset.id === 'cinematic-subtitle' &&
+                      style.fontFamily?.includes('Montserrat') &&
+                      style.animationPreset === 'clean') ||
+                    (style.fontFamily === preset.style.fontFamily &&
+                      style.animationPreset === preset.style.animationPreset &&
+                      style.strokeWidth === preset.style.strokeWidth &&
+                      style.textEffect === preset.style.textEffect);
+
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset.style)}
+                      className={`group relative p-2.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
+                        isActive
+                          ? 'border-amber-400 bg-zinc-900/90 shadow-md shadow-amber-400/20 ring-1 ring-amber-400'
+                          : 'border-zinc-800 bg-zinc-950/70 hover:border-amber-400/60 hover:bg-zinc-900/80 shadow-sm hover:shadow-amber-500/10'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span
+                          className={`font-semibold text-[11px] transition-colors ${
+                            isActive ? 'text-amber-300 font-bold' : 'text-zinc-100 group-hover:text-amber-300'
+                          }`}
+                        >
+                          {preset.name}
+                        </span>
+                        <span
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold border ${
+                            isActive
+                              ? 'bg-amber-400 text-black border-amber-300 shadow-sm'
+                              : 'bg-zinc-800/80 text-amber-400 border-zinc-700'
+                          }`}
+                        >
+                          {preset.badge}
+                        </span>
+                      </div>
+                      {/* Visual mini-preview badge */}
+                      <div
+                        className={`mt-1 py-1 px-2 rounded-md ${preset.previewBg} ${preset.previewColor} border ${
+                          preset.previewBorder || 'border-transparent'
+                        } text-center font-bold text-[10px] tracking-wide truncate shadow-inner`}
+                      >
+                        HELLO <span className="underline decoration-current">REEL</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-500 mt-1.5 line-clamp-1 leading-tight">
+                        {preset.description}
                       </span>
-                      <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-800/80 text-amber-400 font-bold border border-zinc-700">
-                        {preset.badge}
-                      </span>
-                    </div>
-                    {/* Visual mini-preview badge */}
-                    <div className={`mt-1 py-1 px-2 rounded-md ${preset.previewBg} ${preset.previewColor} border ${preset.previewBorder || 'border-transparent'} text-center font-bold text-[10px] tracking-wide truncate shadow-inner`}>
-                      HELLO <span className="underline decoration-current">REEL</span>
-                    </div>
-                    <span className="text-[10px] text-zinc-500 mt-1.5 line-clamp-1 leading-tight">
-                      {preset.description}
-                    </span>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -586,7 +615,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   </span>
                 </div>
                 <span className="font-mono text-amber-400 font-bold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                  {Math.round((style.textOpacity ?? 0.65) * 100)}%
+                  {Math.round((style.textOpacity ?? 1.0) * 100)}%
                 </span>
               </div>
               <input
@@ -594,7 +623,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 min="0.10"
                 max="1.00"
                 step="0.05"
-                value={style.textOpacity ?? 0.65}
+                value={style.textOpacity ?? 1.0}
                 onChange={(e) => update({ textOpacity: Number(e.target.value) })}
                 className="w-full accent-amber-400 cursor-pointer"
               />
@@ -602,16 +631,16 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 {[
                   { val: 0.2, label: '20% Ghost' },
                   { val: 0.4, label: '40% Muted' },
-                  { val: 0.65, label: '65% Default' },
-                  { val: 1.0, label: '100% Solid' },
+                  { val: 0.65, label: '65% Dim' },
+                  { val: 1.0, label: '100% Solid (Default)' },
                 ].map((item) => (
                   <button
                     key={item.label}
                     type="button"
                     onClick={() => update({ textOpacity: item.val })}
                     className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
-                      Math.abs((style.textOpacity ?? 0.65) - item.val) < 0.03
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                      Math.abs((style.textOpacity ?? 1.0) - item.val) < 0.03
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-semibold'
                         : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-zinc-700'
                     }`}
                   >
@@ -653,6 +682,10 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   }
                   className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-lg p-2 focus:border-amber-400 focus:outline-none"
                 >
+                  <option value="words-slide-up">Words Slide Up (GSAP)</option>
+                  <option value="words-rotate-in">Words Rotate In 3D (GSAP)</option>
+                  <option value="letters-slide-up">Letters Slide Up (GSAP)</option>
+                  <option value="letters-slide-down">Letters Slide Down (GSAP)</option>
                   <option value="punch">Punch (Hormozi Snap)</option>
                   <option value="pop">Pop (Bouncy Overshoot)</option>
                   <option value="kinetic">Kinetic (Beat Wiggle)</option>
@@ -756,11 +789,11 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               <div className="grid grid-cols-3 gap-1.5 mb-2">
                 {(
                   [
+                    { id: 'none', label: 'No Filter' },
                     { id: 'drop-shadow', label: 'Drop Shadow' },
                     { id: 'neon-glow', label: 'Neon Glow' },
                     { id: 'retro-3d', label: 'Retro 3D' },
                     { id: 'soft-ambient', label: 'Ambient Soft' },
-                    { id: 'none', label: 'No Filter' },
                   ] as const
                 ).map((eff) => (
                   <button
@@ -768,7 +801,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     type="button"
                     onClick={() => update({ textEffect: eff.id as TextEffectType })}
                     className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all cursor-pointer ${
-                      (style.textEffect || 'drop-shadow') === eff.id
+                      (style.textEffect || 'none') === eff.id
                         ? 'bg-amber-500 text-black border-amber-400 font-semibold'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
                     }`}
@@ -780,7 +813,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
             </div>
 
             {/* Shadow & Glow Customization */}
-            {(style.textEffect !== 'none') && (
+            {((style.textEffect || 'none') !== 'none') && (
               <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-zinc-300 font-medium">Glow / Shadow Color</label>
@@ -980,7 +1013,12 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <button
                     key={id}
                     type="button"
-                    onClick={() => update({ textAlign: id as TextAlignment })}
+                    onClick={() =>
+                      update({
+                        textAlign: id as TextAlignment,
+                        customX: id === 'custom' ? (style.customX ?? 50) : style.customX,
+                      })
+                    }
                     className={`py-1.5 rounded-lg border text-center font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
                       style.textAlign === id
                         ? 'bg-amber-500 text-black border-amber-400 font-semibold'
@@ -1032,7 +1070,12 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <button
                     key={pos.id}
                     type="button"
-                    onClick={() => update({ position: pos.id as CaptionPosition })}
+                    onClick={() =>
+                      update({
+                        position: pos.id as CaptionPosition,
+                        customY: pos.id === 'custom' ? (style.customY ?? 20) : style.customY,
+                      })
+                    }
                     className={`py-1.5 rounded-lg border text-center font-medium transition-all cursor-pointer ${
                       style.position === pos.id
                         ? 'bg-amber-500 text-black border-amber-400 font-semibold'
@@ -1048,14 +1091,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
                   <div className="flex justify-between items-center text-zinc-400 text-[11px]">
                     <span>Vertical Position (Y%)</span>
-                    <span className="font-mono text-amber-400">{style.customY ?? 75}%</span>
+                    <span className="font-mono text-amber-400">{style.customY ?? 20}%</span>
                   </div>
                   <input
                     type="range"
                     min="10"
                     max="90"
                     step="1"
-                    value={style.customY ?? 75}
+                    value={style.customY ?? 20}
                     onChange={(e) => update({ customY: Number(e.target.value) })}
                     className="w-full accent-amber-400 cursor-pointer"
                   />

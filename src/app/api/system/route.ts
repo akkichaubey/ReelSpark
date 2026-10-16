@@ -17,6 +17,7 @@ export async function GET() {
       gemini: {
         configured: gemini.configured,
         model: gemini.model,
+        availableModels: gemini.availableModels,
       },
     });
   } catch (err: any) {

@@ -75,7 +75,9 @@ export async function POST(req: NextRequest) {
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
-        fitMode: 'cover',
+        fitMode: 'contain',
+        position: 'bottom-left',
+        scale: 100,
         mediaType: 'video',
         duration: Math.round(duration * 100) / 100,
       };
@@ -108,7 +110,9 @@ export async function POST(req: NextRequest) {
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
-        fitMode: 'cover',
+        fitMode: 'contain',
+        position: 'bottom-left',
+        scale: 100,
         mediaType: 'image',
       };
       return NextResponse.json({ success: true, asset: imageAsset, type: 'image' });

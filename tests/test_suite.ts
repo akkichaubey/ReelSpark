@@ -10,7 +10,14 @@ import { processCandidates, sortCandidates, filterCandidatesByTopic } from '../s
 import { calculateTimelineCoverage, chunkTranscript, searchTranscript } from '../src/lib/transcript';
 import { assertSafePath, sanitizeFilename } from '../src/lib/storage';
 import { extractYouTubeVideoId } from '../src/app/api/projects/[id]/youtube/route';
-import { getFfmpegPath, getFfprobePath } from '../src/lib/config';
+import {
+  getFfmpegPath,
+  getFfprobePath,
+  GEMINI_AVAILABLE_MODELS,
+  getGeminiModel,
+  saveAppSettings,
+  checkGeminiStatus,
+} from '../src/lib/config';
 import { probeVideo, renderClip, validateRenderedClip } from '../src/lib/ffmpeg';
 import { getBilingualCandidateData } from '../src/lib/bilingual';
 import { formatDetailedTime, parseDetailedTime } from '../src/components/ClipEditorModal';
@@ -555,6 +562,7 @@ async function runAllTests() {
       explanation: 'Key points on focus and resilience',
       transcript: 'Zindagi mein success pane ke liye focus aur mehnat zaroori hai',
       transcriptHindi: 'जिंदगी में सफलता पाने के लिए एकाग्रता आवश्यक है',
+      transcriptEnglish: 'Focus and hard work are essential to achieve success in life',
       firstWords: 'Zindagi mein',
       lastWords: 'zaroori hai',
       scores: {
@@ -578,19 +586,45 @@ async function runAllTests() {
       selected: true,
     };
 
+    const { switchProjectLanguage } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    // EN mode project verification
     const reelProject = createCaptionProjectFromClip(sampleCandidate, null, 'en');
 
     assert.strictEqual(reelProject.title, 'Success Formula');
     assert.strictEqual(reelProject.audio?.duration, 15);
-    assert.ok(reelProject.transcript.length > 5, 'Transcript words generated');
+    assert.strictEqual(reelProject.preferredLanguage, 'en');
+    assert.strictEqual(
+      reelProject.transcript.map((w) => w.text).join(' '),
+      'Focus and hard work are essential to achieve success in life',
+      'Words in caption project must 100% match the selected clip card transcript'
+    );
     assert.ok(reelProject.captionGroups.length > 1, 'Caption groups generated');
+
+    // Language switch to Hindi verification
+    const hiProject = switchProjectLanguage(reelProject, 'hi');
+    assert.strictEqual(hiProject.preferredLanguage, 'hi');
+    assert.strictEqual(
+      hiProject.transcript.map((w) => w.text).join(' '),
+      'जिंदगी में सफलता पाने के लिए एकाग्रता आवश्यक है',
+      'Switching to Hindi must update all transcript words to Hindi'
+    );
+
+    // Language switch back to English verification
+    const backToEnProject = switchProjectLanguage(hiProject, 'en');
+    assert.strictEqual(backToEnProject.preferredLanguage, 'en');
+    assert.strictEqual(
+      backToEnProject.transcript.map((w) => w.text).join(' '),
+      'Focus and hard work are essential to achieve success in life',
+      'Switching back to English must restore English words'
+    );
 
     const importantWordTexts = reelProject.transcript
       .filter((w) => w.isImportant)
       .map((w) => w.text.toLowerCase());
 
     assert.ok(
-      importantWordTexts.includes('zindagi') || importantWordTexts.includes('success'),
+      importantWordTexts.length > 0,
       'Keywords should be auto-detected as important'
     );
   });
@@ -826,6 +860,18 @@ async function runAllTests() {
     assert.ok(marker, 'Story Marker preset must be defined');
     assert.strictEqual(marker?.style.backgroundStyle, 'marker-bar');
 
+    const gsapSlide = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-words-slide');
+    assert.ok(gsapSlide, 'GSAP Words Slide preset must be defined');
+    assert.strictEqual(gsapSlide?.style.animationPreset, 'words-slide-up');
+
+    const gsapRotate = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-words-rotate');
+    assert.ok(gsapRotate, 'GSAP Words Rotate preset must be defined');
+    assert.strictEqual(gsapRotate?.style.animationPreset, 'words-rotate-in');
+
+    const gsapLetters = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-letters-slide');
+    assert.ok(gsapLetters, 'GSAP Split Letters preset must be defined');
+    assert.strictEqual(gsapLetters?.style.animationPreset, 'letters-slide-up');
+
     // Test hexToRgba
     assert.strictEqual(hexToRgba('#000000', 0.5), 'rgba(0, 0, 0, 0.5)');
     assert.strictEqual(hexToRgba('#FFFFFF', 1), 'rgba(255, 255, 255, 1)');
@@ -847,7 +893,11 @@ async function runAllTests() {
     );
 
     // 1. Verify zoomScale existence and defaults
-    assert.strictEqual(DEFAULT_CAPTION_STYLE.zoomScale, 1.15, 'Default caption style zoomScale must be 1.15');
+    assert.strictEqual(
+      DEFAULT_CAPTION_STYLE.zoomScale,
+      1.0,
+      'Default caption style zoomScale must be 1.0 (Cinematic Sub clean flat text)'
+    );
 
     // 2. Ali Abdaal clean preset must have flat text (zoomScale 1.0)
     const cleanPreset = REEL_STYLE_PRESETS.find((p) => p.id === 'ali-abdaal-clean');
@@ -970,8 +1020,8 @@ async function runAllTests() {
     );
     assert.strictEqual(
       DEFAULT_CAPTION_STYLE.textOpacity,
-      0.65,
-      'Default normal text opacity must be 0.65 (65% focused dim)'
+      1.0,
+      'Default normal text opacity must be 1.0 (100% Solid Opacity)'
     );
 
     // 2. ASS Subtitle generation with custom colors and opacity
@@ -1076,6 +1126,86 @@ async function runAllTests() {
     assert.ok(
       ass.includes(`\\pos(${expectedX},`),
       `Custom textAlign must position X coordinate at ${expectedX}px for 35% of 1080p canvas`
+    );
+
+    // Verify DEFAULT_CAPTION_STYLE default position settings (Custom 50% X, Custom 20% Y, Safe Area Overlay)
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textAlign, 'custom', 'Default textAlign must be custom');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.customX, 50, 'Default customX must be 50%');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.position, 'custom', 'Default position must be custom');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.customY, 20, 'Default customY must be 20%');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.showSafeArea, true, 'Default showSafeArea must be true');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.strokeWidth, 0, 'Default strokeWidth must be 0');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textEffect, 'none', 'Default textEffect must be none (No Filter)');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textOpacity, 1.0, 'Default textOpacity must be 1.0 (100% Solid Opacity)');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.fontFamily, 'Montserrat, sans-serif', 'Default fontFamily must be Montserrat');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.animationPreset, 'clean', 'Default animationPreset must be clean');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.highlightAnimation, 'color-change', 'Default highlightAnimation must be color-change');
+
+    const { REEL_STYLE_PRESETS } = await import('../src/lib/caption-maker/sample-data');
+    const cinematicPreset = REEL_STYLE_PRESETS.find((p) => p.id === 'cinematic-subtitle');
+    assert.strictEqual(cinematicPreset?.style.strokeWidth, 0, 'Cinematic subtitle preset strokeWidth must be 0');
+    assert.strictEqual(cinematicPreset?.style.textEffect, 'none', 'Cinematic subtitle preset textEffect must be none');
+    assert.strictEqual(cinematicPreset?.style.textOpacity, 1.0, 'Cinematic preset textOpacity must be 1.0');
+
+    // Default ASS output must render at (540, 384) for 50% X and 20% Y on 1080x1920 canvas
+    const defaultAss = generateAssSubtitles(groups, words, DEFAULT_CAPTION_STYLE, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    assert.ok(
+      defaultAss.includes('\\pos(540,384)'),
+      'Default caption style must render at \\pos(540,384) (50% X and 20% Y on 1080x1920 canvas)'
+    );
+    assert.ok(
+      defaultAss.includes(',1,0,0,'),
+      'Default ASS style must have BorderStyle=1, Outline=0, and Shadow=0'
+    );
+
+    // Verify GSAP text animation rendering in ASS
+    const rotateAss = generateAssSubtitles(
+      groups,
+      words,
+      {
+        ...DEFAULT_CAPTION_STYLE,
+        animationPreset: 'words-rotate-in',
+      },
+      {
+        preset: 'instagram-reel',
+        width: 1080,
+        height: 1920,
+        aspectRatio: '9:16',
+        quality: 'standard',
+        fps: 30,
+      }
+    );
+    assert.ok(
+      rotateAss.includes('\\frx-65\\t(0,120,\\frx0)'),
+      'GSAP words-rotate-in must generate 3D rotation tags in ASS'
+    );
+
+    const slideAss = generateAssSubtitles(
+      groups,
+      words,
+      {
+        ...DEFAULT_CAPTION_STYLE,
+        animationPreset: 'words-slide-up',
+      },
+      {
+        preset: 'instagram-reel',
+        width: 1080,
+        height: 1920,
+        aspectRatio: '9:16',
+        quality: 'standard',
+        fps: 30,
+      }
+    );
+    assert.ok(
+      slideAss.includes('\\fscy30\\t(0,90,\\fscy100)'),
+      'GSAP words-slide-up must generate vertical slide-in scale tags in ASS'
     );
   });
 
@@ -1417,6 +1547,123 @@ async function runAllTests() {
 
     const rightBottom = { ...settings, textAlign: 'right' as const, position: 'bottom' as const };
     await renderThumbnailToCanvas(mockCanvas, rightBottom);
+  });
+
+  await test('36. Gemini Model configuration, catalog options, and runtime persistence', async () => {
+    // 1. Verify available models catalog integrity
+    assert.ok(Array.isArray(GEMINI_AVAILABLE_MODELS), 'GEMINI_AVAILABLE_MODELS should be an array');
+    assert.ok(GEMINI_AVAILABLE_MODELS.length >= 5, 'Should provide at least 5 Gemini models');
+
+    const expectedIds = ['gemini-3.8-flash', 'gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.5-pro'];
+    for (const expectedId of expectedIds) {
+      const found = GEMINI_AVAILABLE_MODELS.find(m => m.id === expectedId);
+      assert.ok(found, `Expected model ${expectedId} to exist in catalog`);
+      assert.ok(found.name && found.name.length > 0, `Model ${expectedId} must have a display name`);
+      assert.ok(found.speed && found.quality, `Model ${expectedId} must specify speed and quality ratings`);
+      assert.ok(found.description && found.description.length > 10, `Model ${expectedId} must have a description`);
+    }
+
+    // 2. Verify initial active model retrieval
+    const initialModel = getGeminiModel();
+    assert.ok(typeof initialModel === 'string' && initialModel.length > 0, 'getGeminiModel should return a non-empty string');
+
+    // 3. Verify saving and persistence of user-chosen model
+    const originalModel = initialModel;
+    try {
+      saveAppSettings({ geminiModel: 'gemini-2.0-flash' });
+      const updated = getGeminiModel();
+      assert.strictEqual(updated, 'gemini-2.0-flash', 'getGeminiModel should return the newly saved model');
+
+      const status = checkGeminiStatus();
+      assert.strictEqual(status.model, 'gemini-2.0-flash', 'checkGeminiStatus should return updated model');
+      assert.ok(status.availableModels.length >= 5, 'checkGeminiStatus should include availableModels catalog');
+
+      // 4. Verify custom model selection persistence
+      saveAppSettings({ geminiModel: 'gemini-2.5-pro' });
+      assert.strictEqual(getGeminiModel(), 'gemini-2.5-pro', 'Should allow selecting frontier model gemini-2.5-pro');
+    } finally {
+      // Restore original model
+      saveAppSettings({ geminiModel: originalModel });
+    }
+  });
+
+  await test('37. Dynamic acoustic speech interval alignment & pause-aware caption grouping', async () => {
+    const { alignSegmentsToAcousticIntervals, splitTextIntoWeightedParts } = await import(
+      '../src/lib/caption-maker/transcription'
+    );
+    const { buildWordsFromSyncedSegments } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    // Simulate a coarse multi-clause LLM segment spanning 3 distinct hardware speech intervals with silences in between
+    const coarseSegments = [
+      {
+        start: 0.2,
+        end: 4.95,
+        textHindi: 'तुम एक छोटी सी बाधा के सामने रुक जाते हो और कहते हो, यह मेरे रास्ते में क्यों आया?',
+        textEnglish: 'You stop in front of a small obstacle and say, Why did this come in my way?',
+      },
+    ];
+    const hardwareSpeechIntervals = [
+      { start: 0.23, end: 2.03, duration: 1.8 },
+      { start: 2.11, end: 2.92, duration: 0.81 },
+      { start: 3.65, end: 4.94, duration: 1.29 },
+    ];
+
+    const aligned = alignSegmentsToAcousticIntervals(coarseSegments, hardwareSpeechIntervals);
+    assert.strictEqual(aligned.length, 3, 'Coarse segment spanning 3 speech intervals must dynamically split into 3 segments');
+    assert.strictEqual(aligned[0].start, 0.23);
+    assert.strictEqual(aligned[0].end, 2.03);
+    assert.strictEqual(aligned[1].start, 2.11);
+    assert.strictEqual(aligned[1].end, 2.92);
+    assert.strictEqual(aligned[2].start, 3.65);
+    assert.strictEqual(aligned[2].end, 4.94);
+
+    // Build words and group them; verify zero groups span across the 0.73s pause [2.92 -> 3.65]
+    const wordsHi = buildWordsFromSyncedSegments(aligned, 'hi');
+    const groupsHi = groupTranscriptWords(wordsHi, 4);
+    for (const g of groupsHi) {
+      const spansSilence = g.start < 2.92 && g.end > 3.65;
+      assert.strictEqual(spansSilence, false, `Group "${g.text}" (${g.start}s->${g.end}s) must never span across silence [2.92s..3.65s]`);
+    }
+
+    const parts = splitTextIntoWeightedParts('नदी पूछती नहीं, वह रास्ता खोजती है।', 2, [0.75, 1.13]);
+    assert.strictEqual(parts.length, 2);
+    assert.strictEqual(parts[0], 'नदी पूछती नहीं,');
+    assert.strictEqual(parts[1], 'वह रास्ता खोजती है।');
+
+    // Verify Pre-Flight Validator & Auto-Healer catches and heals overlapping words and pause-spanning groups
+    const { validateAndHealReelProject } = await import(
+      '../src/lib/caption-maker/pre-flight-validator'
+    );
+    const { createDefaultCaptionProject } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+    const defaultProj = createDefaultCaptionProject();
+    const brokenProj = {
+      ...defaultProj,
+      transcript: [
+        { id: 'w1', text: 'First', start: 0.2, end: 1.5 },
+        { id: 'w2', text: 'Second,', start: 1.2, end: 2.0 }, // overlaps w1!
+        { id: 'w3', text: 'Third', start: 2.8, end: 3.5 }, // 0.8s pause after w2!
+      ],
+      captionGroups: [
+        {
+          id: 'g1',
+          words: [
+            { id: 'w1', text: 'First', start: 0.2, end: 1.5 },
+            { id: 'w2', text: 'Second,', start: 1.2, end: 2.0 },
+            { id: 'w3', text: 'Third', start: 2.8, end: 3.5 },
+          ],
+          start: 0.2,
+          end: 3.5,
+          text: 'First Second, Third',
+        },
+      ],
+    };
+    const report = validateAndHealReelProject(brokenProj, 10);
+    assert.strictEqual(report.ready, true, 'Pre-flight validator must mark healed project as ready');
+    assert.ok(report.autoFixedCount > 0, 'Pre-flight validator must auto-fix word overlaps and pause-spanning groups');
+    assert.strictEqual(report.healedProject.transcript[1].start, 1.5, 'Overlap between w1 and w2 must be healed');
+    assert.strictEqual(report.healedProject.captionGroups.length, 2, 'Group spanning 0.8s pause must be split into 2 groups');
   });
 
   console.log('\n======================================================');

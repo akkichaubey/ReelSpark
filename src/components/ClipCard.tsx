@@ -107,14 +107,15 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         const { createCaptionProjectFromClip } = await import('@/lib/caption-maker/clip-to-reel');
         const reelProj = createCaptionProjectFromClip(candidate, null, lang);
         try {
-          localStorage.setItem(
-            'reel_caption_project_v1',
-            JSON.stringify(reelProj)
-          );
+          localStorage.setItem('reel_caption_project_v2', JSON.stringify(reelProj));
+          localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('reel_project_updated', { detail: reelProj }));
+          }
         } catch (e) {
           console.warn('Could not save to localStorage', e);
         }
-        router.push('/caption-maker');
+        router.push(`/caption-maker?clipId=${encodeURIComponent(candidate.id)}&t=${Date.now()}`);
       }
     } catch (e) {
       console.error('Error creating reel project:', e);
