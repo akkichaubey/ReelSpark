@@ -1,8 +1,8 @@
-# PROJECT: AI Clip Finder — Local-First Video to Reels Studio
+# PROJECT: ReelSpark — Local-First Video to Reels Studio
 
 ## 1. Project Overview
 
-**AI Clip Finder** is a professional, local-first web application engineered to extract the most motivational, philosophical, and thought-provoking short clips from long-form speeches, podcasts, and interviews (optimized for Osho speeches, Alan Watts, J. Krishnamurti, and deep educational talks).
+**ReelSpark** is a professional, local-first web application engineered to extract the most motivational, philosophical, and thought-provoking short clips from long-form speeches, podcasts, and interviews (optimized for Osho speeches, Alan Watts, J. Krishnamurti, and deep educational talks).
 
 Every discovered clip is strictly capped at **60 seconds**, contextually verified to ensure complete thoughts without dangling pronouns, ranked across a 7-factor scoring engine, synchronized with local timeline subtitles, and rendered locally with FFmpeg into vertical 9:16 reels and horizontal formats.
 
@@ -146,7 +146,7 @@ Every discovered clip is strictly capped at **60 seconds**, contextually verifie
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `GEMINI_API_KEY` | Google Gemini API key (server-side only) | Required for API mode |
-| `GEMINI_MODEL` | Gemini Model identifier | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Gemini Model identifier | `gemini-3.8-flash` |
 | `FFMPEG_PATH` | Path to FFmpeg binary | `./bin/ffmpeg.exe` |
 | `FFPROBE_PATH` | Path to FFprobe binary | `./bin/ffprobe.exe` |
 | `PORT` | Local dev / production port | `3000` |
@@ -157,7 +157,7 @@ Every discovered clip is strictly capped at **60 seconds**, contextually verifie
 
 ### Step 1: Install Dependencies
 ```bash
-npm install
+pnpm install
 ```
 
 ### Step 2: Configure Environment
@@ -168,7 +168,7 @@ copy .env.example .env.local
 
 ### Step 3: Start the Development Server
 ```bash
-npm run dev
+pnpm dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
@@ -176,14 +176,14 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 10. Automated Testing
 
-Run the full automated unit test suite (11 test suites covering URL validation, timestamps, SRT offsets, context verification, 60s duration cap, security, and real FFmpeg rendering):
+Run the full automated unit test suite (covering URL validation, timestamps, SRT offsets, context verification, 60s duration cap, security, and real FFmpeg rendering):
 ```bash
-npm test
+pnpm test
 ```
 
 Run the end-to-end integration test against the running studio:
 ```bash
-npm run test:e2e
+pnpm test:e2e
 ```
 
 ---

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Sliders, FileVideo, Sparkles, AlertCircle } from 'lucide-react';
+import { UploadCloud, Sliders, FileVideo, Sparkles, AlertCircle, Music, Film } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
 
 // Custom YouTube Icon SVG
@@ -17,7 +17,7 @@ interface ProjectCreatorProps {
 }
 
 export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'youtube'>('upload');
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'youtube'>('video');
   const [title, setTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -31,6 +31,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
     aspectRatio: 'original',
     normalizeAudio: true,
     burnSubtitles: false,
+    aiModel: 'gemini-3.8-flash',
     subtitleStyle: {
       fontSize: 28,
       fontColor: '#FFFFFF',
@@ -43,24 +44,32 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'];
+  const videoExtensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
+
+  const processSelectedFile = (file: File) => {
+    setSelectedFile(file);
+    if (!title) {
+      setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    }
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+    if (audioExtensions.includes(ext) && activeTab === 'video') {
+      setActiveTab('audio');
+    } else if (videoExtensions.includes(ext) && activeTab === 'audio') {
+      setActiveTab('video');
+    }
+  };
+
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      setSelectedFile(file);
-      if (!title) {
-        setTitle(file.name.replace(/\.[^/.]+$/, ''));
-      }
+      processSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      if (!title) {
-        setTitle(file.name.replace(/\.[^/.]+$/, ''));
-      }
+      processSelectedFile(e.target.files[0]);
     }
   };
 
@@ -68,8 +77,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
     e.preventDefault();
     setError(null);
 
-    if (activeTab === 'upload' && !selectedFile) {
-      setError('Please select or drop a video file to upload.');
+    if ((activeTab === 'video' || activeTab === 'audio') && !selectedFile) {
+      setError(`Please select or drop ${activeTab === 'audio' ? 'an audio' : 'a video'} file to upload.`);
       return;
     }
 
@@ -81,13 +90,15 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
     try {
       setIsSubmitting(true);
 
+      const resolvedSourceType = activeTab === 'youtube' ? 'youtube' : activeTab === 'audio' ? 'audio' : 'upload';
+
       // Step 1: Create Project record
       const createRes = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: title || (activeTab === 'upload' ? selectedFile?.name : 'YouTube Video Clip Project'),
-          sourceType: activeTab,
+          title: title || (activeTab === 'youtube' ? 'YouTube Video Clip Project' : selectedFile?.name),
+          sourceType: resolvedSourceType,
           youtubeUrl: activeTab === 'youtube' ? youtubeUrl : undefined,
           durationLimit: settings.durationLimit,
           aspectRatio: settings.aspectRatio,
@@ -105,7 +116,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
       const projectId = createData.project.id;
 
       // Step 2: Upload file or register YouTube URL
-      if (activeTab === 'upload' && selectedFile) {
+      if ((activeTab === 'video' || activeTab === 'audio') && selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
 
@@ -116,7 +127,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
 
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          throw new Error(uploadData.error || 'Failed to upload video');
+          throw new Error(uploadData.error || `Failed to upload ${activeTab} file`);
         }
       } else if (activeTab === 'youtube') {
         const ytRes = await fetch(`/api/projects/${projectId}/youtube`, {
@@ -156,30 +167,54 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-2 gap-2 p-1.5 rounded-xl bg-zinc-900/80 border border-white/10 mb-6">
+        <div className="grid grid-cols-3 gap-2 p-1.5 rounded-xl bg-zinc-900/80 border border-white/10 mb-6">
           <button
             type="button"
-            onClick={() => setActiveTab('upload')}
-            className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'upload'
+            onClick={() => {
+              setActiveTab('video');
+              setError(null);
+            }}
+            className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === 'video'
                 ? 'bg-white text-zinc-950 shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            <UploadCloud className="w-4 h-4" />
-            <span>Upload Video File</span>
+            <Film className="w-4 h-4" />
+            <span className="hidden sm:inline">Upload Video File</span>
+            <span className="sm:hidden">Video</span>
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('youtube')}
-            className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+            onClick={() => {
+              setActiveTab('audio');
+              setError(null);
+            }}
+            className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === 'audio'
+                ? 'bg-white text-zinc-950 shadow-md'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Music className="w-4 h-4" />
+            <span className="hidden sm:inline">Upload Audio File</span>
+            <span className="sm:hidden">Audio</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('youtube');
+              setError(null);
+            }}
+            className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
               activeTab === 'youtube'
                 ? 'bg-zinc-100 text-zinc-950 shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
             <YouTubeIcon className="w-4 h-4" />
-            <span>YouTube Public URL</span>
+            <span className="hidden sm:inline">YouTube Public URL</span>
+            <span className="sm:hidden">YouTube</span>
           </button>
         </div>
 
@@ -209,7 +244,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
           </div>
 
           {/* Tab 1: Upload Video */}
-          {activeTab === 'upload' && (
+          {activeTab === 'video' && (
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
                 Video File
@@ -250,7 +285,57 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                       Drag and drop your speech or interview video here, or <span className="text-white underline">browse</span>
                     </p>
                     <p className="text-xs text-zinc-500 mt-2">
-                      Supports MP4, MOV, WEBM, AVI (Keeps original file untouched)
+                      Supports MP4, MOV, WEBM, AVI, MKV (Keeps original file untouched)
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Upload Audio */}
+          {activeTab === 'audio' && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
+                Audio File (Speech / Podcast / Interview)
+              </label>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleFileDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                  selectedFile
+                    ? 'border-white/50 bg-white/5'
+                    : 'border-white/15 hover:border-white/40 bg-zinc-900/40 hover:bg-zinc-900/60'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg,audio/m4a,audio/flac,audio/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                {selectedFile ? (
+                  <div className="flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-300 flex items-center justify-center mb-3 border border-amber-500/30">
+                      <Music className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <p className="text-white font-medium text-sm">{selectedFile.name}</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB • Click to replace
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-800 text-zinc-400 flex items-center justify-center mb-3">
+                      <Music className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <p className="text-sm font-medium text-zinc-200">
+                      Drag and drop your speech, podcast, or interview audio here, or <span className="text-white underline">browse</span>
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-2">
+                      Supports MP3, WAV, M4A, AAC, OGG, FLAC (Keeps original file untouched)
                     </p>
                   </div>
                 )}
@@ -342,6 +427,29 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Gemini Model Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs text-zinc-400 font-medium">
+                      Gemini AI Model (Speech & Clip Discovery)
+                    </label>
+                    <span className="text-[10px] text-sky-400 font-medium">Google GenAI</span>
+                  </div>
+                  <select
+                    value={settings.aiModel || 'gemini-3.8-flash'}
+                    onChange={(e) => setSettings({ ...settings, aiModel: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-white/10 text-white text-xs focus:outline-none focus:border-sky-400"
+                  >
+                    <option value="gemini-3.8-flash">Gemini 3.8 Flash (Default / Recommended - Ultra Fast)</option>
+                    <option value="gemini-3.0-flash">Gemini 3.0 Flash (Next-Gen Performance)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast & High Precision)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (Production Standard - Multimodal)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (High Quota Limits)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning & Nuance)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Frontier AI - Maximum Intelligence)</option>
+                  </select>
                 </div>
 
                 {/* Toggles */}

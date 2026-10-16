@@ -8,7 +8,7 @@ import { ClipCandidate } from '@/lib/types';
  * Extract YouTube video ID from standard URLs.
  */
 export function extractYouTubeVideoId(url: string): string | null {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/;
   const match = url.trim().match(regExp);
   return match && match[2].length === 11 ? match[2] : null;
 }
@@ -53,7 +53,7 @@ export async function POST(
     let candidates: ClipCandidate[] = [];
     if (geminiStatus.configured) {
       try {
-        candidates = await analyzeYouTubeWithGemini(youtubeUrl);
+        candidates = await analyzeYouTubeWithGemini(youtubeUrl, project.settings?.aiModel);
       } catch (geminiErr: any) {
         console.warn('Gemini YouTube direct analysis notice:', geminiErr.message);
         // Fallback or retry

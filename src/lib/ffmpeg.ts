@@ -31,11 +31,12 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
     const videoStream = data.streams?.find((s: any) => s.codec_type === 'video');
     const audioStream = data.streams?.find((s: any) => s.codec_type === 'audio');
 
-    const duration = parseFloat(data.format?.duration || videoStream?.duration || '0');
-    const width = videoStream?.width || 0;
-    const height = videoStream?.height || 0;
+    const duration = parseFloat(data.format?.duration || videoStream?.duration || audioStream?.duration || '0');
+    const isAudioOnly = !videoStream && Boolean(audioStream);
+    const width = videoStream?.width || (isAudioOnly ? 1080 : 0);
+    const height = videoStream?.height || (isAudioOnly ? 1920 : 0);
     const sizeBytes = parseInt(data.format?.size || '0', 10);
-    const format = data.format?.format_name || 'unknown';
+    const format = data.format?.format_name || (isAudioOnly ? 'audio' : 'unknown');
 
     // Parse FPS from r_frame_rate e.g. "30/1" or "30000/1001"
     let fps = 30;
@@ -47,13 +48,15 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
     }
 
     let aspectRatio = '16:9';
-    if (width && height) {
+    if (videoStream && width && height) {
       const ratio = width / height;
       if (Math.abs(ratio - 16 / 9) < 0.1) aspectRatio = '16:9';
       else if (Math.abs(ratio - 9 / 16) < 0.1) aspectRatio = '9:16';
       else if (Math.abs(ratio - 4 / 3) < 0.1) aspectRatio = '4:3';
       else if (Math.abs(ratio - 1) < 0.1) aspectRatio = '1:1';
       else aspectRatio = `${width}:${height}`;
+    } else if (isAudioOnly) {
+      aspectRatio = 'Audio';
     }
 
     return {
@@ -153,14 +156,35 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     audioFilters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   }
 
-  const args: string[] = [
-    '-y',
-    '-ss', start.toFixed(3),
-    '-to', end.toFixed(3),
-    '-i', sourceVideoPath,
-  ];
+  const meta = await probeVideo(sourceVideoPath);
+  const isAudioOnly = !meta.videoCodec && meta.hasAudio;
 
-  if (filterParts.length > 0) {
+  const args: string[] = ['-y'];
+
+  if (isAudioOnly) {
+    args.push(
+      '-f', 'lavfi',
+      '-i', 'color=c=black:s=1080x1920:r=30',
+      '-ss', start.toFixed(3),
+      '-to', end.toFixed(3),
+      '-i', sourceVideoPath,
+      '-t', duration.toFixed(3)
+    );
+  } else {
+    args.push(
+      '-ss', start.toFixed(3),
+      '-to', end.toFixed(3),
+      '-i', sourceVideoPath
+    );
+  }
+
+  if (isAudioOnly) {
+    if (subtitlesAssPath && fs.existsSync(subtitlesAssPath)) {
+      const escapedAss = escapeFilterPath(subtitlesAssPath);
+      args.push('-vf', `ass='${escapedAss}'`);
+    }
+    args.push('-map', '0:v', '-map', '1:a');
+  } else if (filterParts.length > 0) {
     const combinedFilter = filterParts.join(';');
     // If complex graph with labels was used:
     if (combinedFilter.includes(';')) {
@@ -178,8 +202,10 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     '-c:v', 'libx264',
     '-preset', 'fast',
     '-crf', '22',
+    '-pix_fmt', 'yuv420p',
     '-c:a', 'aac',
     '-b:a', '192k',
+    '-shortest',
     '-movflags', '+faststart',
     outputPath
   );
@@ -299,3 +325,224 @@ export async function extractAudioForTranscription(videoPath: string, outputAudi
   await execFileAsync(ffmpegPath, args);
   return outputAudioPath;
 }
+
+export interface ExtractClipAudioOptions {
+  sourceVideoPath: string;
+  outputPath: string;
+  start: number;
+  end: number;
+  normalizeAudio?: boolean;
+}
+
+/**
+ * Extract an isolated audio segment from a video or audio file for a specific clip timeframe.
+ * Produces a high-quality 192k MP3 ready for playback, scrub timeline, and video render compositing.
+ */
+export async function extractClipAudio(options: ExtractClipAudioOptions): Promise<{
+  outputPath: string;
+  duration: number;
+}> {
+  const {
+    sourceVideoPath,
+    outputPath,
+    start,
+    end,
+    normalizeAudio = false,
+  } = options;
+
+  const ffmpegPath = getFfmpegPath();
+  const duration = Math.max(0.5, end - start);
+
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const args: string[] = [
+    '-y',
+    '-ss', start.toFixed(3),
+    '-to', end.toFixed(3),
+    '-i', sourceVideoPath,
+    '-vn',
+  ];
+
+  if (normalizeAudio) {
+    args.push('-af', 'loudnorm=I=-16:TP=-1.5:LRA=11');
+  }
+
+  args.push(
+    '-c:a', 'libmp3lame',
+    '-b:a', '192k',
+    outputPath
+  );
+
+  await execFileAsync(ffmpegPath, args);
+
+  return {
+    outputPath,
+    duration,
+  };
+}
+
+export interface SpeechInterval {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+/**
+ * Dynamically detect exact hardware acoustic speech intervals from any audio/video file
+ * using FFmpeg silencedetect filter. Returns non-silent speech windows [start, end] in seconds.
+ */
+export async function detectSpeechIntervals(
+  audioFilePath: string,
+  noiseDb = -25,
+  minSilenceSec = 0.24
+): Promise<{ totalDuration: number; intervals: SpeechInterval[] }> {
+  if (!fs.existsSync(audioFilePath)) {
+    return { totalDuration: 0, intervals: [] };
+  }
+
+  let totalDuration = 0;
+  try {
+    const meta = await probeVideo(audioFilePath);
+    totalDuration = meta.duration || 0;
+  } catch {
+    totalDuration = 0;
+  }
+
+  let detectedMeanVolume: number | null = null;
+  let detectedMaxVolume: number | null = null;
+
+  const runPass = async (db: number, includeVolumeDetect = false): Promise<SpeechInterval[]> => {
+    const ffmpegPath = getFfmpegPath();
+    const filterChain = includeVolumeDetect
+      ? `volumedetect,silencedetect=noise=${db}dB:d=${minSilenceSec}`
+      : `silencedetect=noise=${db}dB:d=${minSilenceSec}`;
+    const args = [
+      '-hide_banner',
+      '-i',
+      audioFilePath,
+      '-af',
+      filterChain,
+      '-f',
+      'null',
+      '-',
+    ];
+
+    let stderr = '';
+    await new Promise<void>((resolve) => {
+      const proc = spawn(ffmpegPath, args);
+      proc.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      proc.on('close', () => resolve());
+      proc.on('error', () => resolve());
+    });
+
+    if (!totalDuration) {
+      const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+      if (durMatch) {
+        totalDuration =
+          parseInt(durMatch[1], 10) * 3600 +
+          parseInt(durMatch[2], 10) * 60 +
+          parseFloat(durMatch[3]);
+      }
+    }
+
+    if (includeVolumeDetect) {
+      const meanMatch = stderr.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      if (meanMatch) detectedMeanVolume = parseFloat(meanMatch[1]);
+      const maxMatch = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      if (maxMatch) detectedMaxVolume = parseFloat(maxMatch[1]);
+    }
+
+    const silences: Array<{ start: number; end: number }> = [];
+    let currentSilenceStart: number | null = null;
+
+    const lines = stderr.split(/\r?\n/);
+    for (const line of lines) {
+      const startMatch = line.match(/silence_start:\s*(-?\d+(?:\.\d+)?)/);
+      if (startMatch) {
+        currentSilenceStart = Math.max(0, parseFloat(startMatch[1]));
+      }
+      const endMatch = line.match(/silence_end:\s*(-?\d+(?:\.\d+)?)/);
+      if (endMatch) {
+        const sEnd = Math.max(0, parseFloat(endMatch[1]));
+        const sStart = currentSilenceStart !== null ? currentSilenceStart : 0;
+        if (sEnd - sStart >= minSilenceSec) {
+          silences.push({ start: sStart, end: sEnd });
+        }
+        currentSilenceStart = null;
+      }
+    }
+
+    if (currentSilenceStart !== null && totalDuration - currentSilenceStart >= minSilenceSec) {
+      silences.push({ start: currentSilenceStart, end: totalDuration });
+    }
+
+    if (silences.length === 0) {
+      return totalDuration > 0
+        ? [{ start: 0, end: Number(totalDuration.toFixed(2)), duration: Number(totalDuration.toFixed(2)) }]
+        : [];
+    }
+
+    const speechIntervals: SpeechInterval[] = [];
+    let cursor = 0;
+
+    for (const sil of silences) {
+      if (sil.start - cursor >= 0.18) {
+        const s = Number(cursor.toFixed(2));
+        const e = Number(sil.start.toFixed(2));
+        speechIntervals.push({
+          start: s,
+          end: e,
+          duration: Number((e - s).toFixed(2)),
+        });
+      }
+      cursor = Math.max(cursor, sil.end);
+    }
+
+    if (totalDuration - cursor >= 0.18) {
+      const s = Number(cursor.toFixed(2));
+      const e = Number(totalDuration.toFixed(2));
+      speechIntervals.push({
+        start: s,
+        end: e,
+        duration: Number((e - s).toFixed(2)),
+      });
+    }
+
+    return speechIntervals;
+  };
+
+  let intervals = await runPass(noiseDb, true);
+  const totalSpeechSec = intervals.reduce((acc, iv) => acc + iv.duration, 0);
+
+  // Dynamic volume-adaptive retry:
+  // Case A: Quiet audio where fixed noiseDb treated almost everything as silence (0 intervals or < 15% speech)
+  if ((intervals.length === 0 || (totalDuration > 3 && totalSpeechSec < totalDuration * 0.15)) && detectedMeanVolume !== null) {
+    const quietAdaptiveDb = Math.max(-50, Math.min(noiseDb - 5, Math.round(detectedMeanVolume - 4)));
+    const retryQuiet = await runPass(quietAdaptiveDb, false);
+    if (retryQuiet.length > 0) {
+      intervals = retryQuiet;
+    }
+  }
+  // Case B: Loud audio / background music where fixed noiseDb missed pauses (only 1 giant interval for > 5s audio)
+  else if (intervals.length <= 1 && totalDuration > 5) {
+    const loudAdaptiveDb =
+      detectedMeanVolume !== null
+        ? Math.max(-22, Math.min(-14, Math.round(detectedMeanVolume - 2)))
+        : -20;
+    if (loudAdaptiveDb !== noiseDb) {
+      const retryLoud = await runPass(loudAdaptiveDb, false);
+      if (retryLoud.length > intervals.length) {
+        intervals = retryLoud;
+      }
+    }
+  }
+
+  return { totalDuration, intervals };
+}
+
+

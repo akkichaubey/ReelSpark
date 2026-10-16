@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { getFfmpegPath, getFfprobePath } from '../config';
 import { escapeFilterPath } from '../ffmpeg';
-import { CaptionGroup, CaptionStyle, ImageFitMode, OutputSettings, TranscriptWord } from './types';
+import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, TranscriptWord } from './types';
 import { generateAssSubtitles } from './ass-generator';
 
 const execFileAsync = promisify(execFile);
@@ -18,7 +18,43 @@ export interface RenderReelOptions {
   style: CaptionStyle;
   outputSettings: OutputSettings;
   imageFitMode?: ImageFitMode;
+  imagePosition?: ImagePosition;
+  imageScale?: number;
+  mediaType?: 'image' | 'video';
   onProgress?: (percent: number) => void;
+}
+
+/**
+ * Get exact pad (X, Y) and overlay (X, Y) coordinate expressions for all 9 positioning options.
+ */
+export function getImagePositionPadCoords(position: ImagePosition = 'bottom-left'): {
+  padX: string;
+  padY: string;
+  overlayX: string;
+  overlayY: string;
+} {
+  switch (position) {
+    case 'top-left':
+      return { padX: '0', padY: '0', overlayX: '0', overlayY: '0' };
+    case 'top-center':
+      return { padX: '(ow-iw)/2', padY: '0', overlayX: '(W-w)/2', overlayY: '0' };
+    case 'top-right':
+      return { padX: '(ow-iw)', padY: '0', overlayX: '(W-w)', overlayY: '0' };
+    case 'center-left':
+      return { padX: '0', padY: '(oh-ih)/2', overlayX: '0', overlayY: '(H-h)/2' };
+    case 'center':
+      return { padX: '(ow-iw)/2', padY: '(oh-ih)/2', overlayX: '(W-w)/2', overlayY: '(H-h)/2' };
+    case 'center-right':
+      return { padX: '(ow-iw)', padY: '(oh-ih)/2', overlayX: '(W-w)', overlayY: '(H-h)/2' };
+    case 'bottom-left':
+      return { padX: '0', padY: '(oh-ih)', overlayX: '0', overlayY: '(H-h)' };
+    case 'bottom-center':
+      return { padX: '(ow-iw)/2', padY: '(oh-ih)', overlayX: '(W-w)/2', overlayY: '(H-h)' };
+    case 'bottom-right':
+      return { padX: '(ow-iw)', padY: '(oh-ih)', overlayX: '(W-w)', overlayY: '(H-h)' };
+    default:
+      return { padX: '0', padY: '(oh-ih)', overlayX: '0', overlayY: '(H-h)' };
+  }
 }
 
 /**
@@ -55,12 +91,17 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     words,
     style,
     outputSettings,
-    imageFitMode = 'cover',
+    imageFitMode = 'contain',
+    imagePosition = 'bottom-left',
+    imageScale = 100,
     onProgress,
   } = options;
 
   const ffmpeg = getFfmpegPath();
   const { width, height } = outputSettings;
+  const scalePct = Math.max(0.4, Math.min(1, (imageScale ?? 100) / 100));
+  const targetW = Math.round(width * scalePct);
+  const targetH = Math.round(height * scalePct);
 
   if (!fs.existsSync(imagePath)) {
     throw new Error(`Background image not found at ${imagePath}`);
@@ -84,21 +125,27 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
 
   // 3. Build FFmpeg filter complex for image fit mode + burned-in subtitles
   const escapedAss = escapeFilterPath(assPath);
+  const { padX, padY } = getImagePositionPadCoords(imagePosition);
   let filterComplex = '';
 
-  if (imageFitMode === 'cover') {
-    filterComplex = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},subtitles='${escapedAss}'[outv]`;
-  } else if (imageFitMode === 'contain') {
-    filterComplex = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,subtitles='${escapedAss}'[outv]`;
+  if (imageFitMode === 'contain') {
+    filterComplex = `[0:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${width}:${height}:${padX}:${padY}:color=black,subtitles='${escapedAss}'[outv]`;
   } else {
-    // 'blur' background mode
-    filterComplex = `[0:v]split=2[bg][fg];[bg]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=25:5[bg_blur];[fg]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg_scaled];[bg_blur][fg_scaled]overlay=(W-w)/2:(H-h)/2,subtitles='${escapedAss}'[outv]`;
+    // Default: 'cover'
+    filterComplex = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},subtitles='${escapedAss}'[outv]`;
   }
+
+  const isVideo =
+    options.mediaType === 'video' ||
+    /\.(mp4|mov|webm|mkv|avi)$/i.test(imagePath);
+
+  const inputArgs = isVideo
+    ? ['-stream_loop', '-1', '-i', imagePath]
+    : ['-loop', '1', '-i', imagePath];
 
   const args = [
     '-y',
-    '-loop', '1',
-    '-i', imagePath,
+    ...inputArgs,
     '-i', audioPath,
     '-filter_complex', filterComplex,
     '-map', '[outv]',

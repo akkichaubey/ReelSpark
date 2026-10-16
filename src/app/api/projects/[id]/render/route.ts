@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import { getProjectDirs, loadProject, saveProject } from '@/lib/storage';
-import { renderClip } from '@/lib/ffmpeg';
+import { extractClipAudio, renderClip } from '@/lib/ffmpeg';
+import { transcribeAudio } from '@/lib/caption-maker/transcription';
 import { generateAssForClip, generateSrtForClip } from '@/lib/srt';
 import { ClipCandidate } from '@/lib/types';
 
@@ -64,6 +65,46 @@ export async function POST(
       const outputAssPath = path.join(dirs.srtDir, `${clipSafeId}.ass`);
 
       try {
+        // 0. Dynamically ensure this clip has acoustic-locked speech segments before generating SRT/ASS
+        try {
+          const clipAudioPath = path.join(dirs.clipsDir, `${clipSafeId}_audio.mp3`);
+          if (!fs.existsSync(clipAudioPath) || fs.statSync(clipAudioPath).size < 1000) {
+            await extractClipAudio({
+              sourceVideoPath: project.localVideoPath,
+              outputPath: clipAudioPath,
+              start: clip.start,
+              end: clip.end,
+              normalizeAudio: false,
+            });
+          }
+          const transRes = await transcribeAudio(clipAudioPath, 'en', {
+            textHindi: clip.transcriptHindi || clip.transcript,
+            textEnglish: clip.transcriptEnglish || clip.transcript,
+            titleHindi: clip.titleHindi || clip.title,
+            titleEnglish: clip.titleEnglish || clip.title,
+          });
+          if (transRes.syncedSegments && transRes.syncedSegments.length > 0) {
+            (clip as any).syncedSegments = transRes.syncedSegments;
+            const outsideSegments = (project.transcript || []).filter(
+              (seg) => seg.end <= clip.start + 0.1 || seg.start >= clip.end - 0.1
+            );
+            const syncedProjectSegments = transRes.syncedSegments.map((s, idx) => ({
+              id: `sync_${clipSafeId}_${idx + 1}`,
+              start: Number((clip.start + s.start).toFixed(2)),
+              end: Number((clip.start + s.end).toFixed(2)),
+              text: s.textHindi || s.textEnglish,
+              textEn: s.textEnglish || s.textHindi,
+              speaker: 'Speaker',
+              confidence: 0.99,
+            }));
+            project.transcript = [...outsideSegments, ...syncedProjectSegments].sort(
+              (a, b) => a.start - b.start
+            );
+          }
+        } catch (syncErr) {
+          console.warn('Pre-render clip acoustic sync fallback:', syncErr);
+        }
+
         // 1. Generate local synchronized SRT file
         const srtContent = generateSrtForClip(project.transcript, clip.start, clip.end);
         await fs.promises.writeFile(outputSrtPath, srtContent, 'utf8');

@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
+import { MediaErrorHandler } from '@/components/MediaErrorHandler';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AI Clip Finder — Local Video to Reels & Shorts Studio',
+  title: 'ReelSpark — Local Video to Reels & Shorts Studio',
   description:
     'Identify and render the best short viral and philosophical clips under 60 seconds from long speeches, podcasts, and interviews with synchronized subtitles and local FFmpeg processing.',
   keywords: [
-    'AI Clip Finder',
+    'ReelSpark',
     'Reels Studio',
     'Osho Speeches',
     'Video to Shorts',
@@ -23,7 +24,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark h-full antialiased">
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">{children}</body>
+      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
+        <MediaErrorHandler />
+        {children}
+      </body>
     </html>
   );
 }

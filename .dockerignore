@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+storage/projects/*
+storage/temp/*
+storage/caption-maker/*
+!storage/.gitkeep
+bin/*.exe
+*.log

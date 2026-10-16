@@ -16,9 +16,11 @@ import { TimelineCoverageBar } from '@/components/TimelineCoverageBar';
 import { SemanticSearchBox } from '@/components/SemanticSearchBox';
 import { TopicFilterBar } from '@/components/TopicFilterBar';
 import { ClipCard } from '@/components/ClipCard';
+import { AnalysisProgressCard } from '@/components/AnalysisProgressCard';
 import { VideoPlayerModal } from '@/components/VideoPlayerModal';
 import { ClipEditorModal } from '@/components/ClipEditorModal';
 import { SubtitlePreviewModal } from '@/components/SubtitlePreviewModal';
+import { GeminiModelModal } from '@/components/GeminiModelModal';
 import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/ranking';
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
@@ -33,6 +35,8 @@ export default function DashboardPage() {
 
   // Modals & Active Selections
   const [showCreatorModal, setShowCreatorModal] = useState(false);
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>('gemini-3.8-flash');
   const [previewCandidate, setPreviewCandidate] = useState<ClipCandidate | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<ClipCandidate | null>(null);
   const [subtitlesCandidate, setSubtitlesCandidate] = useState<ClipCandidate | null>(null);
@@ -60,6 +64,9 @@ export default function DashboardPage() {
       const data = await res.json();
       if (data.status === 'ok') {
         setSystemStatus(data);
+        if (data.gemini?.model) {
+          setSelectedGeminiModel(data.gemini.model);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch system status:', err);
@@ -94,6 +101,9 @@ export default function DashboardPage() {
         setProjects((prev) =>
           prev.map((p) => (p.id === data.project.id ? data.project : p))
         );
+        if (data.project.status === 'COMPLETED' || data.project.status === 'FAILED') {
+          setIsAnalyzing(false);
+        }
       }
     } catch (err) {
       console.error('Failed to refresh project:', err);
@@ -109,6 +119,9 @@ export default function DashboardPage() {
         const sysData = await sysRes.json();
         if (active && sysData.status === 'ok') {
           setSystemStatus(sysData);
+          if (sysData.gemini?.model) {
+            setSelectedGeminiModel(sysData.gemini.model);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch system status:', err);
@@ -136,10 +149,11 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Auto-poll when processing
+  // Auto-poll when processing or analyzing (1s interval for real-time progress)
   useEffect(() => {
     if (!activeProject) return;
     const isBusy =
+      isAnalyzing ||
       activeProject.status === 'TRANSCRIBING' ||
       activeProject.status === 'ANALYZING' ||
       activeProject.status === 'RANKING' ||
@@ -150,20 +164,38 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       refreshActiveProject(activeProject.id);
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeProject, refreshActiveProject]);
+  }, [activeProject?.id, activeProject?.status, isAnalyzing, refreshActiveProject]);
 
   // Handler: Run Full AI Analysis
   const handleRunAnalysis = async () => {
     if (!activeProject) return;
     try {
       setIsAnalyzing(true);
-      showToast('Starting speech transcription and full video semantic analysis...', 'info');
+      const targetModel = activeProject.settings?.aiModel || selectedGeminiModel || 'gemini-3.8-flash';
+      // Immediately clear stale 100% progress and transition to TRANSCRIBING
+      setActiveProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'TRANSCRIBING',
+              progress: 5,
+              statusMessage: `Extracting audio & initializing AI speech transcription with ${targetModel}...`,
+              settings: {
+                ...prev.settings,
+                aiModel: targetModel,
+              },
+            }
+          : null
+      );
+      showToast(`Starting AI analysis using ${targetModel}...`, 'info');
 
       const res = await fetch(`/api/projects/${activeProject.id}/analyze`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: targetModel }),
       });
       const data = await res.json();
 
@@ -225,11 +257,44 @@ export default function DashboardPage() {
     }
   };
 
-  // Handler: Instant Download of SRT Subtitles
-  const handleDownloadSrt = (candidate: ClipCandidate) => {
+  // Handler: Instant Download of SRT Subtitles (with dynamic acoustic sync)
+  const handleDownloadSrt = async (candidate: ClipCandidate) => {
     if (!activeProject) return;
+    let segmentsForSrt = activeProject.transcript;
+
+    const existingSynced = (candidate as any).syncedSegments;
+    if (Array.isArray(existingSynced) && existingSynced.length > 0) {
+      segmentsForSrt = existingSynced.map((s: any, idx: number) => ({
+        id: `sync_${idx + 1}`,
+        start: candidate.start + s.start,
+        end: candidate.start + s.end,
+        text: s.textHindi || s.textEnglish || '',
+      }));
+    } else if (activeProject.id) {
+      try {
+        const res = await fetch(`/api/projects/${activeProject.id}/clip-audio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clipId: candidate.id,
+            start: candidate.start,
+            end: candidate.end,
+          }),
+        });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.syncedSegments) && data.syncedSegments.length > 0) {
+          segmentsForSrt = data.syncedSegments.map((s: any, idx: number) => ({
+            id: `sync_${idx + 1}`,
+            start: candidate.start + s.start,
+            end: candidate.start + s.end,
+            text: s.textHindi || s.textEnglish || '',
+          }));
+        }
+      } catch {}
+    }
+
     downloadSrtDirectly(
-      activeProject.transcript,
+      segmentsForSrt,
       candidate.start,
       candidate.end,
       candidate.title
@@ -277,17 +342,58 @@ export default function DashboardPage() {
   };
 
   // Handler: Open in AI Reel Caption Maker
-  const handleCreateReel = (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
+  const handleCreateReel = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
+    const projIdParam = activeProject?.id ? `projectId=${encodeURIComponent(activeProject.id)}&` : '';
     try {
-      const reelProj = createCaptionProjectFromClip(candidate, activeProject, lang);
-      localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
-      showToast('Opening in AI Reel Caption Maker...', 'info');
-      setTimeout(() => {
-        router.push('/caption-maker');
-      }, 350);
+      showToast('Extracting audio for selected clip...', 'info');
+
+      let audioOverride;
+      if (activeProject?.id) {
+        try {
+          const res = await fetch(`/api/projects/${activeProject.id}/clip-audio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clipId: candidate.id,
+              start: candidate.start,
+              end: candidate.end,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.audioUrl) {
+            audioOverride = {
+              audioUrl: data.audioUrl,
+              storagePath: data.audioPath,
+              duration: data.duration,
+              fileSize: data.fileSize,
+              syncedSegments: data.syncedSegments,
+              rawTranscriptHindi: data.rawTranscriptHindi,
+              rawTranscriptEnglish: data.rawTranscriptEnglish,
+              titleHindi: data.titleHindi,
+              titleEnglish: data.titleEnglish,
+              isAudioSynced: data.isAudioSynced,
+            };
+          }
+        } catch (apiErr) {
+          console.warn('Clip audio API extraction failed, using fallback:', apiErr);
+        }
+      }
+
+      const reelProj = createCaptionProjectFromClip(candidate, activeProject, lang, audioOverride);
+      try {
+        localStorage.setItem('reel_caption_project_v2', JSON.stringify(reelProj));
+        localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('reel_project_updated', { detail: reelProj }));
+        }
+      } catch (storageErr) {
+        console.warn('Could not save to localStorage:', storageErr);
+      }
+      showToast('Opening in AI Reel Caption Maker...', 'success');
+      router.push(`/caption-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}&t=${Date.now()}`);
     } catch (err: any) {
       console.error('Failed to create reel from clip:', err);
-      router.push('/caption-maker');
+      router.push(`/caption-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}&t=${Date.now()}`);
     }
   };
 
@@ -423,6 +529,7 @@ export default function DashboardPage() {
         systemStatus={systemStatus}
         onNewProject={() => setShowCreatorModal(true)}
         onRefreshSystem={fetchSystemStatus}
+        onOpenGeminiModal={() => setShowGeminiModal(true)}
       />
 
       {/* Toast Notification Banner */}
@@ -509,6 +616,7 @@ export default function DashboardPage() {
               onUploadLocalFileForYouTube={handleUploadLocalFileForYouTube}
               isAnalyzing={isAnalyzing}
               isRendering={isRendering}
+              onOpenGeminiModal={() => setShowGeminiModal(true)}
             />
 
             {/* 2. Timeline Coverage Bar */}
@@ -623,6 +731,15 @@ export default function DashboardPage() {
               />
             )}
 
+            {/* Live Progress Card when analyzing */}
+            {(isAnalyzing ||
+              activeProject.status === 'TRANSCRIBING' ||
+              activeProject.status === 'ANALYZING' ||
+              activeProject.status === 'RANKING' ||
+              activeProject.status === 'VERIFYING') && (
+              <AnalysisProgressCard project={activeProject} />
+            )}
+
             {/* 5. Ranked Clip Cards Grid */}
             {displayCandidates.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -653,24 +770,28 @@ export default function DashboardPage() {
                   View all clips
                 </button>
               </div>
-            ) : (
+            ) : !(isAnalyzing ||
+                activeProject.status === 'TRANSCRIBING' ||
+                activeProject.status === 'ANALYZING' ||
+                activeProject.status === 'RANKING' ||
+                activeProject.status === 'VERIFYING') ? (
               <div className="p-12 text-center glass-panel rounded-2xl border border-white/10 space-y-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/10 text-white flex items-center justify-center mx-auto">
                   <Sparkles className="w-8 h-8" />
                 </div>
                 <h3 className="text-lg font-bold text-white">No Clips Discovered Yet</h3>
                 <p className="text-sm text-zinc-400 max-w-md mx-auto">
-                  Click &ldquo;Run Full AI Analysis&rdquo; in the header above to transcribe the video and discover motivational, philosophical, and viral clips under 60s.
+                  Click &ldquo;Run Full AI Analysis&rdquo; in the header above to transcribe the audio/video and discover motivational, philosophical, and viral clips under 60s.
                 </p>
                 <button
                   onClick={handleRunAnalysis}
                   disabled={isAnalyzing || (activeProject.sourceType === 'youtube' && !activeProject.localVideoPath)}
                   className="px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
                 >
-                  {isAnalyzing ? 'Analyzing Video...' : 'Run Full AI Analysis'}
+                  {isAnalyzing ? 'Analyzing Media...' : 'Run Full AI Analysis'}
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </main>
@@ -725,6 +846,31 @@ export default function DashboardPage() {
           onClose={() => setSubtitlesCandidate(null)}
         />
       )}
+
+      {/* Modal: Gemini AI Model Selector */}
+      <GeminiModelModal
+        isOpen={showGeminiModal}
+        onClose={() => setShowGeminiModal(false)}
+        currentModel={activeProject?.settings?.aiModel || selectedGeminiModel || systemStatus?.gemini?.model || 'gemini-3.8-flash'}
+        onModelSaved={(newModel) => {
+          setSelectedGeminiModel(newModel);
+          if (activeProject) {
+            setActiveProject((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    settings: {
+                      ...prev.settings,
+                      aiModel: newModel,
+                    },
+                  }
+                : null
+            );
+          }
+          fetchSystemStatus();
+          showToast(`Gemini model set to ${newModel}`, 'success');
+        }}
+      />
     </div>
   );
 }

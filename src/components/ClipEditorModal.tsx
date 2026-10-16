@@ -211,6 +211,89 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
     }
   };
 
+  const [syncedSegments, setSyncedSegments] = useState<
+    Array<{ start: number; end: number; textHindi?: string; textEnglish?: string }>
+  >((candidate as any)?.syncedSegments || []);
+
+  // Dynamically sync clip audio & clause timestamps when modal opens
+  useEffect(() => {
+    if (!candidate || !project?.id) return;
+    let active = true;
+    const existing = (candidate as any)?.syncedSegments;
+    if (Array.isArray(existing) && existing.length > 0) {
+      setSyncedSegments(existing);
+    }
+
+    fetch(`/api/projects/${project.id}/clip-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipId: candidate.id,
+        start: candidate.start,
+        end: candidate.end,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.success && Array.isArray(data.syncedSegments) && data.syncedSegments.length > 0) {
+          setSyncedSegments(data.syncedSegments);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [candidate?.id, project?.id]);
+
+  const resolveSubtitleAtTime = useCallback(
+    (absOrRelTime: number) => {
+      const isRenderedClip =
+        candidate?.renderStatus === 'completed' && Boolean(candidate?.renderedVideoPath);
+      const relTime = isRenderedClip ? absOrRelTime : absOrRelTime - start;
+      const absTime = isRenderedClip ? start + absOrRelTime : absOrRelTime;
+
+      if (syncedSegments.length > 0 && relTime >= 0 && relTime <= end - start + 0.5) {
+        const seg = syncedSegments.find((s) => relTime >= s.start && relTime <= s.end);
+        return seg ? seg.textHindi || seg.textEnglish || '' : '';
+      }
+
+      const activeSeg = project.transcript.find((s) => absTime >= s.start && absTime <= s.end);
+      return activeSeg ? activeSeg.text : '';
+    },
+    [candidate?.renderStatus, candidate?.renderedVideoPath, start, end, syncedSegments, project.transcript]
+  );
+
+  // 60fps requestAnimationFrame subtitle & playhead sync while video is playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    let rafId: number | null = null;
+    const tick = () => {
+      const video = videoRef.current;
+      if (video && !video.paused) {
+        const t = video.currentTime;
+        setCurrentTime(t);
+        setCurrentSubtitle(resolveSubtitleAtTime(t));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, resolveSubtitleAtTime]);
+
+  // Pause video element before modal unmounts to prevent AbortError
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+        } catch {}
+      }
+    };
+  }, []);
+
   // Video Time Update Listener
   const handleVideoTimeUpdate = () => {
     const video = videoRef.current;
@@ -227,11 +310,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
       }
     }
 
-    // Sync subtitles
-    const activeSeg = project.transcript.find(
-      (s) => t >= s.start && t <= s.end
-    );
-    setCurrentSubtitle(activeSeg ? activeSeg.text : '');
+    setCurrentSubtitle(resolveSubtitleAtTime(t));
   };
 
   // Playback Toggles
@@ -474,18 +553,36 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   const handleSave = () => {
     if (!candidate || !isValidDuration) return;
 
+    const newStart = Math.round(start * 100) / 100;
+    const newEnd = Math.round(end * 100) / 100;
+    const boundsChanged =
+      Math.abs(newStart - candidate.start) > 0.05 || Math.abs(newEnd - candidate.end) > 0.05;
+
     const updated: ClipCandidate = {
       ...candidate,
       title: title.trim() || candidate.title,
       titleEnglish: title.trim() || candidate.title,
       titleHindi: titleHindi.trim() || candidate.titleHindi,
       topic,
-      start: Math.round(start * 100) / 100,
-      end: Math.round(end * 100) / 100,
+      start: newStart,
+      end: newEnd,
       duration: Math.round(duration * 100) / 100,
       contextVerification: verification,
       renderStatus: 'idle', // Mark for fresh FFmpeg rendering
-    };
+      ...(boundsChanged ? { syncedSegments: undefined } : {}),
+    } as any;
+
+    if (boundsChanged && project?.id) {
+      fetch(`/api/projects/${project.id}/clip-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clipId: candidate.id,
+          start: newStart,
+          end: newEnd,
+        }),
+      }).catch(() => {});
+    }
 
     onSave(updated);
     onClose();

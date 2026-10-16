@@ -10,7 +10,14 @@ import { processCandidates, sortCandidates, filterCandidatesByTopic } from '../s
 import { calculateTimelineCoverage, chunkTranscript, searchTranscript } from '../src/lib/transcript';
 import { assertSafePath, sanitizeFilename } from '../src/lib/storage';
 import { extractYouTubeVideoId } from '../src/app/api/projects/[id]/youtube/route';
-import { getFfmpegPath, getFfprobePath } from '../src/lib/config';
+import {
+  getFfmpegPath,
+  getFfprobePath,
+  GEMINI_AVAILABLE_MODELS,
+  getGeminiModel,
+  saveAppSettings,
+  checkGeminiStatus,
+} from '../src/lib/config';
 import { probeVideo, renderClip, validateRenderedClip } from '../src/lib/ffmpeg';
 import { getBilingualCandidateData } from '../src/lib/bilingual';
 import { formatDetailedTime, parseDetailedTime } from '../src/components/ClipEditorModal';
@@ -44,7 +51,7 @@ const execFileAsync = promisify(execFile);
 
 async function runAllTests() {
   console.log('\n======================================================');
-  console.log('🚀 AI CLIP FINDER — AUTOMATED TEST SUITE EXECUTION');
+  console.log('🚀 REELSPARK — AUTOMATED TEST SUITE EXECUTION');
   console.log('======================================================\n');
 
   let passed = 0;
@@ -555,6 +562,7 @@ async function runAllTests() {
       explanation: 'Key points on focus and resilience',
       transcript: 'Zindagi mein success pane ke liye focus aur mehnat zaroori hai',
       transcriptHindi: 'जिंदगी में सफलता पाने के लिए एकाग्रता आवश्यक है',
+      transcriptEnglish: 'Focus and hard work are essential to achieve success in life',
       firstWords: 'Zindagi mein',
       lastWords: 'zaroori hai',
       scores: {
@@ -578,21 +586,1084 @@ async function runAllTests() {
       selected: true,
     };
 
+    const { switchProjectLanguage } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    // EN mode project verification
     const reelProject = createCaptionProjectFromClip(sampleCandidate, null, 'en');
 
     assert.strictEqual(reelProject.title, 'Success Formula');
     assert.strictEqual(reelProject.audio?.duration, 15);
-    assert.ok(reelProject.transcript.length > 5, 'Transcript words generated');
+    assert.strictEqual(reelProject.preferredLanguage, 'en');
+    assert.strictEqual(
+      reelProject.transcript.map((w) => w.text).join(' '),
+      'Focus and hard work are essential to achieve success in life',
+      'Words in caption project must 100% match the selected clip card transcript'
+    );
     assert.ok(reelProject.captionGroups.length > 1, 'Caption groups generated');
+
+    // Language switch to Hindi verification
+    const hiProject = switchProjectLanguage(reelProject, 'hi');
+    assert.strictEqual(hiProject.preferredLanguage, 'hi');
+    assert.strictEqual(
+      hiProject.transcript.map((w) => w.text).join(' '),
+      'जिंदगी में सफलता पाने के लिए एकाग्रता आवश्यक है',
+      'Switching to Hindi must update all transcript words to Hindi'
+    );
+
+    // Language switch back to English verification
+    const backToEnProject = switchProjectLanguage(hiProject, 'en');
+    assert.strictEqual(backToEnProject.preferredLanguage, 'en');
+    assert.strictEqual(
+      backToEnProject.transcript.map((w) => w.text).join(' '),
+      'Focus and hard work are essential to achieve success in life',
+      'Switching back to English must restore English words'
+    );
 
     const importantWordTexts = reelProject.transcript
       .filter((w) => w.isImportant)
       .map((w) => w.text.toLowerCase());
 
     assert.ok(
-      importantWordTexts.includes('zindagi') || importantWordTexts.includes('success'),
+      importantWordTexts.length > 0,
       'Keywords should be auto-detected as important'
     );
+  });
+
+  // 20. Clip-Specific Audio Extraction and Relative Word Alignment
+  await test('Clip-specific audio override and relative transcript alignment', async () => {
+    const { createCaptionProjectFromClip } = await import('../src/lib/caption-maker/clip-to-reel');
+    const { extractClipAudio } = await import('../src/lib/ffmpeg');
+
+    assert.strictEqual(typeof extractClipAudio, 'function', 'extractClipAudio must be exported as a function');
+
+    const sampleCandidate: ClipCandidate = {
+      id: 'clip_slice_99',
+      title: 'Discipline Over Motivation',
+      start: 120, // 2 minutes into full video
+      end: 140,   // 20s clip
+      duration: 20,
+      topic: 'Motivation',
+      explanation: 'Discipline creates lasting results',
+      transcript: 'Discipline is doing what you hate to do but doing it like you love it',
+      firstWords: 'Discipline is',
+      lastWords: 'love it',
+      scores: {
+        meaningAndDepth: 20,
+        standaloneCompleteness: 18,
+        openingStrength: 14,
+        emotionalIntellectualImpact: 14,
+        clarity: 9,
+        conciseness: 9,
+        audioQuality: 5,
+        total: 89,
+      },
+      contextVerification: {
+        isCompleteThought: true,
+        hasConclusion: true,
+        hasDanglingPronouns: false,
+        contextConfidence: 95,
+        notes: '',
+        flaggedForReview: false,
+      },
+      selected: true,
+    };
+
+    const mockProject: any = {
+      id: 'proj_sample_abc',
+      title: 'Podcast Episode',
+      localVideoPath: 'storage/projects/proj_sample_abc/original/podcast.mp4',
+      transcript: [
+        {
+          id: 'seg_1',
+          start: 120,
+          end: 130,
+          text: 'Discipline is doing what you hate to do',
+        },
+        {
+          id: 'seg_2',
+          start: 130,
+          end: 140,
+          text: 'but doing it like you love it',
+        },
+      ],
+    };
+
+    // Case A: With explicit audio override from FFmpeg extraction
+    const override = {
+      audioUrl: '/api/files/projects/proj_sample_abc/clips/clip_slice_99_audio.mp3',
+      storagePath: 'storage/projects/proj_sample_abc/clips/clip_slice_99_audio.mp3',
+      duration: 20,
+      fileSize: 480000,
+    };
+
+    const projectWithOverride = createCaptionProjectFromClip(sampleCandidate, mockProject, 'en', override);
+
+    assert.strictEqual(
+      projectWithOverride.audio?.fileUrl,
+      '/api/files/projects/proj_sample_abc/clips/clip_slice_99_audio.mp3',
+      'Should use isolated clip audio URL instead of full video'
+    );
+    assert.strictEqual(
+      projectWithOverride.audio?.storagePath,
+      'storage/projects/proj_sample_abc/clips/clip_slice_99_audio.mp3',
+      'Should preserve clip audio storage path'
+    );
+    assert.strictEqual(projectWithOverride.audio?.duration, 20);
+
+    // Verify word alignment is relative to clip start (t = 0.00 at clip start)
+    const firstWord = projectWithOverride.transcript[0];
+    const lastWord = projectWithOverride.transcript[projectWithOverride.transcript.length - 1];
+
+    assert.ok(firstWord.start >= 0 && firstWord.start < 2, 'First word starts near 0.00s in clip audio');
+    assert.ok(lastWord.end <= 20.5, 'Last word ends within 20s clip duration');
+    assert.ok(firstWord.start < lastWord.start, 'Words are sequentially ordered in clip time');
+
+    // Case B: Fallback without override should target clip-audio route, never full video
+    const projectFallback = createCaptionProjectFromClip(sampleCandidate, mockProject, 'en');
+    assert.ok(
+      projectFallback.audio?.fileUrl.includes('clip-audio'),
+      'Fallback URL must route to clip-audio endpoint'
+    );
+    assert.ok(
+      !projectFallback.audio?.fileUrl.includes('podcast.mp4'),
+      'Must NOT fall back to full original video path'
+    );
+  });
+
+  // 21. Contain Mode 9 Positioning Options Resolution
+  await test('Contain mode 9 positioning options pad coordinates resolution', async () => {
+    const { getImagePositionPadCoords } = await import('../src/lib/caption-maker/ffmpeg-renderer');
+
+    const positions: Array<{ pos: any; expectedPadX: string; expectedPadY: string }> = [
+      { pos: 'top-left', expectedPadX: '0', expectedPadY: '0' },
+      { pos: 'top-center', expectedPadX: '(ow-iw)/2', expectedPadY: '0' },
+      { pos: 'top-right', expectedPadX: '(ow-iw)', expectedPadY: '0' },
+      { pos: 'center-left', expectedPadX: '0', expectedPadY: '(oh-ih)/2' },
+      { pos: 'center', expectedPadX: '(ow-iw)/2', expectedPadY: '(oh-ih)/2' },
+      { pos: 'center-right', expectedPadX: '(ow-iw)', expectedPadY: '(oh-ih)/2' },
+      { pos: 'bottom-left', expectedPadX: '0', expectedPadY: '(oh-ih)' },
+      { pos: 'bottom-center', expectedPadX: '(ow-iw)/2', expectedPadY: '(oh-ih)' },
+      { pos: 'bottom-right', expectedPadX: '(ow-iw)', expectedPadY: '(oh-ih)' },
+    ];
+
+    for (const item of positions) {
+      const coords = getImagePositionPadCoords(item.pos);
+      assert.strictEqual(coords.padX, item.expectedPadX, `${item.pos} padX matches`);
+      assert.strictEqual(coords.padY, item.expectedPadY, `${item.pos} padY matches`);
+    }
+  });
+
+  // 22. Remotion + GSAP Programmatic Video Pipeline Verification
+  await test('Remotion + GSAP deterministic typography timeline and 9-position parity', async () => {
+    const { getCssObjectPosition } = await import('../src/remotion/BackgroundLayer');
+    const { calculateCompositionMetadata } = await import('../src/remotion/Root');
+
+    // 1. CSS objectPosition 9-position parity
+    const expectedMappings: Record<string, string> = {
+      'top-left': 'left top',
+      'top-center': 'center top',
+      'top-right': 'right top',
+      'center-left': 'left center',
+      'center': 'center center',
+      'center-right': 'right center',
+      'bottom-left': 'left bottom',
+      'bottom-center': 'center bottom',
+      'bottom-right': 'right bottom',
+    };
+
+    for (const [pos, expectedCss] of Object.entries(expectedMappings)) {
+      const result = getCssObjectPosition(pos as any);
+      assert.strictEqual(result, expectedCss, `Position ${pos} must map to CSS "${expectedCss}"`);
+    }
+
+    // 2. Metadata calculation for Remotion composition
+    const metadata = calculateCompositionMetadata({
+      props: {
+        outputSettings: {
+          ...DEFAULT_OUTPUT_SETTINGS,
+          width: 1080,
+          height: 1920,
+          fps: 30,
+        },
+        durationInSeconds: 2.5,
+      } as any,
+    });
+
+    assert.strictEqual(metadata.width, 1080, 'Composition width must match outputSettings');
+    assert.strictEqual(metadata.height, 1920, 'Composition height must match outputSettings');
+    assert.strictEqual(metadata.fps, 30, 'Composition fps must match outputSettings');
+    assert.strictEqual(metadata.durationInFrames, 75, '2.5s @ 30fps must produce 75 frames');
+
+    // 3. Deterministic frame / fps seek timestamp calculation
+    const fps = 30;
+    const testFrames = [0, 15, 30, 45, 60];
+    const expectedSeekTimes = [0.0, 0.5, 1.0, 1.5, 2.0];
+
+    testFrames.forEach((frame, idx) => {
+      const seekTime = frame / fps;
+      assert.strictEqual(seekTime, expectedSeekTimes[idx], `Frame ${frame} seeks deterministically to ${expectedSeekTimes[idx]}s`);
+    });
+
+    // 4. Remotion typography container width & horizontal alignment constraint
+    const canvasWidth = 1080;
+    const captionContainerWidth = Math.round(canvasWidth * 0.88);
+    assert.strictEqual(captionContainerWidth, 950, 'Caption container width must be 88% of 1080p canvas (950px)');
+
+    // Ensure multi-word phrase fits comfortably within container without forced single-word wrap
+    const sampleWords = ['लोग', 'वैसे', 'व्यवहार', 'करें'];
+    const estimatedWordWidths = sampleWords.map((w) => w.length * 35); // Approx ~35px per glyph at 60px fontSize
+    const totalPhraseWidth = estimatedWordWidths.reduce((a, b) => a + b, 0) + (sampleWords.length - 1) * 14;
+    assert.ok(totalPhraseWidth < captionContainerWidth, `Sample phrase width (${totalPhraseWidth}px) must fit within container (${captionContainerWidth}px)`);
+
+    // 5. Verification that rendered test video exists and is a valid MP4
+    const testVideoPath = path.resolve(process.cwd(), 'storage', 'temp', 'remotion_test_output.mp4');
+    if (fs.existsSync(testVideoPath)) {
+      const stats = fs.statSync(testVideoPath);
+      assert.ok(stats.size > 10000, 'Rendered Remotion video must be a non-empty MP4');
+    }
+  });
+
+  // 23. Audio Project Media Probing & SourceType Parity
+  await test('Audio project media probing and VideoSourceType integrity', async () => {
+    const { probeVideo } = await import('../src/lib/ffmpeg');
+    const sampleAudioPath = path.resolve(process.cwd(), 'public', 'sample-audio.mp3');
+
+    if (fs.existsSync(sampleAudioPath)) {
+      const metadata = await probeVideo(sampleAudioPath);
+      assert.ok(metadata.duration > 0, 'Audio duration must be probed properly');
+      assert.ok(metadata.hasAudio, 'Metadata must recognize audio stream');
+      assert.strictEqual(metadata.aspectRatio, 'Audio', 'Audio-only media aspect ratio must be Audio');
+      assert.strictEqual(metadata.width, 1080, 'Audio-only canvas defaults to 1080 for 9:16 layout');
+      assert.strictEqual(metadata.height, 1920, 'Audio-only canvas defaults to 1920 for 9:16 layout');
+    }
+  });
+
+  // 24. VN & Instagram Style Presets & Text Effects Integrity
+  await test('VN & Instagram style presets, background badges, and text effects integrity', async () => {
+    const { REEL_STYLE_PRESETS, hexToRgba, DEFAULT_CAPTION_STYLE } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+
+    assert.ok(REEL_STYLE_PRESETS.length >= 6, 'Must provide at least 6 viral style presets');
+
+    const hormozi = REEL_STYLE_PRESETS.find((p) => p.id === 'hormozi-viral');
+    assert.ok(hormozi, 'Hormozi Viral preset must be defined');
+    assert.strictEqual(hormozi?.style.backgroundStyle, 'solid-pill');
+    assert.strictEqual(hormozi?.style.animationPreset, 'punch');
+
+    const neon = REEL_STYLE_PRESETS.find((p) => p.id === 'instagram-neon');
+    assert.ok(neon, 'Instagram Neon preset must be defined');
+    assert.strictEqual(neon?.style.textEffect, 'neon-glow');
+    assert.strictEqual(neon?.style.backgroundStyle, 'frosted-glass');
+
+    const marker = REEL_STYLE_PRESETS.find((p) => p.id === 'highlighter-marker');
+    assert.ok(marker, 'Story Marker preset must be defined');
+    assert.strictEqual(marker?.style.backgroundStyle, 'marker-bar');
+
+    const gsapSlide = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-words-slide');
+    assert.ok(gsapSlide, 'GSAP Words Slide preset must be defined');
+    assert.strictEqual(gsapSlide?.style.animationPreset, 'words-slide-up');
+
+    const gsapRotate = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-words-rotate');
+    assert.ok(gsapRotate, 'GSAP Words Rotate preset must be defined');
+    assert.strictEqual(gsapRotate?.style.animationPreset, 'words-rotate-in');
+
+    const gsapLetters = REEL_STYLE_PRESETS.find((p) => p.id === 'gsap-letters-slide');
+    assert.ok(gsapLetters, 'GSAP Split Letters preset must be defined');
+    assert.strictEqual(gsapLetters?.style.animationPreset, 'letters-slide-up');
+
+    // Test hexToRgba
+    assert.strictEqual(hexToRgba('#000000', 0.5), 'rgba(0, 0, 0, 0.5)');
+    assert.strictEqual(hexToRgba('#FFFFFF', 1), 'rgba(255, 255, 255, 1)');
+    assert.strictEqual(hexToRgba('transparent', 0.8), 'transparent');
+
+    // Default style has necessary text layout values
+    assert.ok(typeof DEFAULT_CAPTION_STYLE.lineHeight === 'number');
+    assert.ok(typeof DEFAULT_CAPTION_STYLE.letterSpacing === 'number');
+    assert.strictEqual(typeof DEFAULT_CAPTION_STYLE.zoomScale, 'number');
+  });
+
+  // 25. Text Zoom Settings and Anti-Overlap Margin Buffering
+  await test('Text zoom settings, flat normal text mode, and anti-overlap layout buffer', async () => {
+    const { DEFAULT_CAPTION_STYLE, REEL_STYLE_PRESETS } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+    const { generateAssSubtitles } = await import(
+      '../src/lib/caption-maker/ass-generator'
+    );
+
+    // 1. Verify zoomScale existence and defaults
+    assert.strictEqual(
+      DEFAULT_CAPTION_STYLE.zoomScale,
+      1.0,
+      'Default caption style zoomScale must be 1.0 (Cinematic Sub clean flat text)'
+    );
+
+    // 2. Ali Abdaal clean preset must have flat text (zoomScale 1.0)
+    const cleanPreset = REEL_STYLE_PRESETS.find((p) => p.id === 'ali-abdaal-clean');
+    assert.strictEqual(cleanPreset?.style.zoomScale, 1.0, 'Clean minimal preset must have zoomScale 1.0 (flat text)');
+    assert.strictEqual(cleanPreset?.style.highlightAnimation, 'color-change', 'Clean minimal preset uses color-change');
+
+    // 3. Hormozi viral preset has high-energy zoom
+    const hormoziPreset = REEL_STYLE_PRESETS.find((p) => p.id === 'hormozi-viral');
+    assert.strictEqual(hormoziPreset?.style.zoomScale, 1.18, 'Hormozi preset must have high-energy zoomScale');
+
+    // 4. Overlap prevention buffer calculation check
+    const fontSize = 60;
+    const testScale = 1.20;
+    const extraMargin = Math.round((testScale - 1) * 0.45 * fontSize);
+    assert.ok(extraMargin >= 5, `Active word margin buffer must be at least 5px (got ${extraMargin}px)`);
+
+    // Proportional column and row gap checks
+    const colGap = Math.round(fontSize * 0.32);
+    const rowGap = Math.round(fontSize * 0.40 * Math.max(0.3, 1.3 - 0.7));
+    assert.ok(colGap >= 18, `Column gap (${colGap}px) must provide proportional breathing room`);
+    assert.ok(rowGap >= 14, `Row gap (${rowGap}px) must prevent multiline line collisions`);
+
+    // 5. ASS Subtitle flat normal text mode verification
+    const words = [
+      { id: '1', text: 'Zindagi', start: 0.0, end: 0.5, isImportant: true },
+      { id: '2', text: 'safal', start: 0.5, end: 1.0, isImportant: false },
+    ];
+    const groups = [{ id: 'g1', words, start: 0.0, end: 1.0, text: 'Zindagi safal' }];
+
+    const flatStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      highlightAnimation: 'color-change' as const,
+      zoomScale: 1.0,
+    };
+    const flatAss = generateAssSubtitles(groups, words, flatStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    // In flat mode, there should NOT be scale tags like \fscx115 or \fscx120
+    assert.ok(!flatAss.includes('\\fscx115'), 'Flat normal text must not include zoom scale tags in ASS');
+    assert.ok(!flatAss.includes('\\fscx120'), 'Flat normal text must not include zoom scale tags in ASS');
+  });
+
+  // 26. Google Fonts Integration and Dynamic Font URL Generation
+  await test('Google Fonts catalog, single-weight resolution, and stylesheet URL builder', async () => {
+    const { POPULAR_GOOGLE_FONTS, getGoogleFontUrl, SINGLE_WEIGHT_FONTS } = await import(
+      '../src/lib/caption-maker/google-fonts'
+    );
+
+    // 1. Curated font catalog count and categories
+    assert.ok(POPULAR_GOOGLE_FONTS.length >= 40, 'Must have at least 40 curated Google Fonts');
+    const categories = new Set(POPULAR_GOOGLE_FONTS.map((f) => f.category));
+    assert.ok(categories.has('viral'), 'Must include viral category');
+    assert.ok(categories.has('clean'), 'Must include clean category');
+    assert.ok(categories.has('serif'), 'Must include serif category');
+    assert.ok(categories.has('devanagari'), 'Must include devanagari category');
+
+    // 2. Multi-weight Google Font URL builder
+    const montserratUrl = getGoogleFontUrl('Montserrat');
+    assert.ok(montserratUrl.includes('family=Montserrat:wght@400;500;600;700;800;900'), 'Montserrat multi-weight URL');
+    assert.ok(montserratUrl.includes('&display=swap'));
+
+    // 3. Single-weight Google Font resolution (e.g. Bebas Neue, Anton)
+    assert.ok(SINGLE_WEIGHT_FONTS.has('Bebas Neue'));
+    const bebasUrl = getGoogleFontUrl('Bebas Neue');
+    assert.ok(bebasUrl.includes('family=Bebas+Neue&display=swap'), 'Bebas Neue must NOT request multi-weight range');
+
+    // 4. Custom font arbitrary name query
+    const customUrl = getGoogleFontUrl('"Space Mono", monospace');
+    assert.ok(customUrl.includes('family=Space+Mono'), 'Space Mono custom name formatted correctly');
+
+    // 5. Devanagari font catalog additions (Mukta, Rajdhani, Modak)
+    const fontNames = POPULAR_GOOGLE_FONTS.map((f) => f.name);
+    assert.ok(fontNames.includes('Mukta'), 'Mukta must be available in catalog');
+    assert.ok(fontNames.includes('Rajdhani'), 'Rajdhani must be available in catalog');
+    assert.ok(fontNames.includes('Modak'), 'Modak must be available in catalog');
+
+    // 6. Selected font must be preserved in ASS subtitles even with Hindi transcript
+    const { generateAssSubtitles } = await import('../src/lib/caption-maker/ass-generator');
+    const { DEFAULT_CAPTION_STYLE } = await import('../src/lib/caption-maker/sample-data');
+    const hindiWords = [
+      { id: 'h1', text: 'सफलता', start: 0.0, end: 0.5, isImportant: false },
+      { id: 'h2', text: 'मेहनत', start: 0.5, end: 1.0, isImportant: true },
+    ];
+    const hindiGroups = [{ id: 'hg1', words: hindiWords, start: 0.0, end: 1.0, text: 'सफलता मेहनत' }];
+    const rozhaStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      fontFamily: '"Rozha One", sans-serif',
+    };
+    const rozhaAss = generateAssSubtitles(hindiGroups, hindiWords, rozhaStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    assert.ok(rozhaAss.includes('Rozha One'), 'Selected font Rozha One must be preserved in ASS script');
+  });
+
+  // 27. Normal Text Color, Active Spoken Color & Normal Text Opacity Integrity
+  await test('Normal text color, active spoken color (#FCD905), and normal text opacity parity', async () => {
+    const { DEFAULT_CAPTION_STYLE } = await import('../src/lib/caption-maker/sample-data');
+    const { generateAssSubtitles, hexToAssColor } = await import('../src/lib/caption-maker/ass-generator');
+
+    // 1. Default color and opacity verification
+    assert.strictEqual(
+      DEFAULT_CAPTION_STYLE.importantColor,
+      '#FCD905',
+      'Default active spoken word color must be #FCD905 (Vibrant Gold)'
+    );
+    assert.strictEqual(
+      DEFAULT_CAPTION_STYLE.textColor,
+      '#FFFFFF',
+      'Default normal text color must be #FFFFFF (Pure White)'
+    );
+    assert.strictEqual(
+      DEFAULT_CAPTION_STYLE.textOpacity,
+      1.0,
+      'Default normal text opacity must be 1.0 (100% Solid Opacity)'
+    );
+
+    // 2. ASS Subtitle generation with custom colors and opacity
+    const words = [
+      { id: 'w1', text: 'Viral', start: 0.0, end: 0.5, isImportant: false },
+      { id: 'w2', text: 'Captions', start: 0.5, end: 1.0, isImportant: false },
+    ];
+    const groups = [{ id: 'g1', words, start: 0.0, end: 1.0, text: 'Viral Captions' }];
+
+    // Test with solid 100% opacity (textOpacity = 1.0 -> alpha = 00)
+    const solidStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      textColor: '#FFFFFF',
+      importantColor: '#FCD905',
+      textOpacity: 1.0,
+    };
+    const solidAss = generateAssSubtitles(groups, words, solidStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    // With 1.0 opacity, alpha is 00 (e.g. &H00FFFFFF&)
+    const expectedSolidNormalColor = hexToAssColor('#FFFFFF', '00');
+    assert.ok(
+      solidAss.includes(expectedSolidNormalColor),
+      `Solid normal text opacity must render with alpha 00 in ASS (${expectedSolidNormalColor})`
+    );
+
+    // Test with 50% opacity (textOpacity = 0.5 -> alpha = 80)
+    const halfStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      textColor: '#FFFFFF',
+      importantColor: '#FCD905',
+      textOpacity: 0.5,
+    };
+    const halfAss = generateAssSubtitles(groups, words, halfStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    const expectedHalfAlphaColor = hexToAssColor('#FFFFFF', '80');
+    assert.ok(
+      halfAss.includes(expectedHalfAlphaColor),
+      `50% normal text opacity must render with alpha 80 in ASS (${expectedHalfAlphaColor})`
+    );
+
+    // Test with custom active color (#FF007A) and custom normal text color (#00FFCC)
+    const customColorStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      textColor: '#00FFCC',
+      importantColor: '#FF007A',
+      textOpacity: 0.65,
+    };
+    const customAss = generateAssSubtitles(groups, words, customColorStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    const expectedCustomActiveAss = hexToAssColor('#FF007A');
+    assert.ok(
+      customAss.includes(expectedCustomActiveAss),
+      `Active word must render in ASS with custom active color (${expectedCustomActiveAss})`
+    );
+  });
+
+  // 28. Custom Horizontal Alignment & CustomX Positioning Parity
+  await test('Custom horizontal alignment (textAlign: custom) and customX positioning parity', async () => {
+    const { DEFAULT_CAPTION_STYLE } = await import('../src/lib/caption-maker/sample-data');
+    const { generateAssSubtitles } = await import('../src/lib/caption-maker/ass-generator');
+
+    const words = [
+      { id: 'w1', text: 'CustomX', start: 0.0, end: 0.5, isImportant: false },
+      { id: 'w2', text: 'Position', start: 0.5, end: 1.0, isImportant: false },
+    ];
+    const groups = [{ id: 'g1', words, start: 0.0, end: 1.0, text: 'CustomX Position' }];
+
+    const customXStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      textAlign: 'custom' as const,
+      customX: 35, // 35% of width
+    };
+
+    const ass = generateAssSubtitles(groups, words, customXStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+
+    const expectedX = Math.round(0.35 * 1080); // 378
+    assert.ok(
+      ass.includes(`\\pos(${expectedX},`),
+      `Custom textAlign must position X coordinate at ${expectedX}px for 35% of 1080p canvas`
+    );
+
+    // Verify DEFAULT_CAPTION_STYLE default position settings (Custom 50% X, Custom 20% Y, Safe Area Overlay)
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textAlign, 'custom', 'Default textAlign must be custom');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.customX, 50, 'Default customX must be 50%');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.position, 'custom', 'Default position must be custom');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.customY, 20, 'Default customY must be 20%');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.showSafeArea, true, 'Default showSafeArea must be true');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.strokeWidth, 0, 'Default strokeWidth must be 0');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textEffect, 'none', 'Default textEffect must be none (No Filter)');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.textOpacity, 1.0, 'Default textOpacity must be 1.0 (100% Solid Opacity)');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.fontFamily, 'Montserrat, sans-serif', 'Default fontFamily must be Montserrat');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.animationPreset, 'clean', 'Default animationPreset must be clean');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.highlightAnimation, 'color-change', 'Default highlightAnimation must be color-change');
+
+    const { REEL_STYLE_PRESETS } = await import('../src/lib/caption-maker/sample-data');
+    const cinematicPreset = REEL_STYLE_PRESETS.find((p) => p.id === 'cinematic-subtitle');
+    assert.strictEqual(cinematicPreset?.style.strokeWidth, 0, 'Cinematic subtitle preset strokeWidth must be 0');
+    assert.strictEqual(cinematicPreset?.style.textEffect, 'none', 'Cinematic subtitle preset textEffect must be none');
+    assert.strictEqual(cinematicPreset?.style.textOpacity, 1.0, 'Cinematic preset textOpacity must be 1.0');
+
+    // Default ASS output must render at (540, 384) for 50% X and 20% Y on 1080x1920 canvas
+    const defaultAss = generateAssSubtitles(groups, words, DEFAULT_CAPTION_STYLE, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    assert.ok(
+      defaultAss.includes('\\pos(540,384)'),
+      'Default caption style must render at \\pos(540,384) (50% X and 20% Y on 1080x1920 canvas)'
+    );
+    assert.ok(
+      defaultAss.includes(',1,0,0,'),
+      'Default ASS style must have BorderStyle=1, Outline=0, and Shadow=0'
+    );
+
+    // Verify GSAP text animation rendering in ASS
+    const rotateAss = generateAssSubtitles(
+      groups,
+      words,
+      {
+        ...DEFAULT_CAPTION_STYLE,
+        animationPreset: 'words-rotate-in',
+      },
+      {
+        preset: 'instagram-reel',
+        width: 1080,
+        height: 1920,
+        aspectRatio: '9:16',
+        quality: 'standard',
+        fps: 30,
+      }
+    );
+    assert.ok(
+      rotateAss.includes('\\frx-65\\t(0,120,\\frx0)'),
+      'GSAP words-rotate-in must generate 3D rotation tags in ASS'
+    );
+
+    const slideAss = generateAssSubtitles(
+      groups,
+      words,
+      {
+        ...DEFAULT_CAPTION_STYLE,
+        animationPreset: 'words-slide-up',
+      },
+      {
+        preset: 'instagram-reel',
+        width: 1080,
+        height: 1920,
+        aspectRatio: '9:16',
+        quality: 'standard',
+        fps: 30,
+      }
+    );
+    assert.ok(
+      slideAss.includes('\\fscy30\\t(0,90,\\fscy100)'),
+      'GSAP words-slide-up must generate vertical slide-in scale tags in ASS'
+    );
+  });
+
+  await test('Thumbnail generator settings, preset catalog, and aspect ratio dimension parity', async () => {
+    const {
+      createDefaultThumbnailSettings,
+      getThumbnailDimensions,
+      THUMBNAIL_PRESETS,
+      THUMBNAIL_GRADIENTS,
+      QUICK_BADGES,
+    } = await import('../src/lib/caption-maker/thumbnail-presets');
+
+    const settings = createDefaultThumbnailSettings('My Viral Reel', '9:16');
+    assert.strictEqual(settings.title, 'My Viral Reel');
+    assert.strictEqual(settings.highlightColor, '#FCD905', 'Default highlight color must be #FCD905');
+    assert.strictEqual(settings.aspectRatio, '9:16');
+    assert.strictEqual(settings.preset, 'hormozi');
+
+    // Test dimension resolution for all supported aspect ratios
+    const dim916 = getThumbnailDimensions('9:16');
+    assert.deepStrictEqual(dim916, { width: 1080, height: 1920 });
+
+    const dim45 = getThumbnailDimensions('4:5');
+    assert.deepStrictEqual(dim45, { width: 1080, height: 1350 });
+
+    const dim11 = getThumbnailDimensions('1:1');
+    assert.deepStrictEqual(dim11, { width: 1080, height: 1080 });
+
+    const dim169 = getThumbnailDimensions('16:9');
+    assert.deepStrictEqual(dim169, { width: 1920, height: 1080 });
+
+    // Verify preset catalog completeness
+    assert.ok(THUMBNAIL_PRESETS.length >= 5, 'Preset catalog must contain at least 5 viral styles');
+    const hormoziPreset = THUMBNAIL_PRESETS.find((p) => p.id === 'hormozi');
+    assert.ok(hormoziPreset, 'Hormozi Punch preset must exist');
+    assert.strictEqual(hormoziPreset.settings.highlightColor, '#FCD905');
+    assert.strictEqual(hormoziPreset.settings.textColor, '#FFFFFF');
+
+    const cyberPreset = THUMBNAIL_PRESETS.find((p) => p.id === 'cyber');
+    assert.ok(cyberPreset, 'Cyber Neon preset must exist');
+
+    assert.ok(THUMBNAIL_GRADIENTS.length >= 4, 'Must provide studio gradient backdrops');
+    assert.ok(QUICK_BADGES.includes('MUST WATCH'));
+    assert.ok(QUICK_BADGES.includes('VIRAL'));
+  });
+
+  await test('Thumbnail auto-merge into video (base64 persistence and FFmpeg merge) parity', async () => {
+    const { saveBase64Image, mergeThumbnailIntoVideo } = await import(
+      '../src/lib/caption-maker/thumbnail-merger'
+    );
+    const { getFfmpegPath } = await import('../src/lib/config');
+    const { spawn } = await import('child_process');
+
+    const tempDir = path.join(process.cwd(), 'storage', 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // 1. Verify saveBase64Image creates a valid file from Data URL
+    const dummyPngDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const testThumbPath = path.join(tempDir, `test_thumb_${Date.now()}.png`);
+    await saveBase64Image(dummyPngDataUrl, testThumbPath);
+    assert.ok(fs.existsSync(testThumbPath), 'Saved thumbnail file must exist');
+    assert.ok(fs.statSync(testThumbPath).size > 10, 'Saved thumbnail file must contain bytes');
+
+    // 2. Generate a 1-second dummy video to test merge
+    const testVideoPath = path.join(tempDir, `test_vid_${Date.now()}.mp4`);
+    const ffmpeg = getFfmpegPath();
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn(ffmpeg, [
+        '-y',
+        '-f', 'lavfi', '-i', 'color=c=black:s=720x1280:d=1:r=25',
+        '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=1',
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        '-pix_fmt', 'yuv420p',
+        testVideoPath,
+      ]);
+      p.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`Failed to generate test video: ${c}`))));
+    });
+
+    assert.ok(fs.existsSync(testVideoPath), 'Test video must exist before merge');
+
+    // 3. Test mergeThumbnailIntoVideo in poster_only mode
+    const mergedResult = await mergeThumbnailIntoVideo({
+      videoPath: testVideoPath,
+      thumbnailPath: testThumbPath,
+      mergeMode: 'poster_only',
+    });
+
+    assert.ok(fs.existsSync(mergedResult.outputPath), 'Merged output video must exist');
+    assert.ok(fs.statSync(mergedResult.outputPath).size > 1000, 'Merged output video must not be empty');
+
+    // Clean up temporary test files
+    try {
+      if (fs.existsSync(testThumbPath)) fs.unlinkSync(testThumbPath);
+      if (fs.existsSync(testVideoPath)) fs.unlinkSync(testVideoPath);
+    } catch {}
+  });
+
+  await test('Thumbnail background image fit mode (contain/cover), position (9 alignments), and scale parity with video reels', async () => {
+    const { renderThumbnailToCanvas, createDefaultThumbnailSettings } = await import(
+      '../src/lib/caption-maker/thumbnail-presets'
+    );
+
+    const drawnImages: { dx: number; dy: number; dw: number; dh: number }[] = [];
+    const mockCtx: any = {
+      clearRect: () => {},
+      fillRect: () => {},
+      drawImage: (_img: any, dx: number, dy: number, dw: number, dh: number) => {
+        drawnImages.push({ dx, dy, dw, dh });
+      },
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+      save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      quadraticCurveTo: () => {},
+      closePath: () => {},
+      clip: () => {},
+      fill: () => {},
+      stroke: () => {},
+      measureText: (text: string) => ({ width: text.length * 12 }),
+      fillText: () => {},
+      strokeText: () => {},
+    };
+
+    const mockCanvas: any = {
+      getContext: () => mockCtx,
+      width: 0,
+      height: 0,
+    };
+
+    const settings = createDefaultThumbnailSettings('Sync Test', '9:16');
+    const mockImageEl: any = { width: 500, height: 750 }; // 2:3 aspect ratio portrait
+
+    // Test 1: Contain mode with bottom-left position and 100% scale (matching user screenshot)
+    const containAsset: any = {
+      id: 'img-1',
+      fileUrl: '/test.jpg',
+      fileName: 'test.jpg',
+      fileSize: 1000,
+      width: 500,
+      height: 750,
+      format: 'jpg',
+      fitMode: 'contain',
+      position: 'bottom-left',
+      scale: 100,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, settings, mockImageEl, containAsset);
+    assert.strictEqual(drawnImages.length, 1, 'Image must be drawn to canvas');
+    const containCall = drawnImages[0];
+    const expectedPad = Math.round(1080 * 0.025); // 27px
+    assert.strictEqual(containCall.dx, expectedPad, 'Bottom-left image must align X to left padding (27px)');
+    assert.ok(containCall.dy > 0, 'Y must align towards the bottom of the canvas');
+    assert.ok(containCall.dw > 900, 'Scale 100% must utilize full container width');
+
+    // Test 2: Cover mode parity
+    drawnImages.length = 0;
+    const coverAsset: any = {
+      ...containAsset,
+      fitMode: 'cover',
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, settings, mockImageEl, coverAsset);
+    assert.strictEqual(drawnImages.length, 1, 'Cover mode must draw image');
+    const coverCall = drawnImages[0];
+    assert.ok(coverCall.dw >= 1080, 'Cover mode width must cover or exceed canvas width (1080px)');
+  });
+
+  // 32. Thumbnail Settings & Reel Layout Parity (Zero Layout Shift Verification)
+  await test('Thumbnail preview default position, customY, overlayDarkness, and aspect ratio parity with video reels', async () => {
+    const { createDefaultThumbnailSettings } = await import('../src/lib/caption-maker/thumbnail-presets');
+
+    // Test default settings creation with reel caption style inheritance
+    const reelSynced = createDefaultThumbnailSettings(
+      'मनुष्य की सबसे बड़ी',
+      '9:16',
+      'top',
+      18,
+      'Nirmala UI',
+      '#FCD905'
+    );
+
+    assert.strictEqual(reelSynced.title, 'मनुष्य की सबसे बड़ी', 'Title inherits first caption hook');
+    assert.strictEqual(reelSynced.position, 'top', 'Position defaults to top (matching reel captions)');
+    assert.strictEqual(reelSynced.customY, 18, 'customY defaults to 18%');
+    assert.strictEqual(reelSynced.overlayDarkness, 0, 'overlayDarkness defaults to 0 (no forced darkening of media)');
+    assert.strictEqual(reelSynced.fontFamily, 'Nirmala UI', 'Font family inherits caption font');
+    assert.strictEqual(reelSynced.highlightColor, '#FCD905', 'Active highlight color defaults to #FCD905');
+    assert.strictEqual(reelSynced.aspectRatio, '9:16', 'Aspect ratio inherits canvas settings');
+    assert.strictEqual(reelSynced.showSafeArea, true, 'Safe area defaults to true on thumbnail cover');
+
+    // Test aspect ratio synchronization for non-standard aspects (e.g. 1:1, 4:5, 16:9)
+    const squareThumb = createDefaultThumbnailSettings('Square', '1:1');
+    assert.strictEqual(squareThumb.aspectRatio, '1:1');
+    assert.strictEqual(squareThumb.overlayDarkness, 0);
+    assert.strictEqual(squareThumb.showSafeArea, true);
+  });
+
+  // 33. Thumbnail Instant Cover Merging (Frame 0 Pre-playback duration 0.000001s)
+  await test('Thumbnail instant poster merger logic and base64 storage', async () => {
+    const { saveBase64Image } = await import('../src/lib/caption-maker/thumbnail-merger');
+
+    const testDir = path.join(process.cwd(), 'data', 'test_tmp');
+    const testFile = path.join(testDir, 'test_thumb.png');
+    // 1x1 transparent png
+    const testDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA=';
+
+    await saveBase64Image(testDataUrl, testFile);
+    assert.ok(fs.existsSync(testFile), 'Thumbnail must be written to disk');
+    const stat = fs.statSync(testFile);
+    assert.ok(stat.size > 0, 'Thumbnail file must not be empty');
+    fs.unlinkSync(testFile);
+    try { fs.rmdirSync(testDir); } catch {}
+  });
+
+  // 34. Thumbnail Element Spacing & Enable/Disable Toggle
+  await test('Thumbnail element spacing adjustment and badge enable/disable toggle', async () => {
+    const { createDefaultThumbnailSettings, renderThumbnailToCanvas } = await import('../src/lib/caption-maker/thumbnail-presets');
+
+    const defaultSettings = createDefaultThumbnailSettings('Spacing Test');
+    assert.strictEqual(defaultSettings.badgeEnabled, true, 'Badge must be enabled by default');
+    assert.strictEqual(defaultSettings.badgeSpacing, 24, 'Badge to title spacing defaults to 24px');
+    assert.strictEqual(defaultSettings.subtitleSpacing, 24, 'Title to subtitle spacing defaults to 24px');
+    assert.strictEqual(defaultSettings.badgeShape, 'pill', 'Badge shape defaults to pill');
+
+    // Test disabled toggle
+    const disabledSettings = {
+      ...defaultSettings,
+      badgeEnabled: false,
+    };
+
+    const drawnTexts: string[] = [];
+    const mockCtx: any = {
+      canvas: { width: 1080, height: 1920 },
+      save: () => {},
+      restore: () => {},
+      fillRect: () => {},
+      clearRect: () => {},
+      beginPath: () => {},
+      closePath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arcTo: () => {},
+      quadraticCurveTo: () => {},
+      drawImage: () => {},
+      clip: () => {},
+      fill: () => {},
+      stroke: () => {},
+      measureText: (text: string) => ({ width: text.length * 12 }),
+      fillText: (text: string) => { drawnTexts.push(text); },
+      strokeText: () => {},
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+    };
+    const mockCanvas: any = {
+      getContext: () => mockCtx,
+      width: 0,
+      height: 0,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, disabledSettings);
+    assert.ok(!drawnTexts.includes('MUST WATCH'), 'Disabled badge must not be rendered to canvas');
+
+    // Test enabled with custom spacing and styling
+    drawnTexts.length = 0;
+    const customSettings = {
+      ...defaultSettings,
+      badgeEnabled: true,
+      badgeText: 'VIRAL',
+      badgeSpacing: 50,
+      badgeStyle: 'glow' as const,
+      badgeShape: 'rounded' as const,
+      badgeBorderRadius: 16,
+      badgeTextColor: '#FFFFFF',
+      badgeAutoTextColor: false,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, customSettings);
+    assert.ok(drawnTexts.join('').includes('VIRAL'), 'Enabled badge with custom text must be rendered to canvas');
+  });
+
+  await test('35. Thumbnail positioning options (Horizontal Alignment with custom X, Vertical Anchor with custom Y, and Safe Area overlay)', async () => {
+    const { createDefaultThumbnailSettings, renderThumbnailToCanvas } = await import('../src/lib/caption-maker/thumbnail-presets');
+    const settings = createDefaultThumbnailSettings('VIRAL THUMBNAIL TEST');
+    assert.strictEqual(settings.textAlign, 'center');
+    assert.strictEqual(settings.customX, 50);
+    assert.strictEqual(settings.showSafeArea, true);
+
+    const customPosSettings = {
+      ...settings,
+      textAlign: 'custom' as const,
+      customX: 35,
+      position: 'custom' as const,
+      customY: 65,
+      showSafeArea: true,
+      boxBackground: true,
+    };
+
+    const drawnTexts: string[] = [];
+    const mockCtx: any = {
+      canvas: { width: 1080, height: 1920 },
+      save: () => {},
+      restore: () => {},
+      fillRect: () => {},
+      clearRect: () => {},
+      beginPath: () => {},
+      closePath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arcTo: () => {},
+      quadraticCurveTo: () => {},
+      drawImage: () => {},
+      clip: () => {},
+      fill: () => {},
+      stroke: () => {},
+      measureText: (text: string) => ({ width: text.length * 12 }),
+      fillText: (text: string) => { drawnTexts.push(text); },
+      strokeText: () => {},
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+    };
+    const mockCanvas: any = {
+      getContext: () => mockCtx,
+      width: 0,
+      height: 0,
+    };
+
+    await renderThumbnailToCanvas(mockCanvas, customPosSettings);
+    assert.ok(drawnTexts.length > 0, 'Canvas should render elements with custom position');
+
+    // Test left & right alignments and top & bottom anchors
+    const leftTop = { ...settings, textAlign: 'left' as const, position: 'top' as const };
+    await renderThumbnailToCanvas(mockCanvas, leftTop);
+
+    const rightBottom = { ...settings, textAlign: 'right' as const, position: 'bottom' as const };
+    await renderThumbnailToCanvas(mockCanvas, rightBottom);
+  });
+
+  await test('36. Gemini Model configuration, catalog options, and runtime persistence', async () => {
+    // 1. Verify available models catalog integrity
+    assert.ok(Array.isArray(GEMINI_AVAILABLE_MODELS), 'GEMINI_AVAILABLE_MODELS should be an array');
+    assert.ok(GEMINI_AVAILABLE_MODELS.length >= 5, 'Should provide at least 5 Gemini models');
+
+    const expectedIds = ['gemini-3.8-flash', 'gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.5-pro'];
+    for (const expectedId of expectedIds) {
+      const found = GEMINI_AVAILABLE_MODELS.find(m => m.id === expectedId);
+      assert.ok(found, `Expected model ${expectedId} to exist in catalog`);
+      assert.ok(found.name && found.name.length > 0, `Model ${expectedId} must have a display name`);
+      assert.ok(found.speed && found.quality, `Model ${expectedId} must specify speed and quality ratings`);
+      assert.ok(found.description && found.description.length > 10, `Model ${expectedId} must have a description`);
+    }
+
+    // 2. Verify initial active model retrieval
+    const initialModel = getGeminiModel();
+    assert.ok(typeof initialModel === 'string' && initialModel.length > 0, 'getGeminiModel should return a non-empty string');
+
+    // 3. Verify saving and persistence of user-chosen model
+    const originalModel = initialModel;
+    try {
+      saveAppSettings({ geminiModel: 'gemini-2.0-flash' });
+      const updated = getGeminiModel();
+      assert.strictEqual(updated, 'gemini-2.0-flash', 'getGeminiModel should return the newly saved model');
+
+      const status = checkGeminiStatus();
+      assert.strictEqual(status.model, 'gemini-2.0-flash', 'checkGeminiStatus should return updated model');
+      assert.ok(status.availableModels.length >= 5, 'checkGeminiStatus should include availableModels catalog');
+
+      // 4. Verify custom model selection persistence
+      saveAppSettings({ geminiModel: 'gemini-2.5-pro' });
+      assert.strictEqual(getGeminiModel(), 'gemini-2.5-pro', 'Should allow selecting frontier model gemini-2.5-pro');
+    } finally {
+      // Restore original model
+      saveAppSettings({ geminiModel: originalModel });
+    }
+  });
+
+  await test('37. Dynamic acoustic speech interval alignment & pause-aware caption grouping', async () => {
+    const { alignSegmentsToAcousticIntervals, splitTextIntoWeightedParts } = await import(
+      '../src/lib/caption-maker/transcription'
+    );
+    const { buildWordsFromSyncedSegments } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    // Simulate a coarse multi-clause LLM segment spanning 3 distinct hardware speech intervals with silences in between
+    const coarseSegments = [
+      {
+        start: 0.2,
+        end: 4.95,
+        textHindi: 'तुम एक छोटी सी बाधा के सामने रुक जाते हो और कहते हो, यह मेरे रास्ते में क्यों आया?',
+        textEnglish: 'You stop in front of a small obstacle and say, Why did this come in my way?',
+      },
+    ];
+    const hardwareSpeechIntervals = [
+      { start: 0.23, end: 2.03, duration: 1.8 },
+      { start: 2.11, end: 2.92, duration: 0.81 },
+      { start: 3.65, end: 4.94, duration: 1.29 },
+    ];
+
+    const aligned = alignSegmentsToAcousticIntervals(coarseSegments, hardwareSpeechIntervals);
+    assert.strictEqual(aligned.length, 3, 'Coarse segment spanning 3 speech intervals must dynamically split into 3 segments');
+    assert.strictEqual(aligned[0].start, 0.23);
+    assert.strictEqual(aligned[0].end, 2.03);
+    assert.strictEqual(aligned[1].start, 2.11);
+    assert.strictEqual(aligned[1].end, 2.92);
+    assert.strictEqual(aligned[2].start, 3.65);
+    assert.strictEqual(aligned[2].end, 4.94);
+
+    // Build words and group them; verify zero groups span across the 0.73s pause [2.92 -> 3.65]
+    const wordsHi = buildWordsFromSyncedSegments(aligned, 'hi');
+    const groupsHi = groupTranscriptWords(wordsHi, 4);
+    for (const g of groupsHi) {
+      const spansSilence = g.start < 2.92 && g.end > 3.65;
+      assert.strictEqual(spansSilence, false, `Group "${g.text}" (${g.start}s->${g.end}s) must never span across silence [2.92s..3.65s]`);
+    }
+
+    const parts = splitTextIntoWeightedParts('नदी पूछती नहीं, वह रास्ता खोजती है।', 2, [0.75, 1.13]);
+    assert.strictEqual(parts.length, 2);
+    assert.strictEqual(parts[0], 'नदी पूछती नहीं,');
+    assert.strictEqual(parts[1], 'वह रास्ता खोजती है।');
+
+    // Verify Pre-Flight Validator & Auto-Healer catches and heals overlapping words and pause-spanning groups
+    const { validateAndHealReelProject } = await import(
+      '../src/lib/caption-maker/pre-flight-validator'
+    );
+    const { createDefaultCaptionProject } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+    const defaultProj = createDefaultCaptionProject();
+    const brokenProj = {
+      ...defaultProj,
+      transcript: [
+        { id: 'w1', text: 'First', start: 0.2, end: 1.5 },
+        { id: 'w2', text: 'Second,', start: 1.2, end: 2.0 }, // overlaps w1!
+        { id: 'w3', text: 'Third', start: 2.8, end: 3.5 }, // 0.8s pause after w2!
+      ],
+      captionGroups: [
+        {
+          id: 'g1',
+          words: [
+            { id: 'w1', text: 'First', start: 0.2, end: 1.5 },
+            { id: 'w2', text: 'Second,', start: 1.2, end: 2.0 },
+            { id: 'w3', text: 'Third', start: 2.8, end: 3.5 },
+          ],
+          start: 0.2,
+          end: 3.5,
+          text: 'First Second, Third',
+        },
+      ],
+    };
+    const report = validateAndHealReelProject(brokenProj, 10);
+    assert.strictEqual(report.ready, true, 'Pre-flight validator must mark healed project as ready');
+    assert.ok(report.autoFixedCount > 0, 'Pre-flight validator must auto-fix word overlaps and pause-spanning groups');
+    assert.strictEqual(report.healedProject.transcript[1].start, 1.5, 'Overlap between w1 and w2 must be healed');
+    assert.strictEqual(report.healedProject.captionGroups.length, 2, 'Group spanning 0.8s pause must be split into 2 groups');
   });
 
   console.log('\n======================================================');

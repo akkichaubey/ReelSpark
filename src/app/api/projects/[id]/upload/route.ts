@@ -50,7 +50,15 @@ export async function POST(
     project.videoMetadata = metadata;
     project.status = 'QUEUED';
     project.progress = 100;
-    project.statusMessage = `Video inspection complete. Duration: ${Math.round(metadata.duration)}s, Resolution: ${metadata.width}x${metadata.height}. Ready for AI analysis.`;
+
+    const isAudioOnly = !metadata.videoCodec && metadata.hasAudio;
+    if (isAudioOnly) {
+      project.sourceType = 'audio';
+    }
+
+    project.statusMessage = isAudioOnly
+      ? `Audio inspection complete. Duration: ${Math.round(metadata.duration)}s, Codec: ${metadata.audioCodec || 'audio'}. Ready for AI analysis.`
+      : `Video inspection complete. Duration: ${Math.round(metadata.duration)}s, Resolution: ${metadata.width}x${metadata.height}. Ready for AI analysis.`;
     await saveProject(project);
 
     return NextResponse.json({

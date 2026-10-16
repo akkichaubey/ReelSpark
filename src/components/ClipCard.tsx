@@ -28,7 +28,7 @@ interface ClipCardProps {
   onPreviewSubtitles: (candidate: ClipCandidate) => void;
   onRenderClip: (id: string) => void;
   onDownloadSrt: (candidate: ClipCandidate) => void;
-  onCreateReel?: (candidate: ClipCandidate, lang: 'en' | 'hi') => void;
+  onCreateReel?: (candidate: ClipCandidate, lang: 'en' | 'hi') => void | Promise<void>;
   isRenderingThis: boolean;
   globalLang?: 'en' | 'hi';
 }
@@ -54,6 +54,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [copiedQuote, setCopiedQuote] = useState(false);
+  const [isCreatingReel, setIsCreatingReel] = useState(false);
 
   const bData = getBilingualCandidateData(candidate, lang);
 
@@ -96,24 +97,30 @@ export const ClipCard: React.FC<ClipCardProps> = ({
     });
   };
 
-  const handleCreateReelClick = () => {
-    if (onCreateReel) {
-      onCreateReel(candidate, lang);
-    } else {
-      import('@/lib/caption-maker/clip-to-reel').then(
-        ({ createCaptionProjectFromClip }) => {
-          const reelProj = createCaptionProjectFromClip(candidate, null, lang);
-          try {
-            localStorage.setItem(
-              'reel_caption_project_v1',
-              JSON.stringify(reelProj)
-            );
-          } catch (e) {
-            console.warn('Could not save to localStorage', e);
+  const handleCreateReelClick = async () => {
+    if (isCreatingReel) return;
+    setIsCreatingReel(true);
+    try {
+      if (onCreateReel) {
+        await onCreateReel(candidate, lang);
+      } else {
+        const { createCaptionProjectFromClip } = await import('@/lib/caption-maker/clip-to-reel');
+        const reelProj = createCaptionProjectFromClip(candidate, null, lang);
+        try {
+          localStorage.setItem('reel_caption_project_v2', JSON.stringify(reelProj));
+          localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('reel_project_updated', { detail: reelProj }));
           }
-          router.push('/caption-maker');
+        } catch (e) {
+          console.warn('Could not save to localStorage', e);
         }
-      );
+        router.push(`/caption-maker?clipId=${encodeURIComponent(candidate.id)}&t=${Date.now()}`);
+      }
+    } catch (e) {
+      console.error('Error creating reel project:', e);
+    } finally {
+      setIsCreatingReel(false);
     }
   };
 
@@ -383,11 +390,12 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           <button
             type="button"
             onClick={handleCreateReelClick}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 font-semibold text-xs border border-amber-500/40 shadow-sm shadow-amber-500/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            disabled={isCreatingReel}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 font-semibold text-xs border border-amber-500/40 shadow-sm shadow-amber-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
             title="Open in AI Reel Caption Maker to create animated caption video"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-            <span>Create Reel</span>
+            <Sparkles className={`w-3.5 h-3.5 text-amber-400 fill-amber-400/20 ${isCreatingReel ? 'animate-spin' : ''}`} />
+            <span>{isCreatingReel ? 'Preparing...' : 'Create Reel'}</span>
           </button>
         </div>
 

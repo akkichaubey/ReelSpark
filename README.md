@@ -1,4 +1,4 @@
-# AI Clip Finder — Local-First Video to Reels Studio
+# ReelSpark — Local-First Video to Reels Studio
 
 > Extract high-impact, philosophical, and motivational short clips (under 60 seconds) from long-form speeches, podcasts, and interviews. Built for speeches like Osho, Alan Watts, and deep conversations.
 
@@ -7,7 +7,7 @@
 ## ⚡ Highlights
 
 - **Local-First Processing**: Uses local FFmpeg 9.0.2 binaries for frame-accurate video cutting, vertical re-framing (9:16 center crop or blurred background padding), and broadcast audio normalization (`loudnorm`).
-- **AI-Powered Discovery**: Powered by Google Gemini (`gemini-2.5-flash` / `gemini-2.0-flash`) with structured schema validation.
+- **AI-Powered Discovery**: Powered by Google Gemini (`gemini-3.8-flash` / `gemini-3.0-flash` / `gemini-2.5-flash`) with structured schema validation.
 - **Context Verification Guard**: Automatically inspects clip candidates for complete thoughts, flags dangling pronouns (e.g. *"Because of that..."*), and snaps timestamps to sentence boundaries.
 - **Synchronized Subtitles**: Produces standalone `.srt` subtitle files with relative offsets re-synchronized to `00:00:00,000`, as well as permanently burned-in `.ass` styled subtitles.
 - **Batch Export**: Download individual MP4s, individual SRTs, or batch ZIP bundles containing clips and comprehensive JSON/CSV manifests.
@@ -29,24 +29,24 @@ copy .env.example .env.local
 Add your Google Gemini API key:
 ```env
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
 *(Note: The application includes an intelligent local speech heuristic engine, so it runs seamlessly even before you configure an external API key!)*
 
 ### 3. Run the Studio
 ```bash
-npm run dev
+pnpm dev
 ```
 Navigate to [http://localhost:3000](http://localhost:3000).
 
 ### 4. Run Automated Tests
 ```bash
-# Unit & integration test suite (11/11 tests)
-npm test
+# Unit & integration test suite (37 tests)
+pnpm test
 
 # End-to-end API & FFmpeg pipeline test
-npm run test:e2e
+pnpm test:e2e
 ```
 
 ---

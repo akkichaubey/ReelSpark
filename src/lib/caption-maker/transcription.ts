@@ -1,19 +1,331 @@
-import { getGeminiClient } from '../gemini';
-import { APP_CONFIG } from '../config';
-import { TranscriptionProvider, TranscriptionResult, TranscriptWord } from './types';
+import fs from 'fs';
+import { generateContentWithFallback, getGeminiClient } from '../gemini';
+import { checkGeminiStatus, resolveApiGeminiModel } from '../config';
+import { detectSpeechIntervals, SpeechInterval } from '../ffmpeg';
+import { SyncedPhraseSegment, TranscriptionProvider, TranscriptionResult, TranscriptWord } from './types';
 import { detectImportantWords } from './important-words';
+import { buildWordsFromSyncedSegments } from './clip-to-reel';
+
+export interface TranscriptionFallbackHint {
+  textHindi?: string;
+  textEnglish?: string;
+  titleHindi?: string;
+  titleEnglish?: string;
+}
 
 /**
- * Gemini-powered Multimodal Speech-to-Text Provider with Word-Level Timestamps.
+ * Split a phrase into `k` balanced parts weighted by acoustic interval durations,
+ * preferring natural clause/punctuation break points (comma, purna viram, period, etc.).
+ */
+export function splitTextIntoWeightedParts(
+  text: string,
+  k: number,
+  weights: number[]
+): string[] {
+  const clean = (text || '').trim();
+  if (!clean || k <= 1) return [clean];
+
+  // 1. Check if natural clause splits match k directly
+  const clauses = clean
+    .split(/(?<=[.!?।,;:])\s+/)
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+
+  if (clauses.length === k) {
+    return clauses;
+  }
+
+  const words = clean.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length <= 1) {
+    return [clean];
+  }
+
+  const effectiveK = Math.min(k, words.length);
+  const sliceWeights = weights.slice(0, effectiveK);
+  const totalWeight = sliceWeights.reduce((a, b) => a + b, 0) || effectiveK;
+
+  const parts: string[] = [];
+  let startIdx = 0;
+  let cumulativeWeight = 0;
+
+  for (let i = 0; i < effectiveK - 1; i++) {
+    cumulativeWeight += sliceWeights[i];
+    const remainingParts = effectiveK - 1 - i;
+    const maxEndIdx = words.length - remainingParts;
+    const minEndIdx = startIdx + 1;
+
+    const idealEndIdx = Math.round((cumulativeWeight / totalWeight) * words.length);
+    let chosenEndIdx = Math.max(minEndIdx, Math.min(maxEndIdx, idealEndIdx));
+
+    // Snap to nearby punctuation-ending word within +-2 tokens if available
+    let bestPunctIdx = -1;
+    let bestDist = 999;
+    for (
+      let cand = Math.max(minEndIdx, chosenEndIdx - 2);
+      cand <= Math.min(maxEndIdx, chosenEndIdx + 2);
+      cand++
+    ) {
+      const wordBeforeBreak = words[cand - 1];
+      if (/[.!?।,;:]/.test(wordBeforeBreak.slice(-1))) {
+        const dist = Math.abs(cand - chosenEndIdx);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPunctIdx = cand;
+        }
+      }
+    }
+    if (bestPunctIdx !== -1) {
+      chosenEndIdx = bestPunctIdx;
+    }
+
+    parts.push(words.slice(startIdx, chosenEndIdx).join(' '));
+    startIdx = chosenEndIdx;
+  }
+
+  parts.push(words.slice(startIdx).join(' '));
+  return parts.filter((p) => p.length > 0);
+}
+
+/**
+ * Dynamically lock and split transcription segments to hardware-detected FFmpeg acoustic speech intervals.
+ * Guarantees that no caption segment spans across a real speaker pause or starts/ends during silence.
+ */
+export function alignSegmentsToAcousticIntervals(
+  segments: SyncedPhraseSegment[],
+  intervals: SpeechInterval[]
+): SyncedPhraseSegment[] {
+  if (!segments || segments.length === 0) return [];
+  if (!intervals || intervals.length === 0) return segments;
+
+  // Coalesce only sub-120ms noise blips; detectSpeechIntervals already filters by minSilenceSec
+  const mergedIntervals: SpeechInterval[] = [];
+  for (const iv of intervals) {
+    const prev = mergedIntervals[mergedIntervals.length - 1];
+    if (prev && iv.duration < 0.12 && iv.start - prev.end < 0.15) {
+      prev.end = iv.end;
+      prev.duration = Number((prev.end - prev.start).toFixed(2));
+    } else {
+      mergedIntervals.push({ ...iv });
+    }
+  }
+
+  // Map each acoustic speech interval to ALL segments that significantly overlap it
+  // and map each segment to the intervals it overlaps
+  const segToIntervals: number[][] = segments.map(() => []);
+  const intervalToSegs: number[][] = mergedIntervals.map(() => []);
+
+  for (let i = 0; i < mergedIntervals.length; i++) {
+    const iv = mergedIntervals[i];
+    let bestSegIdx = -1;
+    let bestOverlap = 0;
+
+    for (let s = 0; s < segments.length; s++) {
+      const seg = segments[s];
+      const segDur = Math.max(0.1, seg.end - seg.start);
+      const overlap = Math.max(0, Math.min(seg.end, iv.end) - Math.max(seg.start, iv.start));
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestSegIdx = s;
+      }
+      // If a segment has >= 40% of its duration inside this interval, link them
+      if (overlap / segDur >= 0.4 || overlap / Math.max(0.1, iv.duration) >= 0.4) {
+        if (!segToIntervals[s].includes(i)) segToIntervals[s].push(i);
+        if (!intervalToSegs[i].includes(s)) intervalToSegs[i].push(s);
+      }
+    }
+
+    if (intervalToSegs[i].length === 0 && bestSegIdx !== -1 && bestOverlap >= 0.05) {
+      segToIntervals[bestSegIdx].push(i);
+      intervalToSegs[i].push(bestSegIdx);
+    }
+  }
+
+  const aligned: SyncedPhraseSegment[] = [];
+
+  for (let sIdx = 0; sIdx < segments.length; sIdx++) {
+    const seg = segments[sIdx];
+    const ivIndices = segToIntervals[sIdx];
+    const ownedIntervals = ivIndices.map((idx) => mergedIntervals[idx]);
+
+    if (ownedIntervals.length === 0) {
+      aligned.push({
+        start: Number(seg.start.toFixed(2)),
+        end: Number(Math.max(seg.start + 0.2, seg.end).toFixed(2)),
+        textHindi: seg.textHindi,
+        textEnglish: seg.textEnglish,
+      });
+      continue;
+    }
+
+    if (ownedIntervals.length === 1) {
+      const ivIdx = ivIndices[0];
+      const iv = mergedIntervals[ivIdx];
+      const sharingSegs = intervalToSegs[ivIdx];
+
+      if (sharingSegs.length <= 1) {
+        // Exclusive 1-to-1 match: snap directly to hardware voice onset & offset
+        aligned.push({
+          start: Number(iv.start.toFixed(2)),
+          end: Number(iv.end.toFixed(2)),
+          textHindi: seg.textHindi,
+          textEnglish: seg.textEnglish,
+        });
+      } else {
+        // Multiple segments share this continuous speech interval ->
+        // Snap first segment's start to iv.start, last segment's end to iv.end, and keep internal boundary!
+        const isFirstInIv = sharingSegs[0] === sIdx;
+        const isLastInIv = sharingSegs[sharingSegs.length - 1] === sIdx;
+        const snappedStart = isFirstInIv ? iv.start : Math.max(iv.start, seg.start);
+        const snappedEnd = isLastInIv ? iv.end : Math.min(iv.end, Math.max(snappedStart + 0.2, seg.end));
+        aligned.push({
+          start: Number(snappedStart.toFixed(2)),
+          end: Number(Math.max(snappedStart + 0.15, snappedEnd).toFixed(2)),
+          textHindi: seg.textHindi,
+          textEnglish: seg.textEnglish,
+        });
+      }
+      continue;
+    }
+
+    // Multiple acoustic speech intervals separated by real pauses (>= 0.22s) covered by one coarse LLM segment ->
+    // Filter to intervals exclusively or primarily owned by this segment
+    const exclusiveIntervals = ivIndices
+      .filter((ivIdx) => intervalToSegs[ivIdx].length === 1 || intervalToSegs[ivIdx][0] === sIdx)
+      .map((ivIdx) => mergedIntervals[ivIdx]);
+    const targetIntervals = exclusiveIntervals.length > 0 ? exclusiveIntervals : ownedIntervals;
+
+    const weights = targetIntervals.map((iv) => Math.max(0.2, iv.duration));
+    const hiParts = splitTextIntoWeightedParts(seg.textHindi, targetIntervals.length, weights);
+    const enParts = splitTextIntoWeightedParts(seg.textEnglish, targetIntervals.length, weights);
+    const partCount = Math.max(hiParts.length, enParts.length);
+
+    if (partCount <= 1) {
+      aligned.push({
+        start: Number(targetIntervals[0].start.toFixed(2)),
+        end: Number(targetIntervals[targetIntervals.length - 1].end.toFixed(2)),
+        textHindi: seg.textHindi,
+        textEnglish: seg.textEnglish,
+      });
+    } else if (partCount === targetIntervals.length) {
+      for (let k = 0; k < targetIntervals.length; k++) {
+        const hi = hiParts[Math.min(k, hiParts.length - 1)] || '';
+        const en = enParts[Math.min(k, enParts.length - 1)] || '';
+        aligned.push({
+          start: Number(targetIntervals[k].start.toFixed(2)),
+          end: Number(targetIntervals[k].end.toFixed(2)),
+          textHindi: hi,
+          textEnglish: en,
+        });
+      }
+    } else {
+      for (let p = 0; p < partCount; p++) {
+        const startIvIdx = Math.floor((p / partCount) * targetIntervals.length);
+        const endIvIdx = Math.max(
+          startIvIdx,
+          Math.floor(((p + 1) / partCount) * targetIntervals.length) - 1
+        );
+        aligned.push({
+          start: Number(targetIntervals[startIvIdx].start.toFixed(2)),
+          end: Number(targetIntervals[endIvIdx].end.toFixed(2)),
+          textHindi: hiParts[Math.min(p, hiParts.length - 1)] || '',
+          textEnglish: enParts[Math.min(p, enParts.length - 1)] || '',
+        });
+      }
+    }
+  }
+
+  // Final pass: guarantee strict non-overlapping monotonicity across all segments
+  for (let i = 1; i < aligned.length; i++) {
+    if (aligned[i].start < aligned[i - 1].end) {
+      aligned[i].start = Number(aligned[i - 1].end.toFixed(2));
+      if (aligned[i].end <= aligned[i].start) {
+        aligned[i].end = Number((aligned[i].start + 0.2).toFixed(2));
+      }
+    }
+  }
+
+  return aligned;
+}
+
+/**
+ * Gemini-powered Multimodal Speech-to-Text Provider with Hardware Acoustic-Locked Bilingual Word Timestamps.
  */
 export class GeminiTranscriptionProvider implements TranscriptionProvider {
-  async transcribe(audioFilePath: string): Promise<TranscriptionResult> {
+  async transcribe(
+    audioFilePath: string,
+    preferredLanguage: 'hi' | 'en' = 'en',
+    fallbackHint?: TranscriptionFallbackHint
+  ): Promise<TranscriptionResult> {
+    const syncCachePath = `${audioFilePath}.sync.json`;
+
+    // 1. Check disk sync cache first
+    if (fs.existsSync(syncCachePath)) {
+      try {
+        const cached = JSON.parse(fs.readFileSync(syncCachePath, 'utf8'));
+        if (cached && Array.isArray(cached.segments) && cached.segments.length > 0) {
+          let segments: SyncedPhraseSegment[] = cached.segments.map((s: any) => ({
+            start: Number(s.start) || 0,
+            end: Number(s.end) || 0,
+            textHindi: String(s.textHindi || s.textHi || s.text || '').trim(),
+            textEnglish: String(s.textEnglish || s.textEn || s.text || '').trim(),
+          }));
+
+          // Dynamically upgrade any older cache that wasn't locked to hardware FFmpeg speech intervals
+          if (!cached.acousticLocked) {
+            const { intervals } = await detectSpeechIntervals(audioFilePath);
+            if (intervals.length > 0) {
+              segments = alignSegmentsToAcousticIntervals(segments, intervals);
+              try {
+                fs.writeFileSync(
+                  syncCachePath,
+                  JSON.stringify(
+                    {
+                      ...cached,
+                      acousticLocked: true,
+                      syncVersion: 4,
+                      segments,
+                      updatedAt: new Date().toISOString(),
+                    },
+                    null,
+                    2
+                  ),
+                  'utf8'
+                );
+              } catch {}
+            }
+          }
+
+          const wordsHindi = buildWordsFromSyncedSegments(segments, 'hi');
+          const wordsEnglish = buildWordsFromSyncedSegments(segments, 'en');
+          const rawTranscriptHindi = segments.map((s) => s.textHindi).join(' ').trim();
+          const rawTranscriptEnglish = segments.map((s) => s.textEnglish).join(' ').trim();
+
+          return {
+            transcript: preferredLanguage === 'hi' ? wordsHindi : wordsEnglish,
+            wordsHindi,
+            wordsEnglish,
+            rawTranscriptHindi,
+            rawTranscriptEnglish,
+            titleHindi: cached.titleHindi,
+            titleEnglish: cached.titleEnglish,
+            syncedSegments: segments,
+            language: preferredLanguage,
+          };
+        }
+      } catch (e) {
+        console.warn('Failed to read sync cache, re-transcribing:', e);
+      }
+    }
+
+    // 2. Run FFmpeg hardware silencedetect on the audio file to extract exact voice activity windows
+    const { totalDuration, intervals: speechIntervals } = await detectSpeechIntervals(audioFilePath);
+
     const ai = getGeminiClient();
     if (!ai) {
       throw new Error('GEMINI_API_KEY is not configured.');
     }
 
-    const model = process.env.GEMINI_MODEL || APP_CONFIG.defaultGeminiModel;
+    const model = resolveApiGeminiModel();
     const mimeType = audioFilePath.endsWith('.mp3')
       ? 'audio/mp3'
       : audioFilePath.endsWith('.wav')
@@ -24,132 +336,223 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       ? 'audio/ogg'
       : 'audio/mp3';
 
-    // Upload audio file to Gemini Files API
-    const uploadResult = await ai.files.upload({
-      file: audioFilePath,
-      config: { mimeType },
-    });
+    const intervalHintsText =
+      speechIntervals.length > 0
+        ? `\nDETECTED HARDWARE VOICE INTERVALS (exact non-silent speech windows from FFmpeg waveform analysis):\n` +
+          speechIntervals
+            .map((iv, idx) => `  Interval #${idx + 1}: start=${iv.start.toFixed(2)}s, end=${iv.end.toFixed(2)}s (duration=${iv.duration.toFixed(2)}s)`)
+            .join('\n') +
+          `\n\nIMPORTANT: Align your output "segments" 1-to-1 with these exact hardware voice intervals [start, end] whenever speech occurs in that window! Never group multiple voice intervals separated by silence into a single segment.`
+        : '';
 
     const prompt = `
-You are a precise, verbatim speech-to-text transcription engine.
-Transcribe the provided audio into individual words with exact WORD-LEVEL TIMESTAMPS.
+Listen carefully to this audio recording and transcribe it into short clause-by-clause segments with exact millisecond-accurate start and end timestamps in seconds relative to 0.0s.
+${intervalHintsText}
 
-RULES:
-1. WORD-LEVEL TIMESTAMPS: You MUST break down the speech into individual words with their exact start and end times in seconds.
-2. VERBATIM ACCURACY: Keep the exact spoken words in their original spoken language (Hindi, Hinglish, English, or mixed speech).
-3. DO NOT TRANSLATE: If the speaker speaks in Hindi/Hinglish (e.g. "Zindagi mein kabhi haar mat maanna"), preserve it in Hindi/Hinglish. Never translate to English.
-4. Output valid JSON in this exact structure:
-[
-  {
-    "id": "w1",
-    "text": "Word",
-    "start": 0.00,
-    "end": 0.42,
-    "confidence": 0.98
-  }
-]
-Output ONLY the raw JSON array.
+CRITICAL RULES:
+1. EXACT AUDIO MATCH: Transcribe ONLY the actual words spoken in this audio. Never invent or substitute quotes.
+2. CLAUSE-LEVEL TIMESTAMPS WITH PAUSE GAPS: Break the speech into short spoken clauses matching the detected hardware voice intervals above. Whenever the speaker pauses (even between clauses or commas), END the current segment when the speaker stops talking and START the next segment only when the speaker resumes talking. Never include silence inside a segment's [start, end] range.
+3. BILINGUAL OUTPUT: For every clause segment, provide:
+   - "textHindi": Verbatim Hindi (in Devanagari script) matching the exact words spoken.
+   - "textEnglish": Accurate, natural English translation of that exact clause.
+4. Return a valid JSON object in this exact structure:
+{
+  "titleHindi": "Short catchy title in Hindi Devanagari",
+  "titleEnglish": "Short catchy title in English",
+  "segments": [
+    {
+      "start": 0.23,
+      "end": 2.03,
+      "textHindi": "Exact Hindi clause spoken",
+      "textEnglish": "Exact English translation of clause"
+    }
+  ]
+}
+Output ONLY the raw JSON object.
 `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { fileData: { fileUri: uploadResult.uri, mimeType: uploadResult.mimeType } },
-            { text: prompt },
-          ],
+    const stat = fs.statSync(audioFilePath);
+    let responseText = '{}';
+
+    // Use fast inline base64 for audio clips under 15 MB
+    if (stat.size < 15 * 1024 * 1024) {
+      const b64 = fs.readFileSync(audioFilePath).toString('base64');
+      const response = await generateContentWithFallback(ai, model, {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { data: b64, mimeType } },
+              { text: prompt },
+            ],
+          },
+        ],
+        config: {
+          responseMimeType: 'application/json',
         },
-      ],
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const responseText = response.text?.trim() || '[]';
-    let rawWords: Array<{ id?: string; text: string; start: number; end: number; confidence?: number }> = [];
-
-    try {
-      rawWords = JSON.parse(responseText);
-    } catch {
-      // Regex extraction fallback if response contains markdown
-      const match = responseText.match(/\[[\s\S]*\]/);
-      if (match) {
-        rawWords = JSON.parse(match[0]);
+      });
+      responseText = response.text?.trim() || '{}';
+    } else {
+      const uploadResult = await ai.files.upload({
+        file: audioFilePath,
+        config: { mimeType },
+      });
+      try {
+        const response = await generateContentWithFallback(ai, model, {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { fileData: { fileUri: uploadResult.uri, mimeType: uploadResult.mimeType } },
+                { text: prompt },
+              ],
+            },
+          ],
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        responseText = response.text?.trim() || '{}';
+      } finally {
+        try {
+          if (uploadResult.name) {
+            await ai.files.delete({ name: uploadResult.name });
+          }
+        } catch {}
       }
     }
 
-    const transcriptWords: TranscriptWord[] = rawWords.map((w, index) => ({
-      id: w.id || `word_${index + 1}`,
-      text: String(w.text || '').trim(),
-      start: Math.round(Number(w.start || 0) * 100) / 100,
-      end: Math.round(Number(w.end || w.start + 0.3) * 100) / 100,
-      confidence: w.confidence || 0.95,
-    }));
+    let parsed: {
+      titleHindi?: string;
+      titleEnglish?: string;
+      segments?: Array<{ start: number; end: number; textHindi?: string; textEnglish?: string; text?: string }>;
+    } = {};
+
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      }
+    }
+
+    const rawSegments = Array.isArray(parsed.segments) ? parsed.segments : [];
+    let segments: SyncedPhraseSegment[] = rawSegments
+      .map((s) => ({
+        start: Math.max(0, Number(s.start) || 0),
+        end: Math.max(Number(s.start || 0) + 0.15, Number(s.end) || Number(s.start || 0) + 1.5),
+        textHindi: String(s.textHindi || (s as any).textHi || s.text || '').trim(),
+        textEnglish: String(s.textEnglish || (s as any).textEn || s.text || '').trim(),
+      }))
+      .filter((s) => s.textHindi.length > 0 || s.textEnglish.length > 0);
+
+    if (segments.length === 0) {
+      throw new Error('Gemini returned empty transcription segments');
+    }
+
+    // 3. Dynamically snap & split segments to hardware FFmpeg speech intervals
+    if (speechIntervals.length > 0) {
+      segments = alignSegmentsToAcousticIntervals(segments, speechIntervals);
+    }
+
+    // 4. Save to disk cache with acousticLocked=true for instant reuse
+    try {
+      fs.writeFileSync(
+        syncCachePath,
+        JSON.stringify(
+          {
+            titleHindi: parsed.titleHindi || fallbackHint?.titleHindi || '',
+            titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish || '',
+            acousticLocked: true,
+            syncVersion: 4,
+             totalDuration,
+            segments,
+            updatedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+    } catch (e) {
+      console.warn('Could not write sync cache file:', e);
+    }
+
+    const wordsHindi = buildWordsFromSyncedSegments(segments, 'hi');
+    const wordsEnglish = buildWordsFromSyncedSegments(segments, 'en');
+    const rawTranscriptHindi = segments.map((s) => s.textHindi).join(' ').trim();
+    const rawTranscriptEnglish = segments.map((s) => s.textEnglish).join(' ').trim();
 
     return {
-      transcript: detectImportantWords(transcriptWords),
-      language: 'mixed',
+      transcript: preferredLanguage === 'hi' ? wordsHindi : wordsEnglish,
+      wordsHindi,
+      wordsEnglish,
+      rawTranscriptHindi,
+      rawTranscriptEnglish,
+      titleHindi: parsed.titleHindi || fallbackHint?.titleHindi,
+      titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish,
+      syncedSegments: segments,
+      language: preferredLanguage,
     };
   }
 }
 
 /**
- * Intelligent Fallback Transcription Provider for local/offline testing or demo speech.
+ * Dynamic Acoustic Fallback Provider:
+ * If Gemini API is unavailable/quota-limited, uses FFmpeg hardware `detectSpeechIntervals`
+ * to lock any existing candidate/fallback transcript directly to the real voice intervals in the audio!
  */
 export class LocalHeuristicTranscriptionProvider implements TranscriptionProvider {
-  async transcribe(audioFilePath: string): Promise<TranscriptionResult> {
-    // Generate realistic, high-impact word-level transcription
-    const sampleWords = [
-      { text: 'Zindagi', duration: 0.52 },
-      { text: 'mein', duration: 0.28 },
-      { text: 'kabhi', duration: 0.36 },
-      { text: 'HAAR', duration: 0.55 },
-      { text: 'mat', duration: 0.25 },
-      { text: 'maanna,', duration: 0.50 },
-      { text: 'kyunki', duration: 0.35 },
-      { text: 'girte', duration: 0.42 },
-      { text: 'wahi', duration: 0.32 },
-      { text: 'hain', duration: 0.26 },
-      { text: 'jo', duration: 0.22 },
-      { text: 'CHALTE', duration: 0.50 },
-      { text: 'hain.', duration: 0.45 },
-      { text: 'Tumhara', duration: 0.46 },
-      { text: 'DREAM', duration: 0.58 },
-      { text: 'tumhari', duration: 0.35 },
-      { text: 'asli', duration: 0.32 },
-      { text: 'PEHCHAN', duration: 0.62 },
-      { text: 'hai.', duration: 0.38 },
-      { text: 'Hustle', duration: 0.48 },
-      { text: 'har', duration: 0.25 },
-      { text: 'din,', duration: 0.32 },
-      { text: 'focus', duration: 0.45 },
-      { text: 'apne', duration: 0.30 },
-      { text: 'LAKSHYA', duration: 0.60 },
-      { text: 'par', duration: 0.24 },
-      { text: 'rakho.', duration: 0.45 },
-    ];
+  async transcribe(
+    audioFilePath: string,
+    preferredLanguage: 'hi' | 'en' = 'en',
+    fallbackHint?: TranscriptionFallbackHint
+  ): Promise<TranscriptionResult> {
+    const { totalDuration, intervals } = await detectSpeechIntervals(audioFilePath);
+    const dur = totalDuration || 10.1;
+    const effectiveIntervals: SpeechInterval[] =
+      intervals.length > 0
+        ? intervals
+        : [{ start: 0, end: dur, duration: dur }];
 
-    let currentCursor = 0.0;
-    const words: TranscriptWord[] = sampleWords.map((item, idx) => {
-      const start = Math.round(currentCursor * 100) / 100;
-      currentCursor += item.duration;
-      const end = Math.round(currentCursor * 100) / 100;
-      currentCursor += 0.06; // slight gap between words
+    const weights = effectiveIntervals.map((iv) => Math.max(0.2, iv.duration));
+    const defaultHi =
+      'ज़िंदगी में कभी हार मत मानना, क्योंकि गिरते वही हैं जो चलते हैं। तुम्हारा सपना तुम्हारी असली पहचान है, फोकस अपने लक्ष्य पर रखो।';
+    const defaultEn =
+      'Zindagi mein kabhi HAAR mat maanna, kyunki girte wahi hain jo CHALTE hain. Tumhara DREAM tumhari asli PEHCHAN hai, focus apne LAKSHYA par rakho.';
 
-      return {
-        id: `word_${idx + 1}`,
-        text: item.text,
-        start,
-        end,
-        confidence: 0.98,
-      };
-    });
+    const hiText = fallbackHint?.textHindi || fallbackHint?.textEnglish || defaultHi;
+    const enText = fallbackHint?.textEnglish || fallbackHint?.textHindi || defaultEn;
+
+    const hiParts = splitTextIntoWeightedParts(hiText, effectiveIntervals.length, weights);
+    const enParts = splitTextIntoWeightedParts(enText, effectiveIntervals.length, weights);
+    const count = Math.max(hiParts.length, enParts.length);
+
+    const segments: SyncedPhraseSegment[] = [];
+    for (let i = 0; i < count; i++) {
+      const ivIdx = Math.min(i, effectiveIntervals.length - 1);
+      segments.push({
+        start: effectiveIntervals[ivIdx].start,
+        end: effectiveIntervals[ivIdx].end,
+        textHindi: hiParts[Math.min(i, hiParts.length - 1)] || '',
+        textEnglish: enParts[Math.min(i, enParts.length - 1)] || '',
+      });
+    }
+
+    const wordsHindi = buildWordsFromSyncedSegments(segments, 'hi');
+    const wordsEnglish = buildWordsFromSyncedSegments(segments, 'en');
 
     return {
-      transcript: detectImportantWords(words),
-      language: 'Hinglish',
+      transcript: preferredLanguage === 'hi' ? wordsHindi : wordsEnglish,
+      wordsHindi,
+      wordsEnglish,
+      rawTranscriptHindi: hiText,
+      rawTranscriptEnglish: enText,
+      titleHindi: fallbackHint?.titleHindi,
+      titleEnglish: fallbackHint?.titleEnglish,
+      syncedSegments: segments,
+      language: preferredLanguage,
     };
   }
 }
@@ -157,16 +560,21 @@ export class LocalHeuristicTranscriptionProvider implements TranscriptionProvide
 /**
  * Universal transcription router that chooses the best available provider.
  */
-export async function transcribeAudio(audioFilePath: string): Promise<TranscriptionResult> {
-  if (process.env.GEMINI_API_KEY) {
+export async function transcribeAudio(
+  audioFilePath: string,
+  preferredLanguage: 'hi' | 'en' = 'en',
+  fallbackHint?: TranscriptionFallbackHint
+): Promise<TranscriptionResult> {
+  const syncCachePath = `${audioFilePath}.sync.json`;
+  if (fs.existsSync(syncCachePath) || checkGeminiStatus().configured) {
     try {
       const geminiProvider = new GeminiTranscriptionProvider();
-      return await geminiProvider.transcribe(audioFilePath);
+      return await geminiProvider.transcribe(audioFilePath, preferredLanguage, fallbackHint);
     } catch (err: any) {
-      console.warn('Gemini transcription failed or quota exceeded, falling back to heuristic alignment:', err.message);
+      console.warn('Gemini transcription failed or quota exceeded, falling back to acoustic alignment:', err.message);
     }
   }
 
   const fallback = new LocalHeuristicTranscriptionProvider();
-  return await fallback.transcribe(audioFilePath);
+  return await fallback.transcribe(audioFilePath, preferredLanguage, fallbackHint);
 }

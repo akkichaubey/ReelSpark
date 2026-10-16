@@ -9,7 +9,7 @@ This document describes the testing strategy and verification procedures for the
 Run the full automated test suite using:
 
 ```bash
-npm test
+pnpm test
 ```
 
 ### Automated Test Matrix
@@ -33,7 +33,7 @@ npm test
 ## 2. End-to-End Manual Testing Workflow
 
 ### Scenario A: Video Upload and Clip Extraction
-1. Start the dev server: `npm run dev`.
+1. Start the dev server: `pnpm dev`.
 2. Open `http://localhost:3000`.
 3. In the creation dialog:
    - Enter a title (e.g. *Osho on Meditation & Ego*).
