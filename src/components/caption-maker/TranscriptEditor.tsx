@@ -28,6 +28,7 @@ import {
   Edit2,
   Search,
   Star,
+  X,
 } from 'lucide-react';
 
 interface TranscriptEditorProps {
@@ -35,6 +36,7 @@ interface TranscriptEditorProps {
   currentTime: number;
   onUpdateGroups: (groups: CaptionGroup[]) => void;
   onSeek: (seconds: number) => void;
+  onClearAll?: () => void;
 }
 
 export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
@@ -42,6 +44,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   currentTime,
   onUpdateGroups,
   onSeek,
+  onClearAll,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingWordId, setEditingWordId] = useState<string | null>(null);
@@ -164,11 +167,21 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
           <button
             onClick={handleAutoDetectAll}
             title="Auto-detect emotional/motivational keywords"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Auto-Detect Keywords
           </button>
+          {groups.length > 0 && onClearAll && (
+            <button
+              onClick={onClearAll}
+              title="Delete all transcript words and captions"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Clear Captions
+            </button>
+          )}
         </div>
       </div>
 
@@ -294,11 +307,20 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                             />
                           </div>
                           <button
+                            type="button"
                             onClick={() => saveEditWord(word.id)}
-                            className="p-1 rounded bg-amber-500 text-black hover:bg-amber-400"
-                            title="Save changes"
+                            className="p-1 rounded bg-amber-500 text-black hover:bg-amber-400 transition-colors"
+                            title="Save changes (Enter)"
                           >
                             <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingWordId(null)}
+                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                            title="Cancel (Esc)"
+                          >
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
                       );
@@ -307,9 +329,9 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                     return (
                       <div
                         key={word.id}
-                        className={`group/chip relative inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                        className={`group/chip relative inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
                           isWordActive
-                            ? 'bg-amber-400 text-black font-bold scale-105 shadow-md shadow-amber-400/20'
+                            ? 'bg-amber-400 text-black font-bold shadow-md shadow-amber-400/20'
                             : word.isImportant
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
                             : 'bg-zinc-800/80 text-zinc-300 border border-zinc-700/60 hover:bg-zinc-700/80 hover:text-white'
@@ -317,13 +339,19 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                       >
                         <span
                           onClick={() => onSeek(word.start)}
-                          title={`Seek to ${formatSec(word.start)}`}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            startEditWord(word);
+                          }}
+                          title={`Click to seek (${formatSec(word.start)}), Double-click to edit`}
+                          className="select-none"
                         >
                           {word.text}
                         </span>
 
                         {/* Toggle Important Star */}
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleImportance(word);
@@ -346,49 +374,53 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                           />
                         </button>
 
-                        {/* Hover Quick Actions */}
-                        <div className="hidden group-hover/chip:flex items-center gap-0.5 pl-1 border-l border-zinc-700/60 ml-0.5">
+                        {/* Floating Quick Action Toolbar - Absolute so chip width NEVER shifts or blinks */}
+                        <div className="absolute bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2 hidden group-hover/chip:flex items-center gap-0.5 px-1.5 py-0.5 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/90 rounded-md shadow-xl shadow-black/80 z-30 whitespace-nowrap animate-in fade-in zoom-in-95 duration-100 before:absolute before:inset-x-0 before:top-full before:h-2.5 before:content-['']">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               startEditWord(word);
                             }}
-                            title="Edit text & timing"
-                            className="p-0.5 hover:text-white text-zinc-400"
+                            title="Edit text & timing (or double-click word)"
+                            className="p-1 hover:text-white hover:bg-zinc-800 rounded text-zinc-300 transition-colors"
                           >
-                            <Edit2 className="w-2.5 h-2.5" />
+                            <Edit2 className="w-3 h-3" />
                           </button>
                           {wordIdx < group.words.length - 1 && (
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSplitGroup(group, wordIdx + 1);
                               }}
                               title="Split group after this word"
-                              className="p-0.5 hover:text-amber-400 text-zinc-400"
+                              className="p-1 hover:text-amber-400 hover:bg-zinc-800 rounded text-zinc-300 transition-colors"
                             >
-                              <Split className="w-2.5 h-2.5" />
+                              <Split className="w-3 h-3" />
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleAddWordAfter(group, word.id);
                             }}
                             title="Add word after"
-                            className="p-0.5 hover:text-emerald-400 text-zinc-400"
+                            className="p-1 hover:text-emerald-400 hover:bg-zinc-800 rounded text-zinc-300 transition-colors"
                           >
-                            <Plus className="w-2.5 h-2.5" />
+                            <Plus className="w-3 h-3" />
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteWord(word.id);
                             }}
                             title="Delete word"
-                            className="p-0.5 hover:text-rose-400 text-zinc-400"
+                            className="p-1 hover:text-rose-400 hover:bg-zinc-800 rounded text-zinc-300 transition-colors"
                           >
-                            <Trash2 className="w-2.5 h-2.5" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       </div>

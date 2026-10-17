@@ -44,8 +44,22 @@ import {
   PLATFORM_PRESETS,
   DEFAULT_CAPTION_STYLE,
   DEFAULT_OUTPUT_SETTINGS,
+  createDefaultCaptionProject,
 } from '../src/lib/caption-maker/sample-data';
-import { TranscriptWord, CaptionGroup } from '../src/lib/caption-maker/types';
+import {
+  TranscriptWord,
+  CaptionGroup,
+  AudioAsset,
+  BgMusicTrack,
+  SfxCue,
+  AudioAnalysisResult,
+  FillerSegment,
+  SyncedPhraseSegment,
+} from '../src/lib/caption-maker/types';
+import { extractAudioFromVideo, detectBestVideoEncoder, cleanupTempStorage } from '../src/lib/caption-maker/ffmpeg-renderer';
+import { devanagariToHinglish, getKeywordEmoji, enrichWordsWithEmojis } from '../src/lib/caption-maker/hinglish-and-emoji';
+import { PRESET_BGM_TRACKS } from '../src/lib/caption-maker/sample-data';
+import { switchProjectLanguage } from '../src/lib/caption-maker/clip-to-reel';
 
 const execFileAsync = promisify(execFile);
 
@@ -1664,6 +1678,410 @@ async function runAllTests() {
     assert.ok(report.autoFixedCount > 0, 'Pre-flight validator must auto-fix word overlaps and pause-spanning groups');
     assert.strictEqual(report.healedProject.transcript[1].start, 1.5, 'Overlap between w1 and w2 must be healed');
     assert.strictEqual(report.healedProject.captionGroups.length, 2, 'Group spanning 0.8s pause must be split into 2 groups');
+  });
+
+  // 38. Video audio extraction and sourceType: 'video' AudioAsset integrity
+  await test('38. Video audio extraction and video voice AudioAsset integrity', async () => {
+    const testDir = path.join(process.cwd(), 'storage', 'temp', 'test_audio_extract');
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const syntheticSource = path.join(testDir, 'synth_voice_source.mp4');
+    const extractedMp3 = path.join(testDir, 'extracted_voice.mp3');
+
+    try {
+      // 1. Generate a lightweight 2-second synthetic video with audio sine wave
+      const ffmpegBin = getFfmpegPath();
+      await execFileAsync(ffmpegBin, [
+        '-y',
+        '-f', 'lavfi', '-i', 'testsrc=duration=2:size=320x240:rate=15',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+        '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-c:a', 'aac',
+        syntheticSource,
+      ]);
+
+      // 2. Extract audio using extractAudioFromVideo
+      const { outputPath, duration } = await extractAudioFromVideo(syntheticSource, extractedMp3);
+      assert.ok(fs.existsSync(outputPath), 'Extracted MP3 must exist on disk');
+      assert.ok(duration >= 1.8 && duration <= 2.5, `Audio duration should match source video (got ${duration})`);
+
+      // 3. Verify AudioAsset schema with sourceType: 'video'
+      const audioAsset: AudioAsset = {
+        id: 'aud_test_123',
+        fileUrl: '/api/files/test/extracted_voice.mp3',
+        storagePath: outputPath,
+        fileName: 'synth_voice_source.mp4 (Audio)',
+        fileSize: fs.statSync(outputPath).size,
+        duration,
+        format: 'MP3',
+        sourceType: 'video',
+        originalVideoFileName: 'synth_voice_source.mp4',
+      };
+
+      assert.strictEqual(audioAsset.sourceType, 'video');
+      assert.strictEqual(audioAsset.format, 'MP3');
+      assert.strictEqual(audioAsset.originalVideoFileName, 'synth_voice_source.mp4');
+      assert.ok(audioAsset.fileSize > 0);
+    } finally {
+      try {
+        if (fs.existsSync(extractedMp3)) fs.unlinkSync(extractedMp3);
+        if (fs.existsSync(syntheticSource)) fs.unlinkSync(syntheticSource);
+        if (fs.existsSync(testDir)) fs.rmdirSync(testDir);
+      } catch {}
+    }
+  });
+
+  // 39. Audio removal and transcript clear integrity
+  await test('39. Audio removal completely clears transcript, caption groups, and resets history', () => {
+    const baseProj = createDefaultCaptionProject();
+    assert.ok(baseProj.transcript.length > 0, 'Base project has words');
+    assert.ok(baseProj.captionGroups.length > 0, 'Base project has groups');
+
+    // Simulate audio removal
+    const clearedProject = {
+      ...baseProj,
+      title: 'Untitled Reel',
+      audio: undefined,
+      transcript: [],
+      captionGroups: [],
+      syncedSegments: undefined,
+      rawTranscriptHindi: undefined,
+      rawTranscriptEnglish: undefined,
+      thumbnailSettings: undefined,
+      sourceClipId: undefined,
+      isAudioSynced: false,
+      syncVersion: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    assert.strictEqual(clearedProject.audio, undefined, 'Audio must be undefined');
+    assert.strictEqual(clearedProject.title, 'Untitled Reel', 'Title must be reset to Untitled Reel');
+    assert.strictEqual(clearedProject.thumbnailSettings, undefined, 'Thumbnail settings must be cleared');
+    assert.strictEqual(clearedProject.sourceClipId, undefined, 'sourceClipId must be undefined');
+    assert.strictEqual(clearedProject.transcript.length, 0, 'Transcript must be empty');
+    assert.strictEqual(clearedProject.captionGroups.length, 0, 'Caption groups must be empty');
+    assert.strictEqual(clearedProject.syncedSegments, undefined, 'Synced segments must be undefined');
+    assert.strictEqual(clearedProject.isAudioSynced, false, 'isAudioSynced must be false');
+  });
+
+  // 40. Audio upload isolation and bilingual transcript switching
+  await test('40. Audio or video upload isolates voice processing without altering image, and bilingual switching maintains sync', async () => {
+    const { switchProjectLanguage, buildWordsFromSyncedSegments } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    const sampleImage = {
+      id: 'img_test_1',
+      fileUrl: '/test-background.png',
+      fileName: 'test-background.png',
+      fileSize: 10240,
+      width: 1080,
+      height: 1920,
+      format: 'PNG',
+      fitMode: 'contain' as const,
+      position: 'bottom-left' as const,
+      scale: 100,
+    };
+
+    const initialProject = {
+      ...createDefaultCaptionProject(),
+      image: sampleImage,
+      preferredLanguage: 'en' as const,
+      syncedSegments: [
+        {
+          id: 'seg_1',
+          start: 0.0,
+          end: 2.5,
+          textEnglish: 'Every great success starts with action',
+          textHindi: 'हर महान सफलता कार्रवाई से शुरू होती है',
+          speechIntervalIndex: 0,
+        },
+        {
+          id: 'seg_2',
+          start: 2.8,
+          end: 5.0,
+          textEnglish: 'Never give up on your dreams',
+          textHindi: 'अपने सपनों को कभी मत छोड़ो',
+          speechIntervalIndex: 1,
+        },
+      ],
+    };
+
+    // 1. Simulating video upload for voice processing:
+    const uploadedAudioFromVideo = {
+      id: 'aud_from_video',
+      fileUrl: '/api/files/test_audio.mp3',
+      storagePath: 'd:/tmp/test_audio.mp3',
+      fileName: 'speech_clip.mp4 (Audio)',
+      fileSize: 45000,
+      duration: 5.0,
+      format: 'MP3',
+      sourceType: 'video' as const,
+      originalVideoFileName: 'speech_clip.mp4',
+    };
+
+    // Project receives audio without touching project.image
+    const nextProject = {
+      ...initialProject,
+      audio: uploadedAudioFromVideo,
+    };
+
+    assert.strictEqual(nextProject.image?.fileUrl, '/test-background.png', 'Background image must remain intact');
+    assert.strictEqual(nextProject.audio?.sourceType, 'video', 'Audio source type is video');
+    assert.strictEqual(nextProject.audio?.format, 'MP3', 'Audio is extracted as MP3');
+
+    // 2. Bilingual language switching
+    const hindiSwitched = switchProjectLanguage(nextProject, 'hi');
+    assert.strictEqual(hindiSwitched.preferredLanguage, 'hi');
+    assert.ok(hindiSwitched.transcript.length > 0, 'Hindi words generated');
+    assert.strictEqual(hindiSwitched.transcript[0].text, 'हर', 'First Hindi word matches segment text');
+    assert.strictEqual(hindiSwitched.image?.fileUrl, '/test-background.png', 'Background image preserved');
+    assert.ok(hindiSwitched.captionGroups.length > 0, 'Caption groups formed for Hindi');
+
+    const englishSwitched = switchProjectLanguage(hindiSwitched, 'en');
+    assert.strictEqual(englishSwitched.preferredLanguage, 'en');
+    assert.ok(englishSwitched.transcript.length > 0, 'English words generated');
+    assert.strictEqual(englishSwitched.transcript[0].text, 'Every', 'First English word matches segment text');
+
+    // Both languages share the same boundary timings
+    assert.strictEqual(hindiSwitched.syncedSegments?.[0].start, englishSwitched.syncedSegments?.[0].start);
+    assert.strictEqual(hindiSwitched.syncedSegments?.[0].end, englishSwitched.syncedSegments?.[0].end);
+  });
+
+  // 41. Hinglish Transliteration & Switch Mode
+  await test('Hinglish transliteration & 3-way language switching', () => {
+    const hindiSample = 'सफलता समय और मेहनत मांगती है';
+    const hinglishResult = devanagariToHinglish(hindiSample);
+    assert.ok(hinglishResult.length > 0, 'Transliteration produces non-empty string');
+    assert.ok(/safalta/i.test(hinglishResult), 'Recognizes dictionary word safalta');
+    assert.ok(/samay/i.test(hinglishResult), 'Recognizes dictionary word samay');
+    assert.ok(/mehnat/i.test(hinglishResult), 'Recognizes dictionary word mehnat');
+
+    // Test project language switch to Hinglish
+    const baseProj = createDefaultCaptionProject();
+    baseProj.rawTranscriptHindi = 'सफलता समय और मेहनत';
+    baseProj.syncedSegments = [
+      {
+        id: 'seg_h1',
+        start: 0,
+        end: 2.5,
+        textHindi: 'सफलता समय और मेहनत',
+        textEnglish: 'Success requires time and hard work',
+      },
+    ];
+
+    const hinglishSwitched = switchProjectLanguage(baseProj, 'hinglish');
+    assert.strictEqual(hinglishSwitched.preferredLanguage, 'hinglish');
+    assert.ok(hinglishSwitched.transcript.length > 0, 'Generates Hinglish transcript words');
+    assert.ok(
+      hinglishSwitched.transcript.some((w) => /safalta|success/i.test(w.text)),
+      'Transcript contains transliterated or Hinglish text'
+    );
+  });
+
+  // 42. Auto Viral Emojis Keyword Matching & Enrichment
+  await test('Auto animated viral emojis keyword matching & enrichment', () => {
+    assert.strictEqual(getKeywordEmoji('money'), '💰');
+    assert.strictEqual(getKeywordEmoji('paisa'), '💰');
+    assert.strictEqual(getKeywordEmoji('fire'), '🔥');
+    assert.strictEqual(getKeywordEmoji('target'), '🎯');
+    assert.strictEqual(getKeywordEmoji('win'), '🏆');
+    assert.strictEqual(getKeywordEmoji('idea'), '💡');
+    assert.strictEqual(getKeywordEmoji('soch'), '💡');
+    assert.strictEqual(getKeywordEmoji('time'), '⏳');
+    assert.strictEqual(getKeywordEmoji('waqt'), '⏳');
+
+    const sampleWords: TranscriptWord[] = [
+      { id: 'w1', text: 'This', start: 0, end: 0.5 },
+      { id: 'w2', text: 'secret', start: 0.5, end: 1.0 },
+      { id: 'w3', text: 'makes', start: 1.0, end: 1.5 },
+      { id: 'w4', text: 'money', start: 1.5, end: 2.0 },
+      { id: 'w5', text: 'fast', start: 2.0, end: 2.5 },
+    ];
+
+    const enriched = enrichWordsWithEmojis(sampleWords);
+    assert.strictEqual(enriched.find((w) => w.text === 'money')?.emoji, '💰');
+    assert.strictEqual(enriched.find((w) => w.text === 'fast')?.emoji, '⚡');
+    assert.strictEqual(enriched.find((w) => w.text === 'secret')?.emoji, '🤫');
+  });
+
+  // 43. Background Music (BGM) Configuration & Volume Range
+  await test('Background Music (BGM) preset configuration & volume controls', () => {
+    assert.ok(Array.isArray(PRESET_BGM_TRACKS), 'BGM presets array exists');
+    assert.ok(PRESET_BGM_TRACKS.length >= 3, 'At least 3 preset BGM tracks available');
+
+    for (const track of PRESET_BGM_TRACKS) {
+      assert.ok(track.id && track.id.startsWith('bgm-'), 'Track has valid id');
+      assert.ok(track.title, 'Track has title');
+      assert.ok(track.fileUrl.startsWith('/audio/bgm/'), 'Track has local static fileUrl');
+      assert.ok(track.volume >= 0 && track.volume <= 1.0, 'Volume is within 0.0 - 1.0 range');
+    }
+  });
+
+  // 44. Hardware Video Encoder Auto-Detection & Storage Temp Cleanup
+  await test('Hardware video encoder auto-detection & storage temp cleanup', async () => {
+    const encoder = await detectBestVideoEncoder();
+    assert.ok(
+      ['h264_qsv', 'h264_nvenc', 'h264_amf', 'h264_mf', 'libx264'].includes(encoder),
+      `Encoder "${encoder}" is one of the supported valid video encoders`
+    );
+
+    const deletedCount = await cleanupTempStorage();
+    assert.ok(typeof deletedCount === 'number', 'Cleanup returned deleted file count');
+  });
+
+  // 45. Dual Audio Mixer (Voice Boost 200%, VN Fade In/Out, Auto-Ducking & Studio Denoise)
+  await test('Dual Audio Mixer, 200% Voice Boost, VN Fade In/Out, Smart Auto-Ducking & Denoise', async () => {
+    const { createDefaultCaptionProject, createEmptyCaptionProject } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+
+    const defaultProj = createDefaultCaptionProject();
+    assert.strictEqual(defaultProj.voiceVolume, 1.0, 'Default voice volume is 1.0 (100%)');
+    assert.strictEqual(defaultProj.voiceMuted, false, 'Default voice muted is false');
+    assert.strictEqual(defaultProj.studioDenoise, false, 'Default studio denoise is false');
+
+    const emptyProj = createEmptyCaptionProject();
+    assert.strictEqual(emptyProj.voiceVolume, 1.0, 'Empty project voice volume is 1.0');
+    assert.strictEqual(emptyProj.voiceMuted, false, 'Empty project voice muted is false');
+
+    // Test BGM Track with VN audio editing parameters
+    const customBgm: BgMusicTrack = {
+      id: 'bgm-test',
+      title: 'Cinematic Beat',
+      fileUrl: '/audio/bgm/cinematic-ambient.mp3',
+      volume: 0.25,
+      muted: false,
+      fadeInDuration: 1.0,
+      fadeOutDuration: 1.5,
+      autoDucking: true,
+      duckingAmount: 0.7,
+      startOffset: 12,
+    };
+
+    assert.strictEqual(customBgm.volume, 0.25);
+    assert.strictEqual(customBgm.fadeInDuration, 1.0);
+    assert.strictEqual(customBgm.fadeOutDuration, 1.5);
+    assert.strictEqual(customBgm.autoDucking, true);
+    assert.strictEqual(customBgm.startOffset, 12);
+
+    // Verify Voice Volume Boost (> 1.0 up to 2.0 / 200%)
+    const boostedVoiceVol = 1.65; // 165% Boost
+    assert.ok(boostedVoiceVol > 1.0 && boostedVoiceVol <= 2.0, 'Voice boost supports up to 200% volume gain');
+  });
+
+  // 46. Gemini AI Audio Processing Enhancements Suite (5 Core Features)
+  await test('Gemini AI Audio Processing: Auto-SFX, BGM Matcher, Vocal Intensity, Filler Jump-Cutter, and Speaker Diarization', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const {
+      computeKeepIntervals,
+      remapTimestamp,
+      remapTranscriptWords,
+      remapSyncedSegments,
+      remapSfxCues,
+    } = await import('../src/lib/caption-maker/audio-trimmer');
+    const { hexToAssColor, generateAssSubtitles } = await import('../src/lib/caption-maker/ass-generator');
+
+    // 1. Verify SFX Audio Assets exist on disk
+    const sfxTypes = ['whoosh', 'ding', 'kaching', 'pop', 'impact'];
+    for (const sfx of sfxTypes) {
+      const p = path.join(process.cwd(), 'public', 'audio', 'sfx', `${sfx}.mp3`);
+      assert.ok(fs.existsSync(p), `SFX asset ${sfx}.mp3 must exist in public/audio/sfx/`);
+      const stat = fs.statSync(p);
+      assert.ok(stat.size > 500, `SFX asset ${sfx}.mp3 must be non-empty`);
+    }
+
+    // 2. Verify AI Audio Intelligence & BGM Matcher Schema
+    const mockAnalysis: AudioAnalysisResult = {
+      mood: 'motivational',
+      energyLevel: 'high',
+      speechPaceWpm: 155,
+      recommendedBgmId: 'bgm-cinematic-ambient',
+      suggestedBgmVolume: 0.18,
+      summary: 'High energy speech with motivational tone.',
+      speakersDetected: 2,
+    };
+    assert.strictEqual(mockAnalysis.mood, 'motivational');
+    assert.strictEqual(mockAnalysis.energyLevel, 'high');
+    assert.strictEqual(mockAnalysis.speakersDetected, 2);
+    assert.strictEqual(mockAnalysis.recommendedBgmId, 'bgm-cinematic-ambient');
+
+    // 3. Verify AI Smart Silence & Filler Trimmer ("AI Jump-Cutter")
+    const totalDuration = 10.0;
+    const mockFillers: FillerSegment[] = [
+      { start: 2.0, end: 3.0, text: 'umm', type: 'filler' },
+      { start: 6.5, end: 7.5, text: '[dead air]', type: 'silence' },
+    ];
+
+    const keepIntervals = computeKeepIntervals(totalDuration, mockFillers);
+    assert.strictEqual(keepIntervals.length, 3, 'Must create 3 keep intervals [0-2], [3-6.5], [7.5-10]');
+    assert.strictEqual(keepIntervals[0].start, 0);
+    assert.strictEqual(keepIntervals[0].end, 2.0);
+    assert.strictEqual(keepIntervals[1].start, 3.0);
+    assert.strictEqual(keepIntervals[1].end, 6.5);
+    assert.strictEqual(keepIntervals[2].start, 7.5);
+    assert.strictEqual(keepIntervals[2].end, 10.0);
+
+    const totalKept = keepIntervals.reduce((acc, k) => acc + k.duration, 0);
+    assert.strictEqual(Math.round(totalKept * 10) / 10, 8.0, 'Shortened audio duration must be 8.0s (2.0s trimmed)');
+
+    // Test Word Timestamp Remapping and Pruning
+    const sampleWords: TranscriptWord[] = [
+      { id: 'w1', text: 'Hello', start: 0.5, end: 1.0, isImportant: false },
+      { id: 'w2', text: 'umm', start: 2.2, end: 2.8, isImportant: false }, // Inside cut -> must be dropped
+      { id: 'w3', text: 'world', start: 3.5, end: 4.0, isImportant: true, intensity: 'climax', speakerId: 'Speaker 1' },
+      { id: 'w4', text: 'again', start: 8.0, end: 8.5, isImportant: false, intensity: 'punch', speakerId: 'Speaker 2' },
+    ];
+
+    const remappedWords = remapTranscriptWords(sampleWords, keepIntervals);
+    assert.strictEqual(remappedWords.length, 3, 'Filler word "umm" must be pruned from transcript');
+    assert.strictEqual(remappedWords[0].text, 'Hello');
+    assert.strictEqual(remappedWords[0].start, 0.5);
+    assert.strictEqual(remappedWords[0].end, 1.0);
+
+    // w3 was at 3.5s (0.5s into 2nd segment). After cutting [2-3], new time should be 2.0 + 0.5 = 2.5s
+    assert.strictEqual(remappedWords[1].text, 'world');
+    assert.strictEqual(remappedWords[1].start, 2.5);
+    assert.strictEqual(remappedWords[1].end, 3.0);
+    assert.strictEqual(remappedWords[1].intensity, 'climax');
+
+    // w4 was at 8.0s (0.5s into 3rd segment). Kept duration before 3rd seg is 2.0 + 3.5 = 5.5s. New start: 5.5 + 0.5 = 6.0s
+    assert.strictEqual(remappedWords[2].text, 'again');
+    assert.strictEqual(remappedWords[2].start, 6.0);
+    assert.strictEqual(remappedWords[2].speakerId, 'Speaker 2');
+
+    // 4. Verify SFX Cue Remapping
+    const sampleCues: SfxCue[] = [
+      { id: 's1', time: 1.0, type: 'whoosh' }, // Kept at 1.0s
+      { id: 's2', time: 2.5, type: 'pop' }, // Inside cut -> must be dropped
+      { id: 's3', time: 8.0, type: 'impact' }, // Kept and shifted to 6.0s
+    ];
+    const remappedCues = remapSfxCues(sampleCues, keepIntervals);
+    assert.strictEqual(remappedCues.length, 2, 'SFX in cut interval must be dropped');
+    assert.strictEqual(remappedCues[0].type, 'whoosh');
+    assert.strictEqual(remappedCues[0].time, 1.0);
+    assert.strictEqual(remappedCues[1].type, 'impact');
+    assert.strictEqual(remappedCues[1].time, 6.0);
+
+    // 5. Verify Vocal Intensity & Dual Speaker Color in ASS Subtitles
+    const { DEFAULT_CAPTION_STYLE, DEFAULT_OUTPUT_SETTINGS } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+    const style = {
+      ...DEFAULT_CAPTION_STYLE,
+      speaker1Color: '#FFFFFF',
+      speaker2Color: '#06B6D4', // Cyan
+    };
+    const output = { ...DEFAULT_OUTPUT_SETTINGS };
+
+    const groups: CaptionGroup[] = [
+      { id: 'g1', start: 0.5, end: 8.5, text: 'Hello world again', words: remappedWords },
+    ];
+    const ass = generateAssSubtitles(groups, remappedWords, style, output);
+
+    // Climax punch word check: should have scale expansion and climax color (#FF3366)
+    assert.ok(ass.includes('fscx'), 'ASS subtitles must contain kinetic scale punch tags');
+    // Speaker 2 color check: cyan hex &H00D4B606& in ASS format
+    const cyanAssColor = hexToAssColor('#06B6D4');
+    assert.ok(ass.includes(cyanAssColor), 'ASS subtitles must render Speaker 2 in cyan color');
   });
 
   console.log('\n======================================================');

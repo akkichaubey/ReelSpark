@@ -24,19 +24,58 @@ import {
   ArrowDownRight,
   Maximize2,
   Film,
+  Check,
+  Volume2,
+  VolumeX,
+  Waves,
+  Scissors,
+  Zap,
+  Users,
+  Flame,
 } from 'lucide-react';
-import { AudioAsset, ImageAsset, ImageFitMode, ImagePosition } from '@/lib/caption-maker/types';
+import {
+  AudioAsset,
+  ImageAsset,
+  ImageFitMode,
+  ImagePosition,
+  BgMusicTrack,
+  AudioAnalysisResult,
+  FillerSegment,
+  SfxCue,
+} from '@/lib/caption-maker/types';
+import { PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
 
 interface AssetUploadSectionProps {
   image?: ImageAsset;
   audio?: AudioAsset;
+  bgMusic?: BgMusicTrack;
+  voiceVolume?: number;
+  voiceMuted?: boolean;
+  studioDenoise?: boolean;
+  audioAnalysis?: AudioAnalysisResult;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
+  onAutoSfxEnabledChange?: (enabled: boolean) => void;
+  fillerSegments?: FillerSegment[];
+  onTrimFillers?: () => void;
+  isTrimmingFillers?: boolean;
+  speaker1Color?: string;
+  speaker2Color?: string;
+  onSpeaker1ColorChange?: (color: string) => void;
+  onSpeaker2ColorChange?: (color: string) => void;
   onImageChange: (image?: ImageAsset, accompanyingAudio?: AudioAsset) => void;
   onAudioChange: (audio?: AudioAsset) => void;
+  onBgMusicChange?: (track?: BgMusicTrack) => void;
+  onVoiceVolumeChange?: (volume: number) => void;
+  onVoiceMutedChange?: (muted: boolean) => void;
+  onStudioDenoiseChange?: (denoise: boolean) => void;
   onTranscribe: () => void;
   isTranscribing: boolean;
   onFitModeChange: (mode: ImageFitMode) => void;
   onPositionChange?: (position: ImagePosition) => void;
   onScaleChange?: (scale: number) => void;
+  preferredLanguage?: 'en' | 'hi' | 'hinglish';
+  onLanguageChange?: (lang: 'en' | 'hi' | 'hinglish') => void;
 }
 
 export const POS_ALIGNMENT: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -71,25 +110,93 @@ const CONTAIN_POSITIONS: {
 export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   image,
   audio,
+  bgMusic,
+  voiceVolume = 1.0,
+  voiceMuted = false,
+  studioDenoise = false,
+  audioAnalysis,
+  sfxCues = [],
+  autoSfxEnabled = true,
+  onAutoSfxEnabledChange,
+  fillerSegments = [],
+  onTrimFillers,
+  isTrimmingFillers = false,
+  speaker1Color = '#FFFFFF',
+  speaker2Color = '#06B6D4',
+  onSpeaker1ColorChange,
+  onSpeaker2ColorChange,
   onImageChange,
   onAudioChange,
+  onBgMusicChange,
+  onVoiceVolumeChange,
+  onVoiceMutedChange,
+  onStudioDenoiseChange,
   onTranscribe,
   isTranscribing,
   onFitModeChange,
   onPositionChange,
   onScaleChange,
+  preferredLanguage = 'en',
+  onLanguageChange,
 }) => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const anyMediaInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const audioVideoInputRef = useRef<HTMLInputElement>(null);
+  const anyAudioInputRef = useRef<HTMLInputElement>(null);
+  const bgmCustomInputRef = useRef<HTMLInputElement>(null);
 
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [isUploadingBgm, setIsUploadingBgm] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [isPreviewingBgm, setIsPreviewingBgm] = useState(false);
+  const bgmPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleBgmTestPlay = () => {
+    if (!bgmPreviewRef.current) return;
+    if (isPreviewingBgm) {
+      bgmPreviewRef.current.pause();
+      setIsPreviewingBgm(false);
+    } else {
+      bgmPreviewRef.current.volume = bgMusic?.volume ?? 0.2;
+      bgmPreviewRef.current.play().catch(() => {});
+      setIsPreviewingBgm(true);
+    }
+  };
+
+  const handleCustomBgmUpload = async (file: File) => {
+    try {
+      setIsUploadingBgm(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'bgm');
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data?.fileUrl) {
+        onBgMusicChange?.({
+          id: `custom_bgm_${Date.now()}`,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          fileUrl: data.fileUrl,
+          storagePath: data.storagePath,
+          volume: 0.2,
+          custom: true,
+        });
+      }
+    } catch (err) {
+      console.error('Custom BGM upload error:', err);
+    } finally {
+      setIsUploadingBgm(false);
+    }
+  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -108,10 +215,14 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     setIsUploadingMedia(true);
     try {
       const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-      const isVideo = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
+      const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
+      const isImageFile = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+      if (!isVideoFile && !isImageFile) {
+        throw new Error('Please select a video file (MP4, MOV, WEBM) or image file (JPG, PNG, WEBP) for the background.');
+      }
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('type', isVideo ? 'video' : 'image');
+      formData.append('type', isVideoFile ? 'video' : 'image');
 
       const res = await fetch('/api/caption-maker/upload', {
         method: 'POST',
@@ -119,10 +230,10 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to upload media file');
+        throw new Error(data.error || 'Failed to upload background media');
       }
 
-      onImageChange(data.asset, data.audioAsset);
+      onImageChange(data.asset);
     } catch (err: any) {
       setUploadError(err.message);
     } finally {
@@ -144,7 +255,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to upload audio');
+        throw new Error(data.error || 'Failed to process audio or extract from video');
       }
 
       onAudioChange(data.asset);
@@ -173,6 +284,17 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       image.fileName.toLowerCase().endsWith('.mp4') ||
       image.fileName.toLowerCase().endsWith('.mov') ||
       image.fileName.toLowerCase().endsWith('.webm')
+    ));
+
+  const isAudioFromVideo =
+    audio?.sourceType === 'video' ||
+    (audio?.format && ['MP4', 'MOV', 'WEBM', 'MKV', 'AVI'].includes(audio.format.toUpperCase())) ||
+    (audio?.fileName && (
+      audio.fileName.toLowerCase().endsWith('.mp4') ||
+      audio.fileName.toLowerCase().endsWith('.mov') ||
+      audio.fileName.toLowerCase().endsWith('.webm') ||
+      audio.fileName.includes('(Audio)') ||
+      audio.fileName.includes('(Video Audio)')
     ));
 
   return (
@@ -277,8 +399,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => mediaInputRef.current?.click()}
+                  onClick={() => anyMediaInputRef.current?.click()}
                   className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white flex items-center space-x-1 shadow-md cursor-pointer"
+                  title="Replace background media"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Replace</span>
@@ -410,13 +533,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     <input
                       type="range"
                       min="40"
-                      max="100"
+                      max="200"
                       step="5"
                       value={image.scale ?? 100}
                       onChange={(e) => onScaleChange?.(Number(e.target.value))}
                       className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
                     />
-                    <span className="text-[9px] text-zinc-500 font-mono">100%</span>
+                    <span className="text-[9px] text-zinc-500 font-mono">200%</span>
                   </div>
                 </div>
               </div>
@@ -436,12 +559,12 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </div>
             <div>
               <p className="text-xs font-bold text-zinc-200">
-                {isUploadingMedia ? 'Uploading Media...' : 'Choose Background Video or Image'}
+                {isUploadingMedia ? 'Uploading Background Media...' : 'Choose Background Video or Image'}
               </p>
-              <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop media file or choose below:</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
             </div>
 
-            {/* Quick Upload Choice Buttons */}
+            {/* Quick Upload Choice Buttons: Video and Image */}
             <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
               <button
                 type="button"
@@ -462,14 +585,16 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <span>Upload Image</span>
               </button>
             </div>
-            <p className="text-[9px] text-zinc-600 font-mono">MP4, WEBM, MOV or JPG, PNG, WEBP (up to 100MB)</p>
+            <p className="text-[9px] text-zinc-500 font-mono">
+              MP4, MOV, WEBM or JPG, PNG, WEBP (Reel visual background)
+            </p>
           </div>
         )}
 
         <input
-          ref={mediaInputRef}
+          ref={imageInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-matroska"
+          accept="image/jpeg,image/png,image/webp"
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
@@ -478,16 +603,16 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         <input
           ref={videoInputRef}
           type="file"
-          accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+          accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
           }}
         />
         <input
-          ref={imageInputRef}
+          ref={anyMediaInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
@@ -499,18 +624,69 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       <div className="rounded-2xl bg-zinc-900/90 border border-white/10 p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <Music className="w-4 h-4" />
+            <div className={`p-1.5 rounded-lg border ${
+              isAudioFromVideo
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            }`}>
+              {isAudioFromVideo ? <Film className="w-4 h-4" /> : <Music className="w-4 h-4" />}
             </div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
               Spoken Audio / Voice
             </h4>
           </div>
           {audio && (
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-              {audio.duration.toFixed(1)}s
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold ${
+              isAudioFromVideo
+                ? 'text-amber-400 bg-amber-950/60 border-amber-800/50'
+                : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/50'
+            }`}>
+              {isAudioFromVideo ? `🎬 Video Voice • ${audio.duration.toFixed(1)}s` : `🎙️ Audio • ${audio.duration.toFixed(1)}s`}
             </span>
           )}
+        </div>
+
+        {/* Trilingual Language Switcher Toggle */}
+        <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/80 border border-white/5">
+          <span className="text-[11px] font-medium text-zinc-300">Caption Language:</span>
+          <div className="flex items-center bg-zinc-900 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
+            <button
+              type="button"
+              onClick={() => onLanguageChange?.('en')}
+              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
+                (preferredLanguage || 'en') === 'en'
+                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Generate / show English captions"
+            >
+              English
+            </button>
+            <button
+              type="button"
+              onClick={() => onLanguageChange?.('hi')}
+              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
+                preferredLanguage === 'hi'
+                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Generate / show Hindi captions (हिन्दी)"
+            >
+              हिन्दी
+            </button>
+            <button
+              type="button"
+              onClick={() => onLanguageChange?.('hinglish')}
+              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
+                preferredLanguage === 'hinglish'
+                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Generate / show Hinglish captions (Roman Hindi)"
+            >
+              Hinglish
+            </button>
+          </div>
         </div>
 
         {audio ? (
@@ -531,7 +707,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-zinc-100 truncate">{audio.fileName}</p>
                   <p className="text-[10px] text-zinc-500 font-mono">
-                    {formatFileSize(audio.fileSize)} • {audio.format}
+                    {formatFileSize(audio.fileSize)} • {audio.format} {isAudioFromVideo ? '• (Voice Extracted)' : ''}
                   </p>
                 </div>
               </div>
@@ -539,16 +715,24 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <div className="flex items-center space-x-1">
                 <button
                   type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
-                  title="Replace audio"
+                  onClick={() => anyAudioInputRef.current?.click()}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  title="Replace with Audio or Video"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
+                  onClick={() => audioVideoInputRef.current?.click()}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/25 text-zinc-400 hover:text-amber-300 transition-colors cursor-pointer"
+                  title="Replace with Video file (extract voice)"
+                >
+                  <Film className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => onAudioChange(undefined)}
-                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white transition-colors"
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                   title="Remove audio"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -563,38 +747,264 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               />
             </div>
 
-            {/* Transcribe Trigger Button */}
-            <button
-              type="button"
-              onClick={onTranscribe}
-              disabled={isTranscribing}
-              className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-zinc-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
-            >
-              <Sparkles className="w-4 h-4 fill-current" />
-              <span>
-                {isTranscribing ? 'Transcribing Word Timestamps...' : 'Transcribe & Detect Keywords'}
-              </span>
-            </button>
+            {/* Voice Audio Mixer Controls (VN & Instagram Style) */}
+            <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onVoiceMutedChange?.(!voiceMuted)}
+                    className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+                      voiceMuted ? 'text-red-400 bg-red-950/40 hover:bg-red-900/60' : 'text-zinc-300 hover:text-white bg-zinc-800'
+                    }`}
+                    title={voiceMuted ? 'Unmute Voice' : 'Mute Voice'}
+                  >
+                    {voiceMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+                  <span className="text-[11px] font-medium text-zinc-300">Voice Volume</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[11px] font-mono font-semibold ${
+                    (voiceVolume ?? 1.0) > 1.0 ? 'text-amber-400' : 'text-zinc-300'
+                  }`}>
+                    {voiceMuted ? 'Muted' : `${Math.round((voiceVolume ?? 1.0) * 100)}%`}
+                    {!voiceMuted && (voiceVolume ?? 1.0) > 1.0 && ' ⚡ Boost'}
+                  </span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="2"
+                step="0.05"
+                value={voiceMuted ? 0 : (voiceVolume ?? 1.0)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (voiceMuted) onVoiceMutedChange?.(false);
+                  onVoiceVolumeChange?.(val);
+                }}
+                className="w-full accent-amber-400 cursor-pointer h-1.5 bg-zinc-800 rounded-lg"
+              />
+
+              {/* Studio Denoise Toggle */}
+              <div className="pt-1 flex items-center justify-between border-t border-white/5">
+                <span className="text-[10px] text-zinc-400 flex items-center gap-1">
+                  <Waves className="w-3 h-3 text-cyan-400" />
+                  Studio Denoise (Fan/Room Noise)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onStudioDenoiseChange?.(!studioDenoise)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
+                    studioDenoise
+                      ? 'bg-cyan-950/80 border-cyan-500/50 text-cyan-300'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {studioDenoise ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            </div>
+
+            {/* 1. AI Gemini Audio Insights Badge */}
+            {audioAnalysis && (
+              <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-950/60 to-purple-950/60 border border-purple-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    Gemini Audio Insights
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-700/50 capitalize">
+                    {audioAnalysis.mood || 'Standard'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 text-center">
+                  <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
+                    <p className="text-[9px] text-zinc-400 uppercase">Energy</p>
+                    <p className="text-[11px] font-bold text-amber-300 capitalize">{audioAnalysis.energyLevel || 'Medium'}</p>
+                  </div>
+                  <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
+                    <p className="text-[9px] text-zinc-400 uppercase">Tempo</p>
+                    <p className="text-[11px] font-bold text-emerald-300 font-mono">{audioAnalysis.speechPaceWpm ? `${audioAnalysis.speechPaceWpm} WPM` : '140 WPM'}</p>
+                  </div>
+                  <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
+                    <p className="text-[9px] text-zinc-400 uppercase">Speakers</p>
+                    <p className="text-[11px] font-bold text-cyan-300">{audioAnalysis.speakersDetected || 1} Person</p>
+                  </div>
+                </div>
+                {audioAnalysis.summary && (
+                  <p className="text-[10px] text-purple-200/90 leading-relaxed italic bg-black/20 p-1.5 rounded border border-purple-500/10">
+                    &ldquo;{audioAnalysis.summary}&rdquo;
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 2. AI Smart Silence & Filler Trimmer ("AI Jump-Cutter") */}
+            {fillerSegments && fillerSegments.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                    AI Jump-Cutter
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50">
+                    {fillerSegments.length} Gaps Detected
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-300">
+                  Detected filler words (&ldquo;{fillerSegments.slice(0, 3).map((f) => f.text).join('&rdquo;, &ldquo;')}&rdquo;) & pauses.
+                </p>
+                <button
+                  type="button"
+                  onClick={onTrimFillers}
+                  disabled={isTrimmingFillers}
+                  className="w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>{isTrimmingFillers ? 'Trimming & Re-aligning...' : '✂️ 1-Click Jump-Cut (Clean Audio)'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* 3. AI Auto-Sound Effects (SFX) Track Card */}
+            <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                  <span className="text-[11px] font-medium text-zinc-300">AI Sound Effects (Auto-SFX)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onAutoSfxEnabledChange?.(!autoSfxEnabled)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
+                    autoSfxEnabled
+                      ? 'bg-yellow-950/80 border-yellow-500/50 text-yellow-300'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {autoSfxEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              {autoSfxEnabled && sfxCues.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {sfxCues.map((cue, idx) => (
+                    <span
+                      key={idx}
+                      className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-300 flex items-center gap-1"
+                    >
+                      <span>⚡ {cue.type}</span>
+                      <span className="text-zinc-500">@{cue.time.toFixed(1)}s</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 4. AI Multi-Speaker Diarization & Colors */}
+            <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-[11px] font-medium text-zinc-300">Speaker Caption Colors</span>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  {audioAnalysis?.speakersDetected && audioAnalysis.speakersDetected > 1 ? 'Dual Speaker' : 'Smart Diarization'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-300 font-medium">Speaker 1</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      value={speaker1Color}
+                      onChange={(e) => onSpeaker1ColorChange?.(e.target.value)}
+                      className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                    />
+                    <span className="text-[9px] font-mono text-zinc-400">{speaker1Color}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-300 font-medium">Speaker 2</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      value={speaker2Color}
+                      onChange={(e) => onSpeaker2ColorChange?.(e.target.value)}
+                      className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                    />
+                    <span className="text-[9px] font-mono text-cyan-400">{speaker2Color}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Status / Re-transcribe Trigger Button */}
+            {isTranscribing ? (
+              <div className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs animate-pulse">
+                <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
+                <span>✨ AI Analyzing Voice & Synchronizing Captions...</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onTranscribe}
+                className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-4 h-4 fill-current" />
+                <span>
+                  Re-analyze Audio & Sync Captions ({preferredLanguage === 'hi' ? 'हिन्दी' : preferredLanguage === 'hinglish' ? 'Hinglish' : 'English'})
+                </span>
+              </button>
+            )}
           </div>
         ) : (
           <div
-            onClick={() => audioInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
               if (e.dataTransfer.files?.[0]) handleAudioFile(e.dataTransfer.files[0]);
             }}
-            className="border-2 border-dashed border-white/10 hover:border-amber-500/50 rounded-xl p-5 text-center cursor-pointer transition-all hover:bg-amber-500/5 flex flex-col items-center justify-center space-y-2 group"
+            className="border-2 border-dashed border-white/10 hover:border-amber-500/40 rounded-xl p-4 text-center transition-all bg-zinc-950/40 hover:bg-zinc-900/50 flex flex-col items-center justify-center space-y-2.5 group"
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
               <UploadCloud className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-zinc-200">
-                {isUploadingAudio ? 'Uploading Audio...' : 'Drop audio voice recording here'}
+              <p className="text-xs font-bold text-zinc-200">
+                {isUploadingAudio ? 'Processing Voice Audio/Video...' : 'Choose Spoken Audio or Video'}
               </p>
-              <p className="text-[10px] text-zinc-500 mt-0.5">MP3, WAV, M4A, AAC, OGG</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                Audio or video will be processed with AI for speech transcription and captions:
+              </p>
             </div>
+
+            {/* Quick Upload Choice Buttons: Audio and Video */}
+            <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
+              <button
+                type="button"
+                onClick={() => audioInputRef.current?.click()}
+                disabled={isUploadingAudio}
+                className="flex-1 py-1.5 px-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-emerald-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-emerald-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Music className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Upload Audio</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => audioVideoInputRef.current?.click()}
+                disabled={isUploadingAudio}
+                className="flex-1 py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Film className="w-3.5 h-3.5 text-amber-400" />
+                <span>Upload Video</span>
+              </button>
+            </div>
+
+            <p className="text-[9px] text-zinc-500 font-mono">
+              MP3, WAV, M4A, OGG or MP4, MOV, WEBM (Processed strictly for voice captions)
+            </p>
           </div>
         )}
 
@@ -607,6 +1017,306 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             if (e.target.files?.[0]) handleAudioFile(e.target.files[0]);
           }}
         />
+        <input
+          ref={audioVideoInputRef}
+          type="file"
+          accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.[0]) handleAudioFile(e.target.files[0]);
+          }}
+        />
+        <input
+          ref={anyAudioInputRef}
+          type="file"
+          accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/ogg,video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.[0]) handleAudioFile(e.target.files[0]);
+          }}
+        />
+      </div>
+
+      {/* 3. Background Music (BGM) Card */}
+      <div className="rounded-2xl bg-zinc-900/90 border border-white/10 p-4 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 rounded-lg border bg-purple-500/10 text-purple-400 border-purple-500/20">
+              <Music className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
+              Background Music (BGM)
+            </h4>
+          </div>
+          {bgMusic && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded border font-semibold text-purple-400 bg-purple-950/60 border-purple-800/50">
+              🎵 {Math.round((bgMusic.volume ?? 0.2) * 100)}% Vol
+            </span>
+          )}
+        </div>
+
+        {/* AI Recommended BGM Quick Action */}
+        {audioAnalysis?.recommendedBgmId && (
+          <button
+            type="button"
+            onClick={() => {
+              const rec = PRESET_BGM_TRACKS.find((t) => t.id === audioAnalysis.recommendedBgmId);
+              if (rec) {
+                onBgMusicChange?.({
+                  ...rec,
+                  volume: audioAnalysis.suggestedBgmVolume ?? 0.2,
+                });
+              }
+            }}
+            className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-purple-500/20 to-indigo-500/20 hover:from-purple-500/30 hover:to-indigo-500/30 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center justify-between transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>AI Auto-Match: {PRESET_BGM_TRACKS.find((t) => t.id === audioAnalysis.recommendedBgmId)?.title}</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold text-amber-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-700/50">Apply ✨</span>
+          </button>
+        )}
+
+        {/* Track Selection Grid */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (bgmPreviewRef.current) {
+                bgmPreviewRef.current.pause();
+                setIsPreviewingBgm(false);
+              }
+              onBgMusicChange?.(undefined);
+            }}
+            className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border text-left flex items-center justify-between transition-all cursor-pointer ${
+              !bgMusic
+                ? 'bg-purple-500/20 border-purple-500/50 text-white font-semibold'
+                : 'bg-zinc-950/60 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <span>None</span>
+            {!bgMusic && <Check className="w-3 h-3 text-purple-400" />}
+          </button>
+          {PRESET_BGM_TRACKS.map((track) => {
+            const isSelected = bgMusic?.id === track.id;
+            const isAiRecommended = audioAnalysis?.recommendedBgmId === track.id;
+            return (
+              <button
+                key={track.id}
+                type="button"
+                onClick={() => {
+                  onBgMusicChange?.({
+                    ...track,
+                    volume: isAiRecommended
+                      ? (audioAnalysis?.suggestedBgmVolume ?? bgMusic?.volume ?? 0.2)
+                      : (bgMusic?.volume ?? 0.2),
+                  });
+                }}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border text-left flex items-center justify-between transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-purple-500/20 border-purple-500/50 text-white font-semibold'
+                    : isAiRecommended
+                    ? 'bg-purple-950/40 border-amber-500/50 text-amber-200 hover:bg-purple-900/50'
+                    : 'bg-zinc-950/60 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="truncate">{track.title}</span>
+                  {isAiRecommended && (
+                    <span className="text-[8px] font-mono text-amber-400 bg-amber-950/80 px-1 rounded border border-amber-700/50">
+                      AI
+                    </span>
+                  )}
+                </div>
+                {isSelected && <Check className="w-3 h-3 text-purple-400 shrink-0" />}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => bgmCustomInputRef.current?.click()}
+            className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border text-left flex items-center justify-between transition-all cursor-pointer ${
+              bgMusic?.custom
+                ? 'bg-purple-500/20 border-purple-500/50 text-white font-semibold'
+                : 'bg-zinc-950/60 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <span className="truncate">{isUploadingBgm ? 'Uploading...' : bgMusic?.custom ? bgMusic.title : '+ Custom Track'}</span>
+            {bgMusic?.custom && <Check className="w-3 h-3 text-purple-400 shrink-0" />}
+          </button>
+        </div>
+
+        <input
+          ref={bgmCustomInputRef}
+          type="file"
+          accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/ogg"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.[0]) handleCustomBgmUpload(e.target.files[0]);
+          }}
+        />
+
+        {/* Volume & Advanced VN Controls if BGM is active */}
+        {bgMusic && (
+          <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-white/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBgMusicChange?.({
+                      ...bgMusic,
+                      muted: !bgMusic.muted,
+                    })
+                  }
+                  className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+                    bgMusic.muted
+                      ? 'text-red-400 bg-red-950/40 hover:bg-red-900/60'
+                      : 'text-zinc-300 hover:text-white bg-zinc-800'
+                  }`}
+                  title={bgMusic.muted ? 'Unmute BGM' : 'Mute BGM'}
+                >
+                  {bgMusic.muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+                <span className="text-[11px] font-medium text-zinc-300">BGM Volume</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-purple-300 font-semibold">
+                  {bgMusic.muted ? 'Muted' : `${Math.round((bgMusic.volume ?? 0.2) * 100)}%`}
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleBgmTestPlay}
+                  className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                  title="Preview BGM"
+                >
+                  {isPreviewingBgm ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={bgMusic.muted ? 0 : (bgMusic.volume ?? 0.2)}
+              onChange={(e) => {
+                const newVol = parseFloat(e.target.value);
+                onBgMusicChange?.({
+                  ...bgMusic,
+                  volume: newVol,
+                  muted: false,
+                });
+                if (bgmPreviewRef.current) {
+                  bgmPreviewRef.current.volume = newVol;
+                }
+              }}
+              className="w-full accent-purple-400 cursor-pointer h-1.5 bg-zinc-800 rounded-lg"
+            />
+
+            {/* VN & Instagram Audio Controls */}
+            <div className="pt-2 border-t border-white/5 space-y-2">
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                {/* Fade In */}
+                <div>
+                  <div className="flex justify-between text-zinc-400 mb-1">
+                    <span>Fade In</span>
+                    <span className="font-mono text-zinc-300">{(bgMusic.fadeInDuration ?? 0.8).toFixed(1)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3"
+                    step="0.1"
+                    value={bgMusic.fadeInDuration ?? 0.8}
+                    onChange={(e) =>
+                      onBgMusicChange?.({
+                        ...bgMusic,
+                        fadeInDuration: parseFloat(e.target.value),
+                      })
+                    }
+                    className="w-full accent-purple-400 cursor-pointer h-1 bg-zinc-800 rounded"
+                  />
+                </div>
+
+                {/* Fade Out */}
+                <div>
+                  <div className="flex justify-between text-zinc-400 mb-1">
+                    <span>Fade Out</span>
+                    <span className="font-mono text-zinc-300">{(bgMusic.fadeOutDuration ?? 1.2).toFixed(1)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3"
+                    step="0.1"
+                    value={bgMusic.fadeOutDuration ?? 1.2}
+                    onChange={(e) =>
+                      onBgMusicChange?.({
+                        ...bgMusic,
+                        fadeOutDuration: parseFloat(e.target.value),
+                      })
+                    }
+                    className="w-full accent-purple-400 cursor-pointer h-1 bg-zinc-800 rounded"
+                  />
+                </div>
+              </div>
+
+              {/* Smart Auto-Ducking Switch */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-zinc-400 flex items-center gap-1">
+                  <span>📉 Auto-Ducking (Dip while speaking)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBgMusicChange?.({
+                      ...bgMusic,
+                      autoDucking: bgMusic.autoDucking === false ? true : false,
+                    })
+                  }
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
+                    bgMusic.autoDucking !== false
+                      ? 'bg-purple-950/80 border-purple-500/50 text-purple-300'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {bgMusic.autoDucking !== false ? 'ON' : 'OFF'}
+                </button>
+              </div>
+
+              {/* Start Offset (Hook / Drop Scrubber) */}
+              <div className="pt-1">
+                <div className="flex justify-between text-[10px] text-zinc-400 mb-1">
+                  <span>Start from Hook / Offset</span>
+                  <span className="font-mono text-zinc-300">{(bgMusic.startOffset ?? 0).toFixed(0)}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="1"
+                  value={bgMusic.startOffset ?? 0}
+                  onChange={(e) =>
+                    onBgMusicChange?.({
+                      ...bgMusic,
+                      startOffset: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="w-full accent-purple-400 cursor-pointer h-1 bg-zinc-800 rounded"
+                />
+              </div>
+            </div>
+
+            <audio
+              ref={bgmPreviewRef}
+              src={bgMusic.fileUrl}
+              onEnded={() => setIsPreviewingBgm(false)}
+              className="hidden"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

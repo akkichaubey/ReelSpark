@@ -14,6 +14,14 @@ interface CaptionTimelineProps {
   onTogglePlay: () => void;
 }
 
+// Deterministic static waveform bar heights (integers between 15 and 100) to prevent any SSR/client hydration floating-point mismatch
+const STATIC_WAVEFORM_BARS: number[] = Array.from({ length: 120 }, (_, i) => {
+  const progress = i / 120;
+  const base = Math.sin(progress * Math.PI * 14) * 0.3 + 0.5;
+  const noise = (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.4;
+  return Math.round(Math.min(100, Math.max(15, (base + noise) * 80)));
+});
+
 export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   duration,
   currentTime,
@@ -26,7 +34,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = fit, 2 = 2x, 4 = 4x
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
 
-  const safeDuration = duration > 0 ? duration : 10;
+  const safeDuration = duration > 0 ? duration : 0;
 
   // Flatten all words for timeline visualization
   const allWords = useMemo(() => {
@@ -37,20 +45,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
     return list;
   }, [groups]);
 
-  // Generate pseudo-waveform bars based on duration and seed for visual appeal
-  const waveformBars = useMemo(() => {
-    const barCount = 120;
-    const bars: number[] = [];
-    for (let i = 0; i < barCount; i++) {
-      // Create organic speech-like waveform peaks
-      const progress = i / barCount;
-      const base = Math.sin(progress * Math.PI * 14) * 0.3 + 0.5;
-      const noise = (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.4;
-      const height = Math.min(100, Math.max(15, (base + noise) * 80));
-      bars.push(height);
-    }
-    return bars;
-  }, []);
+  const waveformBars = STATIC_WAVEFORM_BARS;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
@@ -73,7 +68,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   };
 
   const seekFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || safeDuration <= 0) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percentage = Math.min(Math.max(0, clickX / rect.width), 1);
@@ -90,10 +85,10 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
 
   // Time ticks calculation (every 1s, 2s or 5s depending on duration)
   const tickInterval = safeDuration > 30 ? 5 : safeDuration > 15 ? 2 : 1;
-  const tickCount = Math.floor(safeDuration / tickInterval);
-  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => i * tickInterval);
+  const tickCount = safeDuration > 0 ? Math.floor(safeDuration / tickInterval) : 0;
+  const ticks = safeDuration > 0 ? Array.from({ length: tickCount + 1 }, (_, i) => i * tickInterval) : [0];
 
-  const playheadPercent = Math.min(100, Math.max(0, (currentTime / safeDuration) * 100));
+  const playheadPercent = safeDuration > 0 ? Math.min(100, Math.max(0, (currentTime / safeDuration) * 100)) : 0;
 
   return (
     <div className="bg-zinc-950 border-t border-zinc-800 p-3 select-none flex flex-col gap-2 shadow-2xl">
@@ -183,13 +178,17 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           </div>
 
           {/* Audio Waveform Canvas / Mock Bars */}
-          <div className="absolute top-5 left-0 right-0 bottom-11 flex items-center justify-between px-1 pointer-events-none opacity-40">
+          <div
+            suppressHydrationWarning
+            className="absolute top-5 left-0 right-0 bottom-11 flex items-center justify-between px-1 pointer-events-none opacity-40"
+          >
             {waveformBars.map((h, i) => {
-              const barPercent = (i / waveformBars.length) * 100;
+              const barPercent = Math.round((i / waveformBars.length) * 100);
               const isPast = barPercent <= playheadPercent;
               return (
                 <div
                   key={i}
+                  suppressHydrationWarning
                   style={{ height: `${h}%` }}
                   className={`w-[2px] rounded-full transition-colors ${
                     isPast ? 'bg-amber-400/80' : 'bg-zinc-600'
@@ -200,18 +199,21 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           </div>
 
           {/* Word Blocks Track */}
-          <div className="absolute bottom-1 left-0 right-0 h-9 flex items-center px-1 pointer-events-none">
+          <div
+            suppressHydrationWarning
+            className="absolute bottom-1 left-0 right-0 h-9 flex items-center px-1 pointer-events-none"
+          >
             {allWords.map((word) => {
-              const left = (word.start / safeDuration) * 100;
-              const width = Math.max(
-                0.8,
-                ((word.end - word.start) / safeDuration) * 100
-              );
+              const left = safeDuration > 0 ? Number(((word.start / safeDuration) * 100).toFixed(2)) : 0;
+              const width = safeDuration > 0
+                ? Number(Math.max(0.8, ((word.end - word.start) / safeDuration) * 100).toFixed(2))
+                : 0;
               const isActive = currentTime >= word.start && currentTime <= word.end;
 
               return (
                 <div
                   key={word.id}
+                  suppressHydrationWarning
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,

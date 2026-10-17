@@ -5,6 +5,9 @@ export interface TranscriptWord {
   end: number;   // in seconds (e.g. 0.68)
   confidence?: number;
   isImportant?: boolean;
+  emoji?: string;
+  intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
+  speakerId?: string;
 }
 
 export interface CaptionGroup {
@@ -120,6 +123,9 @@ export interface CaptionStyle {
   shadowOffsetX?: number;
   shadowOffsetY?: number;
   activeWordBgColor?: string;
+  showEmojis?: boolean;
+  speaker1Color?: string;
+  speaker2Color?: string;
 }
 
 export interface ImageAsset {
@@ -146,6 +152,11 @@ export interface AudioAsset {
   fileSize: number;
   duration: number; // in seconds
   format: string;
+  sourceType?: 'audio' | 'video';
+  originalVideoFileName?: string;
+  volume?: number; // 0.0 to 2.0 (default 1.0, >1.0 = Boost ⚡)
+  muted?: boolean; // default false
+  denoise?: boolean; // default false (AI Studio Denoise)
 }
 
 export type ThumbnailLayoutPosition = 'top' | 'center' | 'bottom' | 'custom';
@@ -204,11 +215,59 @@ export interface ThumbnailSettings {
   showSafeArea?: boolean;
 }
 
+export interface BgMusicTrack {
+  id: string;
+  title: string;
+  fileUrl: string;
+  volume: number; // 0.0 to 1.0 (default 0.20)
+  custom?: boolean;
+  storagePath?: string;
+  muted?: boolean;
+  fadeInDuration?: number; // 0.0 to 3.0s (default 0.8s)
+  fadeOutDuration?: number; // 0.0 to 3.0s (default 1.2s)
+  autoDucking?: boolean; // dips BGM during speech
+  duckingAmount?: number; // 0.1 to 0.9 (default 0.7 = 70% dip)
+  startOffset?: number; // start BGM at offset seconds (default 0)
+}
+
+export type SfxType = 'whoosh' | 'ding' | 'kaching' | 'pop' | 'impact';
+
+export interface SfxCue {
+  id: string;
+  time: number; // in seconds
+  type: SfxType;
+  volume?: number; // 0.0 to 1.0 (default 0.35)
+  reason?: string;
+  audioSrc?: string;
+}
+
+export interface AudioAnalysisResult {
+  mood?: 'motivational' | 'chill' | 'energetic' | 'dramatic' | 'philosophical' | 'conversational';
+  energyLevel?: 'high' | 'medium' | 'low';
+  speechPaceWpm?: number;
+  recommendedBgmId?: string;
+  suggestedBgmVolume?: number;
+  summary?: string;
+  speakersDetected?: number;
+}
+
+export interface FillerSegment {
+  start: number;
+  end: number;
+  text: string;
+  type?: 'filler' | 'silence' | 'stutter';
+}
+
 export interface SyncedPhraseSegment {
+  id?: string;
   start: number;
   end: number;
   textHindi: string;
   textEnglish: string;
+  textHinglish?: string;
+  speechIntervalIndex?: number;
+  speakerId?: string; // 'Speaker 1' | 'Speaker 2'
+  intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
 }
 
 export interface CaptionProject {
@@ -227,7 +286,18 @@ export interface CaptionProject {
   renderedSrtPath?: string;
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
-  preferredLanguage?: 'en' | 'hi';
+  rawTranscriptHinglish?: string;
+  preferredLanguage?: 'en' | 'hi' | 'hinglish';
+  bgMusic?: BgMusicTrack;
+  voiceVolume?: number; // 0.0 to 2.0 (default 1.0)
+  voiceMuted?: boolean;
+  studioDenoise?: boolean;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
+  audioAnalysis?: AudioAnalysisResult;
+  fillerSegments?: FillerSegment[];
+  speaker1Color?: string; // e.g. '#FFFFFF'
+  speaker2Color?: string; // e.g. '#06B6D4'
   sourceClipId?: string;
   syncedSegments?: SyncedPhraseSegment[];
   isAudioSynced?: boolean;
@@ -240,11 +310,17 @@ export interface TranscriptionResult {
   transcript: TranscriptWord[];
   wordsHindi?: TranscriptWord[];
   wordsEnglish?: TranscriptWord[];
+  wordsHinglish?: TranscriptWord[];
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
+  rawTranscriptHinglish?: string;
   titleHindi?: string;
   titleEnglish?: string;
+  titleHinglish?: string;
   syncedSegments?: SyncedPhraseSegment[];
+  sfxCues?: SfxCue[];
+  audioAnalysis?: AudioAnalysisResult;
+  fillerSegments?: FillerSegment[];
   language?: string;
   duration?: number;
 }

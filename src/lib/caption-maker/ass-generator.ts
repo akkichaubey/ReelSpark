@@ -173,18 +173,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
           const raw = style.uppercase ? w.text.toUpperCase() : w.text;
           const isCurrent = i === wIdx;
 
+          const isSpk2 = w.speakerId === 'Speaker 2' || w.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');
+          const spk2Hex = style.speaker2Color || '#06B6D4';
+          const spk1Hex = style.speaker1Color || style.textColor;
+
           if (isCurrent) {
-            const wordColor = importantColorAss;
-            const scaleTag = activeScale !== 100 ? `\\fscx${activeScale}\\fscy${activeScale}` : '';
-            const resetScale = activeScale !== 100 ? `\\fscx100\\fscy100` : '';
-            return `{\\c${wordColor}\\b1${scaleTag}}${raw}{${resetScale}\\b0}`;
+            let activeWordColor = importantColorAss;
+            let currentScale = activeScale;
+
+            if (w.intensity === 'punch') currentScale = Math.round(currentScale * 1.22);
+            else if (w.intensity === 'climax') {
+              currentScale = Math.round(currentScale * 1.35);
+              activeWordColor = hexToAssColor('#FF3366');
+            } else if (w.intensity === 'whisper') {
+              currentScale = Math.round(currentScale * 0.90);
+            }
+
+            if (isSpk2 && w.intensity !== 'climax') {
+              activeWordColor = hexToAssColor(spk2Hex);
+            }
+
+            const scaleTag = currentScale !== 100 ? `\\fscx${currentScale}\\fscy${currentScale}` : '';
+            const resetScale = currentScale !== 100 ? `\\fscx100\\fscy100` : '';
+            return `{\\c${activeWordColor}\\b1${scaleTag}}${raw}{${resetScale}\\b0}`;
           } else {
             const normalOpacity = style.textOpacity ?? 1.0;
             const normalAlphaVal = Math.max(0, Math.min(255, Math.round((1 - normalOpacity) * 255)));
             const normalAlphaHex = normalAlphaVal.toString(16).padStart(2, '0').toUpperCase();
-            const dimColor = w.isImportant
-              ? hexToAssColor(style.importantColor, normalAlphaHex)
-              : hexToAssColor(style.textColor, normalAlphaHex);
+            const baseHex = w.isImportant ? style.importantColor : isSpk2 ? spk2Hex : spk1Hex;
+            const dimColor = hexToAssColor(baseHex, normalAlphaHex);
             return `{\\c${dimColor}\\fscx100\\fscy100}${raw}`;
           }
         });

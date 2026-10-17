@@ -4,7 +4,7 @@ import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath, loadProject, sanitizeFilename } from '@/lib/storage';
 import { extractClipAudio } from '@/lib/ffmpeg';
-import { renderReelVideo } from '@/lib/caption-maker/ffmpeg-renderer';
+import { renderReelVideo, cleanupTempStorage } from '@/lib/caption-maker/ffmpeg-renderer';
 import { generatePhraseLevelSrt, generateWordLevelSrt } from '@/lib/caption-maker/srt-generator';
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, TranscriptWord } from '@/lib/caption-maker/types';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
@@ -176,7 +176,32 @@ export async function POST(req: NextRequest) {
         : generatePhraseLevelSrt(resolvedGroups);
     await fs.promises.writeFile(outputSrtPath, srtContent, 'utf8');
 
-    // 6. Render MP4 via FFmpeg with word-level ASS styling
+    // 5b. Resolve optional Audio Mixer & Background Music (BGM)
+    const voiceVolume: number = typeof body.voiceVolume === 'number' ? body.voiceVolume : (body.audio?.volume ?? 1.0);
+    const voiceMuted: boolean = Boolean(body.voiceMuted || body.audio?.muted);
+    const studioDenoise: boolean = Boolean(body.studioDenoise || body.audio?.denoise);
+
+    const bgMusic = body.bgMusic;
+    let bgMusicPath: string | undefined = undefined;
+    const bgMusicVolume: number = typeof bgMusic?.volume === 'number' ? bgMusic.volume : 0.20;
+    const bgMusicMuted: boolean = Boolean(bgMusic?.muted);
+    const bgMusicFadeIn: number = typeof bgMusic?.fadeInDuration === 'number' ? bgMusic.fadeInDuration : 0.8;
+    const bgMusicFadeOut: number = typeof bgMusic?.fadeOutDuration === 'number' ? bgMusic.fadeOutDuration : 1.2;
+    const bgMusicAutoDucking: boolean = bgMusic?.autoDucking !== false;
+    const bgMusicOffset: number = typeof bgMusic?.startOffset === 'number' ? bgMusic.startOffset : 0;
+
+    if (bgMusic?.fileUrl) {
+      if (bgMusic.fileUrl.startsWith('/audio/bgm/')) {
+        bgMusicPath = path.join(process.cwd(), 'public', bgMusic.fileUrl.replace(/^\//, ''));
+      } else if (bgMusic.fileUrl.includes('/api/files/')) {
+        const rel = bgMusic.fileUrl.replace(/.*\/api\/files\//, '');
+        bgMusicPath = path.join(APP_CONFIG.storageRoot, rel);
+      } else if (bgMusic.storagePath && fs.existsSync(bgMusic.storagePath)) {
+        bgMusicPath = bgMusic.storagePath;
+      }
+    }
+
+    // 6. Render MP4 via FFmpeg with word-level ASS styling, hardware acceleration & dual audio mixing
     const renderRes = await renderReelVideo({
       imagePath,
       audioPath,
@@ -189,7 +214,22 @@ export async function POST(req: NextRequest) {
       imagePosition,
       imageScale,
       mediaType,
+      voiceVolume,
+      voiceMuted,
+      studioDenoise,
+      bgMusicPath,
+      bgMusicVolume,
+      bgMusicMuted,
+      bgMusicFadeIn,
+      bgMusicFadeOut,
+      bgMusicAutoDucking,
+      bgMusicOffset,
+      sfxCues: body.sfxCues,
+      autoSfxEnabled: body.autoSfxEnabled,
     });
+
+    // Asynchronously prune expired temporary files
+    cleanupTempStorage().catch(() => {});
 
     // 7. Automatically merge thumbnail cover into video
     let thumbnailMerged = false;

@@ -1,4 +1,4 @@
-import { CaptionProject, CaptionStyle, OutputSettings, PlatformPreset, TranscriptWord } from './types';
+import { CaptionProject, CaptionStyle, OutputSettings, PlatformPreset, TranscriptWord, BgMusicTrack } from './types';
 import { groupTranscriptWords } from './caption-grouping';
 
 export const PLATFORM_PRESETS: Record<
@@ -452,7 +452,29 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   glowSpread: 12,
   shadowOffsetX: 0,
   shadowOffsetY: 4,
+  showEmojis: true,
 };
+
+export const PRESET_BGM_TRACKS: BgMusicTrack[] = [
+  {
+    id: 'bgm-lofi-chill',
+    title: '☕ Lofi Chill',
+    fileUrl: '/audio/bgm/lofi-chill.mp3',
+    volume: 0.2,
+  },
+  {
+    id: 'bgm-upbeat-energy',
+    title: '🔥 Upbeat Motivation',
+    fileUrl: '/audio/bgm/upbeat-energy.mp3',
+    volume: 0.2,
+  },
+  {
+    id: 'bgm-cinematic-ambient',
+    title: '🎬 Cinematic Ambient',
+    fileUrl: '/audio/bgm/cinematic-ambient.mp3',
+    volume: 0.2,
+  },
+];
 
 export const DEFAULT_OUTPUT_SETTINGS: OutputSettings = {
   preset: 'instagram-reel',
@@ -511,6 +533,36 @@ export function createDefaultCaptionProject(id = `proj_${Date.now()}`): CaptionP
     captionGroups: groups,
     captionStyle: { ...DEFAULT_CAPTION_STYLE },
     outputSettings: { ...DEFAULT_OUTPUT_SETTINGS },
+    voiceVolume: 1.0,
+    voiceMuted: false,
+    studioDenoise: false,
+    autoSfxEnabled: true,
+    speaker1Color: '#FFFFFF',
+    speaker2Color: '#06B6D4',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function createEmptyCaptionProject(id = `proj_${Date.now()}`): CaptionProject {
+  return {
+    id,
+    title: 'Untitled Reel',
+    image: undefined,
+    audio: undefined,
+    transcript: [],
+    captionGroups: [],
+    captionStyle: { ...DEFAULT_CAPTION_STYLE },
+    outputSettings: { ...DEFAULT_OUTPUT_SETTINGS },
+    thumbnailSettings: undefined,
+    sourceClipId: undefined,
+    voiceVolume: 1.0,
+    voiceMuted: false,
+    studioDenoise: false,
+    autoSfxEnabled: true,
+    speaker1Color: '#FFFFFF',
+    speaker2Color: '#06B6D4',
+    isAudioSynced: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

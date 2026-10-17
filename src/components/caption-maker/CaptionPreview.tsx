@@ -8,10 +8,12 @@ import {
   ImageAsset,
   ImagePosition,
   OutputSettings,
+  SfxCue,
   TranscriptWord,
 } from '@/lib/caption-maker/types';
 import { hexToRgba } from '@/lib/caption-maker/sample-data';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
+import { getKeywordEmoji } from '@/lib/caption-maker/hinglish-and-emoji';
 
 
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -38,6 +40,10 @@ interface CaptionPreviewProps {
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
   totalDuration: number;
+  speaker1Color?: string;
+  speaker2Color?: string;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
 }
 
 export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
@@ -51,6 +57,10 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   isPlaying,
   onTogglePlay,
   totalDuration,
+  speaker1Color,
+  speaker2Color,
+  sfxCues,
+  autoSfxEnabled = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -121,6 +131,25 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       });
     }
   }, [captionStyle.fontFamily]);
+
+  // Live preview AI SFX cues playback
+  const lastPlayedSfxRef = useRef<Record<number, boolean>>({});
+  useEffect(() => {
+    if (!isPlaying || autoSfxEnabled === false || !sfxCues || sfxCues.length === 0) {
+      lastPlayedSfxRef.current = {};
+      return;
+    }
+    sfxCues.forEach((cue, idx) => {
+      if (Math.abs(currentTime - cue.time) < 0.15 && !lastPlayedSfxRef.current[idx]) {
+        lastPlayedSfxRef.current[idx] = true;
+        try {
+          const sfx = new Audio(`/audio/sfx/${cue.type}.mp3`);
+          sfx.volume = Math.max(0, Math.min(1.0, cue.volume ?? 0.7));
+          sfx.play().catch(() => {});
+        } catch {}
+      }
+    });
+  }, [currentTime, isPlaying, autoSfxEnabled, sfxCues]);
 
   // Clean primary font chosen by user (MUST be first in font stack so it always updates & applies!)
   // Nirmala UI and Segoe UI act as graceful secondary fallbacks if a glyph is missing.
@@ -442,6 +471,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                 };
               }
 
+              const soloEmoji = displayWord.emoji || getKeywordEmoji(displayWord.text);
+
               return (
                 <div
                   key={displayWord.id}
@@ -460,7 +491,9 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         : 400,
                     color: displayWord.isImportant
                       ? captionStyle.importantColor
-                      : captionStyle.textColor,
+                      : (displayWord.speakerId === 'Speaker 2' || displayWord.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(displayWord.speakerId) && displayWord.speakerId !== 'Speaker 1'))
+                      ? (speaker2Color || captionStyle.speaker2Color || '#06B6D4')
+                      : (speaker1Color || captionStyle.speaker1Color || captionStyle.textColor),
                     WebkitTextStroke: previewStrokeWidth > 0 ? `${previewStrokeWidth}px ${captionStyle.strokeColor}` : 'none',
                     paintOrder: 'stroke fill',
                     textShadow: getTextShadow(),
@@ -471,12 +504,23 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     transform:
                       captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
                         ? 'none'
-                        : `scale(${Math.min(1.2, captionStyle.zoomScale ?? 1.15)})`,
+                        : `scale(${Math.min(1.4, (captionStyle.zoomScale ?? 1.15) * (displayWord.intensity === 'climax' ? 1.35 : displayWord.intensity === 'punch' ? 1.22 : displayWord.intensity === 'whisper' ? 0.90 : 1.0))})`,
                     ...getBackgroundStyles(),
                     ...soloAnimStyle,
                   }}
-                  className="inline-block transition-transform duration-75"
+                  className="relative inline-block transition-transform duration-75"
                 >
+                  {captionStyle.showEmojis !== false && soloEmoji && (
+                    <span
+                      className="absolute -top-10 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                      style={{
+                        fontSize: `${Math.max(24, Math.round(previewFontSize * 1.05))}px`,
+                        filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))',
+                      }}
+                    >
+                      {soloEmoji}
+                    </span>
+                  )}
                   {isLetterPreset ? (
                     soloWordText.split('').map((char, cIdx) => (
                       <span
@@ -539,6 +583,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                 {displayGroup.words.map((w, idx) => {
                   const isCurrent = displayWord?.id === w.id;
                   const wordText = captionStyle.uppercase ? w.text.toUpperCase() : w.text;
+                  const matchedEmoji = w.emoji || getKeywordEmoji(w.text);
+                  const showWordEmoji = captionStyle.showEmojis !== false && matchedEmoji && isCurrent;
 
                   const highlightAnim = captionStyle.highlightAnimation || 'pop';
                   const isWordPillActive = isCurrent && (highlightAnim === 'background' || Boolean(captionStyle.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none'));
@@ -555,6 +601,15 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     } else {
                       effectiveScale = 1.0;
                     }
+
+                    // AI Vocal Intensity dynamic scaling
+                    if (w.intensity === 'punch') {
+                      effectiveScale *= 1.22;
+                    } else if (w.intensity === 'climax') {
+                      effectiveScale *= 1.35;
+                    } else if (w.intensity === 'whisper') {
+                      effectiveScale *= 0.90;
+                    }
                   }
 
                   // Active word horizontal margin buffer to prevent ANY text overlap:
@@ -562,15 +617,30 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     ? Math.round((effectiveScale - 1) * 0.45 * previewFontSize)
                     : 0;
 
+                  const isSpeaker2 =
+                    w.speakerId === 'Speaker 2' ||
+                    w.speakerId?.toLowerCase().includes('speaker 2') ||
+                    (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');
+                  const spk2Col = speaker2Color || captionStyle.speaker2Color || '#06B6D4';
+                  const spk1Col = speaker1Color || captionStyle.speaker1Color || captionStyle.textColor;
+                  const speakerColor = isSpeaker2 ? spk2Col : spk1Col;
+
                   const wordBg = isWordPillActive
                     ? (captionStyle.activeWordBgColor || captionStyle.importantColor)
                     : undefined;
 
+                  let activeColor = captionStyle.importantColor;
+                  if (w.intensity === 'climax') {
+                    activeColor = '#FF3366';
+                  } else if (isSpeaker2) {
+                    activeColor = spk2Col;
+                  }
+
                   const wordColor = isWordPillActive
                     ? '#000000'
                     : isCurrent
-                    ? captionStyle.importantColor
-                    : (w.isImportant ? captionStyle.importantColor : captionStyle.textColor);
+                    ? activeColor
+                    : (w.isImportant ? captionStyle.importantColor : speakerColor);
 
                   let activeTextShadow = getTextShadow();
                   if (isGlowFlash) {
@@ -617,8 +687,19 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
                         ...wordAnimStyle,
                       }}
-                      className="transition-all duration-75"
+                      className="relative transition-all duration-75"
                     >
+                      {showWordEmoji && (
+                        <span
+                          className="absolute -top-9 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                          style={{
+                            fontSize: `${Math.max(22, Math.round(previewFontSize * 0.95))}px`,
+                            filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.6))',
+                          }}
+                        >
+                          {matchedEmoji}
+                        </span>
+                      )}
                       {isLetterPreset ? (
                         wordText.split('').map((char, cIdx) => (
                           <span

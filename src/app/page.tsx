@@ -470,6 +470,18 @@ export default function DashboardPage() {
           const remaining = projects.filter((p) => p.id !== projectId);
           setActiveProject(remaining.length > 0 ? remaining[0] : null);
         }
+        // Clear history from AI Reels Maker if it belongs to this deleted project
+        try {
+          const cached = localStorage.getItem('reel_caption_project_v2');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.sourceProjectId === projectId || parsed?.id === projectId) {
+              localStorage.removeItem('reel_caption_project_v2');
+              localStorage.removeItem('reel_caption_project_v1');
+              window.dispatchEvent(new CustomEvent('reel_project_updated'));
+            }
+          }
+        } catch {}
       }
     } catch (err: any) {
       showToast(err.message, 'error');

@@ -14,8 +14,9 @@ import {
   ImagePosition,
   TranscriptWord,
   ThumbnailSettings,
+  BgMusicTrack,
 } from '@/lib/caption-maker/types';
-import { createDefaultCaptionProject } from '@/lib/caption-maker/sample-data';
+import { createDefaultCaptionProject, createEmptyCaptionProject, PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
 import { createCaptionProjectFromClip, switchProjectLanguage } from '@/lib/caption-maker/clip-to-reel';
 import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
 import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSection';
@@ -62,6 +63,7 @@ export default function CaptionMakerPage() {
 
   // Audio Playback State
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioDuration, setAudioDuration] = useState<number>(10);
@@ -128,15 +130,12 @@ export default function CaptionMakerPage() {
             }
           }
           if (!parsed.audio) {
-            parsed.audio = {
-              id: 'default_audio',
-              fileName: 'sample-audio.mp3',
-              fileUrl: '/sample-audio.mp3',
-              storagePath: 'public/sample-audio.mp3',
-              fileSize: 104950,
-              duration: 10.1,
-              format: 'audio/mp3',
-            };
+            parsed.transcript = [];
+            parsed.captionGroups = [];
+            parsed.syncedSegments = undefined;
+            parsed.rawTranscriptHindi = undefined;
+            parsed.rawTranscriptEnglish = undefined;
+            parsed.isAudioSynced = false;
           }
 
           const oldYellows = ['#FFE600', '#FFD700', '#FDE047', '#FEF08A', '#EAB308', '#FFEB3B', '#F59E0B'];
@@ -202,22 +201,26 @@ export default function CaptionMakerPage() {
       setHistoryIndex(0);
       if (restoredParsed.audio?.duration) {
         setAudioDuration(restoredParsed.audio.duration);
+      } else {
+        setAudioDuration(0);
       }
       if (restoredParsed.transcript && restoredParsed.transcript.length > 0) {
         setLeftTab('transcript');
+      } else {
+        setLeftTab('assets');
       }
       return;
     }
 
-    // Dynamically fetch clip from /api/projects when URL has a new clipId or localStorage is empty
-    try {
-      const projRes = await fetch('/api/projects');
-      const projData = await projRes.json();
-      if (projData?.success && Array.isArray(projData.projects) && projData.projects.length > 0) {
-        let matchedProj: any = null;
-        let matchedCand: any = null;
+    // Only dynamically fetch from /api/projects when URL explicitly requests a clipId
+    if (urlClipId) {
+      try {
+        const projRes = await fetch('/api/projects');
+        const projData = await projRes.json();
+        if (projData?.success && Array.isArray(projData.projects) && projData.projects.length > 0) {
+          let matchedProj: any = null;
+          let matchedCand: any = null;
 
-        if (urlClipId) {
           for (const p of projData.projects) {
             if (urlProjectId && p.id !== urlProjectId) continue;
             const c = (p.candidates || []).find((cand: any) => cand.id === urlClipId);
@@ -227,75 +230,66 @@ export default function CaptionMakerPage() {
               break;
             }
           }
-        }
 
-        // If no URL clipId and no localStorage project existed, dynamically pick the first available clip
-        if (!matchedCand && !restoredParsed) {
-          for (const p of projData.projects) {
-            if (Array.isArray(p.candidates) && p.candidates.length > 0) {
-              matchedProj = p;
-              matchedCand = p.candidates[0];
-              break;
+          if (matchedProj && matchedCand) {
+            let audioOverride: any = undefined;
+            try {
+              const clipAudioRes = await fetch(`/api/projects/${matchedProj.id}/clip-audio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  clipId: matchedCand.id,
+                  start: matchedCand.start,
+                  end: matchedCand.end,
+                }),
+              });
+              const clipAudioData = await clipAudioRes.json();
+              if (clipAudioData?.success && clipAudioData.audioUrl) {
+                audioOverride = {
+                  audioUrl: clipAudioData.audioUrl,
+                  storagePath: clipAudioData.audioPath,
+                  duration: clipAudioData.duration,
+                  fileSize: clipAudioData.fileSize,
+                  syncedSegments: clipAudioData.syncedSegments,
+                  rawTranscriptHindi: clipAudioData.rawTranscriptHindi,
+                  rawTranscriptEnglish: clipAudioData.rawTranscriptEnglish,
+                  titleHindi: clipAudioData.titleHindi,
+                  titleEnglish: clipAudioData.titleEnglish,
+                  isAudioSynced: clipAudioData.isAudioSynced,
+                };
+              }
+            } catch {}
+
+            const dynamicReelProj = createCaptionProjectFromClip(
+              matchedCand,
+              matchedProj,
+              urlLang,
+              audioOverride
+            );
+            try {
+              localStorage.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
+            } catch {}
+            setProject(dynamicReelProj);
+            setHistory([dynamicReelProj]);
+            setHistoryIndex(0);
+            if (dynamicReelProj.audio?.duration) {
+              setAudioDuration(dynamicReelProj.audio.duration);
             }
+            setLeftTab('transcript');
+            return;
           }
         }
+      } catch {}
+    }
 
-        if (matchedProj && matchedCand) {
-          let audioOverride: any = undefined;
-          try {
-            const clipAudioRes = await fetch(`/api/projects/${matchedProj.id}/clip-audio`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                clipId: matchedCand.id,
-                start: matchedCand.start,
-                end: matchedCand.end,
-              }),
-            });
-            const clipAudioData = await clipAudioRes.json();
-            if (clipAudioData?.success && clipAudioData.audioUrl) {
-              audioOverride = {
-                audioUrl: clipAudioData.audioUrl,
-                storagePath: clipAudioData.audioPath,
-                duration: clipAudioData.duration,
-                fileSize: clipAudioData.fileSize,
-                syncedSegments: clipAudioData.syncedSegments,
-                rawTranscriptHindi: clipAudioData.rawTranscriptHindi,
-                rawTranscriptEnglish: clipAudioData.rawTranscriptEnglish,
-                titleHindi: clipAudioData.titleHindi,
-                titleEnglish: clipAudioData.titleEnglish,
-                isAudioSynced: clipAudioData.isAudioSynced,
-              };
-            }
-          } catch {}
-
-          const dynamicReelProj = createCaptionProjectFromClip(
-            matchedCand,
-            matchedProj,
-            urlLang,
-            audioOverride
-          );
-          try {
-            localStorage.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
-          } catch {}
-          setProject(dynamicReelProj);
-          setHistory([dynamicReelProj]);
-          setHistoryIndex(0);
-          if (dynamicReelProj.audio?.duration) {
-            setAudioDuration(dynamicReelProj.audio.duration);
-          }
-          setLeftTab('transcript');
-          return;
-        }
-      }
-    } catch {}
-
-    const fallbackProj = restoredParsed || createDefaultCaptionProject();
+    const fallbackProj = restoredParsed || createEmptyCaptionProject();
     setProject(fallbackProj);
     setHistory([fallbackProj]);
     setHistoryIndex(0);
     if (fallbackProj.audio?.duration) {
       setAudioDuration(fallbackProj.audio.duration);
+    } else {
+      setAudioDuration(0);
     }
   }, []);
 
@@ -318,8 +312,8 @@ export default function CaptionMakerPage() {
     };
   }, [loadProjectFromStorage]);
 
-  // Switch project transcript between English and Hindi
-  const handleSwitchLanguage = (lang: 'en' | 'hi') => {
+  // Switch project transcript between English, Hindi, and Hinglish
+  const handleSwitchLanguage = (lang: 'en' | 'hi' | 'hinglish') => {
     if (project.preferredLanguage === lang) return;
     updateProjectWithHistory((prev) => {
       const switched = switchProjectLanguage(prev, lang);
@@ -328,6 +322,14 @@ export default function CaptionMakerPage() {
       } catch {}
       return switched;
     });
+  };
+
+  const handleBgMusicChange = (track?: BgMusicTrack) => {
+    updateProjectWithHistory((prev) => ({
+      ...prev,
+      bgMusic: track,
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
   // Sync audio duration
@@ -379,6 +381,11 @@ export default function CaptionMakerPage() {
       try {
         audioRef.current.pause();
       } catch {}
+      if (bgMusicRef.current) {
+        try {
+          bgMusicRef.current.pause();
+        } catch {}
+      }
       setIsPlaying(false);
     } else {
       try {
@@ -391,9 +398,21 @@ export default function CaptionMakerPage() {
           });
         }
       } catch {}
+      if (bgMusicRef.current && project.bgMusic?.fileUrl) {
+        try {
+          const baseBgmVol = project.bgMusic.muted ? 0 : Math.min(1.0, project.bgMusic.volume ?? 0.2);
+          bgMusicRef.current.volume = baseBgmVol;
+          const offset = project.bgMusic.startOffset ?? 0;
+          if (bgMusicRef.current.duration) {
+            bgMusicRef.current.currentTime = (offset + currentTime) % bgMusicRef.current.duration;
+          }
+          const bgP = bgMusicRef.current.play();
+          if (bgP !== undefined) bgP.catch(() => {});
+        } catch {}
+      }
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, project.bgMusic, currentTime]);
 
   useEffect(() => {
     return () => {
@@ -402,8 +421,20 @@ export default function CaptionMakerPage() {
           audioRef.current.pause();
         } catch {}
       }
+      if (bgMusicRef.current) {
+        try {
+          bgMusicRef.current.pause();
+        } catch {}
+      }
     };
   }, []);
+
+  // Sync voice element volume when project setting changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = project.voiceMuted ? 0 : Math.min(1.0, project.voiceVolume ?? 1.0);
+    }
+  }, [project.voiceVolume, project.voiceMuted]);
 
   const handleSeek = useCallback(
     (time: number) => {
@@ -412,17 +443,35 @@ export default function CaptionMakerPage() {
       if (audioRef.current) {
         audioRef.current.currentTime = clamped;
       }
+      if (bgMusicRef.current && bgMusicRef.current.duration) {
+        const offset = project.bgMusic?.startOffset ?? 0;
+        bgMusicRef.current.currentTime = (offset + clamped) % bgMusicRef.current.duration;
+      }
     },
-    [audioDuration]
+    [audioDuration, project.bgMusic]
   );
 
-  // 60fps playhead sync using requestAnimationFrame for millisecond-accurate word & phrase highlights
+  // 60fps playhead sync using requestAnimationFrame with live Auto-Ducking
   useEffect(() => {
     if (!isPlaying) return;
     let rafId: number | null = null;
     const tick = () => {
       if (audioRef.current && !audioRef.current.paused) {
-        setCurrentTime(audioRef.current.currentTime);
+        const cur = audioRef.current.currentTime;
+        setCurrentTime(cur);
+
+        // Live Auto-Ducking in browser preview (VN & Instagram Style)
+        if (bgMusicRef.current && project.bgMusic?.fileUrl) {
+          const baseVol = project.bgMusic.muted ? 0 : Math.min(1.0, project.bgMusic.volume ?? 0.2);
+          if (project.bgMusic.autoDucking !== false && project.transcript && project.transcript.length > 0) {
+            const isSpeaking = project.transcript.some(
+              (w) => cur >= Math.max(0, w.start - 0.1) && cur <= w.end + 0.15
+            );
+            bgMusicRef.current.volume = isSpeaking ? baseVol * 0.32 : baseVol;
+          } else {
+            bgMusicRef.current.volume = baseVol;
+          }
+        }
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -432,7 +481,7 @@ export default function CaptionMakerPage() {
         cancelAnimationFrame(rafId);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, project.bgMusic, project.transcript]);
 
   // Audio element events
   const handleAudioTimeUpdate = () => {
@@ -447,7 +496,24 @@ export default function CaptionMakerPage() {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
     }
+    if (bgMusicRef.current) {
+      bgMusicRef.current.pause();
+      bgMusicRef.current.currentTime = 0;
+    }
   };
+
+  useEffect(() => {
+    if (bgMusicRef.current && project.bgMusic) {
+      bgMusicRef.current.volume = Math.max(0, Math.min(1, project.bgMusic.volume ?? 0.2));
+    }
+  }, [project.bgMusic?.volume]);
+
+  useEffect(() => {
+    if (!project.bgMusic && bgMusicRef.current) {
+      bgMusicRef.current.pause();
+      bgMusicRef.current.currentTime = 0;
+    }
+  }, [project.bgMusic]);
 
   // Save project to localStorage
   const handleSaveProject = () => {
@@ -463,14 +529,24 @@ export default function CaptionMakerPage() {
   const handleResetProject = () => {
     if (
       window.confirm(
-        'Reset current project to default? Any unsaved edits will be lost.'
+        'Reset current project and clear history? Any unsaved edits will be lost.'
       )
     ) {
-      const fresh = createDefaultCaptionProject();
+      if (typeof window !== 'undefined' && window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      const fresh = createEmptyCaptionProject();
       setProject(fresh);
       setHistory([fresh]);
       setHistoryIndex(0);
       handleSeek(0);
+      setAudioDuration(0);
+      setCenterViewMode('video');
+      setLeftTab('assets');
+      try {
+        localStorage.setItem('reel_caption_project_v2', JSON.stringify(fresh));
+        localStorage.removeItem('reel_caption_project_v1');
+      } catch {}
     }
   };
 
@@ -520,9 +596,8 @@ export default function CaptionMakerPage() {
   }, [togglePlay, handleSeek, currentTime, undo, redo]);
 
   // Asset Upload Handlers
-  const handleImageUploaded = (image: ImageAsset, accompanyingAudio?: AudioAsset) => {
+  const handleImageUploaded = (image: ImageAsset) => {
     updateProjectWithHistory((prev) => {
-      const useAccompanying = Boolean(accompanyingAudio && (!prev.audio || prev.audio.fileUrl === '/sample-audio.mp3'));
       const normalizedImage: ImageAsset = {
         ...image,
         fitMode: image.fitMode || 'contain',
@@ -532,16 +607,9 @@ export default function CaptionMakerPage() {
       return {
         ...prev,
         image: normalizedImage,
-        audio: useAccompanying ? accompanyingAudio : prev.audio,
-        isAudioSynced: useAccompanying ? false : prev.isAudioSynced,
-        syncVersion: useAccompanying ? undefined : prev.syncVersion,
         updatedAt: new Date().toISOString(),
       };
     });
-    if (accompanyingAudio && (!project.audio || project.audio.fileUrl === '/sample-audio.mp3')) {
-      setAudioDuration(accompanyingAudio.duration);
-      handleSeek(0);
-    }
   };
 
   const initialThumbAspect: '9:16' | '4:5' | '1:1' | '16:9' = useMemo(() => {
@@ -686,17 +754,285 @@ export default function CaptionMakerPage() {
     }));
   };
 
+  const isTranscribingRef = useRef(false);
+
+  const syncAudioWithTranscript = useCallback(
+    async (targetProj: CaptionProject, silent = false): Promise<CaptionProject | null> => {
+      if (!targetProj.audio || isTranscribingRef.current) return null;
+      isTranscribingRef.current = true;
+      setIsTranscribing(true);
+      try {
+        const res = await fetch('/api/caption-maker/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storagePath: targetProj.audio.storagePath,
+            fileUrl: targetProj.audio.fileUrl,
+            preferredLanguage: targetProj.preferredLanguage || 'en',
+            fallbackHint: {
+              textHindi: targetProj.rawTranscriptHindi,
+              textEnglish: targetProj.rawTranscriptEnglish,
+              titleHindi: targetProj.title,
+              titleEnglish: targetProj.title,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to transcribe audio');
+        }
+
+        const lang = targetProj.preferredLanguage || 'en';
+        const resolvedTitle =
+          lang === 'hi'
+            ? data.titleHindi || targetProj.title
+            : data.titleEnglish || targetProj.title;
+
+        let autoMatchedBgm = targetProj.bgMusic;
+        if (!autoMatchedBgm && data.audioAnalysis?.recommendedBgmId) {
+          const found = PRESET_BGM_TRACKS.find((t) => t.id === data.audioAnalysis.recommendedBgmId);
+          if (found) {
+            autoMatchedBgm = {
+              ...found,
+              volume: data.audioAnalysis.suggestedBgmVolume ?? 0.2,
+            };
+          }
+        }
+
+        const preValidated: CaptionProject = {
+          ...targetProj,
+          title: resolvedTitle,
+          transcript: data.transcript,
+          captionGroups: data.captionGroups,
+          syncedSegments: data.syncedSegments || targetProj.syncedSegments,
+          rawTranscriptHindi: data.rawTranscriptHindi || targetProj.rawTranscriptHindi,
+          rawTranscriptEnglish: data.rawTranscriptEnglish || targetProj.rawTranscriptEnglish,
+          isAudioSynced: true,
+          syncVersion: 4,
+          bgMusic: autoMatchedBgm,
+          sfxCues: data.sfxCues || targetProj.sfxCues || [],
+          autoSfxEnabled: targetProj.autoSfxEnabled !== false,
+          audioAnalysis: data.audioAnalysis || targetProj.audioAnalysis || null,
+          fillerSegments: data.fillerSegments || targetProj.fillerSegments || [],
+          speaker1Color: targetProj.speaker1Color || '#FFFFFF',
+          speaker2Color: targetProj.speaker2Color || '#06B6D4',
+          updatedAt: new Date().toISOString(),
+        };
+
+        const healed = validateAndHealReelProject(
+          preValidated,
+          targetProj.audio?.duration || audioDuration
+        ).healedProject;
+
+        setProject(healed);
+        try {
+          localStorage.setItem('reel_caption_project_v2', JSON.stringify(healed));
+        } catch {}
+        setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
+        setHistoryIndex((prevIdx) => prevIdx + 1);
+        setLeftTab('transcript');
+        return healed;
+      } catch (err: any) {
+        if (!silent) {
+          console.error('Audio transcription error:', err);
+        } else {
+          console.warn('Auto audio sync failed:', err);
+        }
+        return null;
+      } finally {
+        isTranscribingRef.current = false;
+        setIsTranscribing(false);
+      }
+    },
+    [historyIndex, audioDuration]
+  );
+
+  // AI Smart Silence & Filler Trimmer ("AI Jump-Cutter")
+  const [isTrimmingFillers, setIsTrimmingFillers] = useState<boolean>(false);
+
+  const handleTrimFillers = async () => {
+    if (!project.audio || !project.fillerSegments || project.fillerSegments.length === 0) return;
+    setIsTrimmingFillers(true);
+    try {
+      const res = await fetch('/api/caption-maker/trim-fillers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storagePath: project.audio.storagePath,
+          fileUrl: project.audio.fileUrl,
+          fillerSegments: project.fillerSegments,
+          transcript: project.transcript,
+          syncedSegments: project.syncedSegments,
+          sfxCues: project.sfxCues,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to trim filler words');
+      }
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+
+      const updatedProj: CaptionProject = {
+        ...project,
+        audio: {
+          ...project.audio,
+          fileUrl: data.audioUrl,
+          storagePath: data.storagePath,
+          duration: data.duration,
+        },
+        transcript: data.transcript,
+        captionGroups: data.captionGroups,
+        syncedSegments: data.syncedSegments,
+        sfxCues: data.sfxCues,
+        fillerSegments: [],
+        updatedAt: new Date().toISOString(),
+      };
+
+      setAudioDuration(data.duration);
+      updateProjectWithHistory(() => updatedProj);
+      handleSeek(0);
+    } catch (err: any) {
+      console.error('Failed to trim fillers:', err);
+      alert(`Jump-cut error: ${err.message || 'Failed to trim fillers'}`);
+    } finally {
+      setIsTrimmingFillers(false);
+    }
+  };
+
   const handleAudioUploaded = (audio: AudioAsset) => {
-    updateProjectWithHistory((prev) => ({
-      ...prev,
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      } catch {}
+    }
+    setIsPlaying(false);
+    setCurrentTime(0);
+
+    const isDifferentAudio = project.audio?.fileUrl !== audio.fileUrl;
+    const nextProject: CaptionProject = {
+      ...project,
       audio,
+      transcript: isDifferentAudio ? [] : project.transcript,
+      captionGroups: isDifferentAudio ? [] : project.captionGroups,
+      syncedSegments: isDifferentAudio ? undefined : project.syncedSegments,
+      rawTranscriptHindi: isDifferentAudio ? undefined : project.rawTranscriptHindi,
+      rawTranscriptEnglish: isDifferentAudio ? undefined : project.rawTranscriptEnglish,
       isAudioSynced: false,
       syncVersion: undefined,
-      syncedSegments: undefined,
       updatedAt: new Date().toISOString(),
-    }));
+    };
+
+    setProject(nextProject);
+    if (isDifferentAudio) {
+      setHistory([nextProject]);
+      setHistoryIndex(0);
+    } else {
+      setHistory((prev) => [...prev.slice(0, historyIndex + 1), nextProject]);
+      setHistoryIndex((prev) => prev + 1);
+    }
+
+    try {
+      localStorage.setItem('reel_caption_project_v2', JSON.stringify(nextProject));
+    } catch {}
+
     setAudioDuration(audio.duration);
     handleSeek(0);
+
+    // Automatically switch to Transcript tab and trigger AI analysis & caption synchronization
+    setLeftTab('transcript');
+    syncAudioWithTranscript(nextProject, false);
+  };
+
+  const handleAudioRemoved = () => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+      } catch {}
+    }
+    if (bgMusicRef.current) {
+      try {
+        bgMusicRef.current.pause();
+        bgMusicRef.current.currentTime = 0;
+      } catch {}
+    }
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setAudioDuration(0);
+
+    // Strip any lingering ?clipId=... or ?projectId=... from the URL
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const clearedProject: CaptionProject = {
+      ...project,
+      title: 'Untitled Reel',
+      audio: undefined,
+      transcript: [],
+      captionGroups: [],
+      syncedSegments: undefined,
+      rawTranscriptHindi: undefined,
+      rawTranscriptEnglish: undefined,
+      thumbnailSettings: undefined,
+      sourceClipId: undefined,
+      isAudioSynced: false,
+      syncVersion: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setProject(clearedProject);
+    // "not show history": completely clear the history stack so undo/redo does NOT show or resurrect old transcript
+    setHistory([clearedProject]);
+    setHistoryIndex(0);
+
+    // Switch view back to main video reel mode and assets tab
+    setCenterViewMode('video');
+    setLeftTab('assets');
+
+    try {
+      localStorage.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
+      localStorage.removeItem('reel_caption_project_v1');
+    } catch (e) {
+      console.warn('Failed to update storage on audio removal:', e);
+    }
+  };
+
+  const handleClearAllTranscript = () => {
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const clearedTranscriptProject: CaptionProject = {
+      ...project,
+      title: 'Untitled Reel',
+      transcript: [],
+      captionGroups: [],
+      syncedSegments: undefined,
+      rawTranscriptHindi: undefined,
+      rawTranscriptEnglish: undefined,
+      thumbnailSettings: undefined,
+      sourceClipId: undefined,
+      isAudioSynced: false,
+      syncVersion: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setProject(clearedTranscriptProject);
+    setHistory([clearedTranscriptProject]);
+    setHistoryIndex(0);
+    setCenterViewMode('video');
+
+    try {
+      localStorage.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
+    } catch {}
   };
 
   const handleFitModeChange = (mode: ImageFitMode) => {
@@ -733,76 +1069,6 @@ export default function CaptionMakerPage() {
     }));
   };
 
-  const syncAudioWithTranscript = useCallback(
-    async (targetProj: CaptionProject, silent = false): Promise<CaptionProject | null> => {
-      if (!targetProj.audio) return null;
-      setIsTranscribing(true);
-      try {
-        const res = await fetch('/api/caption-maker/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            storagePath: targetProj.audio.storagePath,
-            fileUrl: targetProj.audio.fileUrl,
-            preferredLanguage: targetProj.preferredLanguage || 'en',
-            fallbackHint: {
-              textHindi: targetProj.rawTranscriptHindi,
-              textEnglish: targetProj.rawTranscriptEnglish,
-              titleHindi: targetProj.title,
-              titleEnglish: targetProj.title,
-            },
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Failed to transcribe audio');
-        }
-
-        const lang = targetProj.preferredLanguage || 'en';
-        const resolvedTitle =
-          lang === 'hi'
-            ? data.titleHindi || targetProj.title
-            : data.titleEnglish || targetProj.title;
-
-        const preValidated: CaptionProject = {
-          ...targetProj,
-          title: resolvedTitle,
-          transcript: data.transcript,
-          captionGroups: data.captionGroups,
-          syncedSegments: data.syncedSegments || targetProj.syncedSegments,
-          rawTranscriptHindi: data.rawTranscriptHindi || targetProj.rawTranscriptHindi,
-          rawTranscriptEnglish: data.rawTranscriptEnglish || targetProj.rawTranscriptEnglish,
-          isAudioSynced: true,
-          syncVersion: 4,
-          updatedAt: new Date().toISOString(),
-        };
-
-        const healed = validateAndHealReelProject(
-          preValidated,
-          targetProj.audio?.duration || audioDuration
-        ).healedProject;
-
-        setProject(healed);
-        try {
-          localStorage.setItem('reel_caption_project_v2', JSON.stringify(healed));
-        } catch {}
-        setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
-        setHistoryIndex((prevIdx) => prevIdx + 1);
-        setLeftTab('transcript');
-        return healed;
-      } catch (err: any) {
-        if (!silent) {
-          alert(err.message || 'Transcription failed');
-        } else {
-          console.warn('Auto audio sync failed:', err);
-        }
-        return null;
-      } finally {
-        setIsTranscribing(false);
-      }
-    },
-    [historyIndex, audioDuration]
-  );
 
   const handleTranscribe = async () => {
     await syncAudioWithTranscript(project, false);
@@ -965,10 +1231,18 @@ export default function CaptionMakerPage() {
       audio: activeProj.audio,
       audioUrl: activeProj.audio?.fileUrl,
       audioPath: activeProj.audio?.storagePath,
+      voiceVolume: activeProj.voiceVolume ?? 1.0,
+      voiceMuted: activeProj.voiceMuted ?? false,
+      studioDenoise: activeProj.studioDenoise ?? false,
       transcript: activeProj.transcript,
       captionStyle: activeProj.captionStyle,
       captionGroups: activeProj.captionGroups,
-      outputSettings: activeProj.outputSettings,
+      bgMusic: activeProj.bgMusic,
+      preferredLanguage: activeProj.preferredLanguage,
+      sfxCues: activeProj.sfxCues,
+      autoSfxEnabled: activeProj.autoSfxEnabled !== false,
+      speaker1Color: activeProj.speaker1Color,
+      speaker2Color: activeProj.speaker2Color,
       thumbnailDataUrl,
       mergeThumbnail: shouldMerge,
       thumbnailMergeMode: options?.thumbnailMergeMode || 'intro_and_poster',
@@ -1094,10 +1368,11 @@ export default function CaptionMakerPage() {
       {/* Audio Engine element */}
       <audio
         ref={audioRef}
-        src={project.audio?.fileUrl || '/sample-audio.mp3'}
+        src={project.audio?.fileUrl || undefined}
         onTimeUpdate={handleAudioTimeUpdate}
         onEnded={handleAudioEnded}
         onLoadedMetadata={(e) => {
+          if (!project.audio) return;
           const d = (e.target as HTMLAudioElement).duration;
           if (d && !isNaN(d) && isFinite(d) && d > 0) {
             const rounded = Number(d.toFixed(2));
@@ -1117,6 +1392,17 @@ export default function CaptionMakerPage() {
         }}
         preload="auto"
       />
+
+      {/* Background Music Engine element */}
+      {project.bgMusic?.fileUrl && (
+        <audio
+          ref={bgMusicRef}
+          src={project.bgMusic.fileUrl}
+          loop
+          preload="auto"
+          className="hidden"
+        />
+      )}
 
       {/* Top Navbar Header */}
       <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 flex items-center justify-between shrink-0 z-30">
@@ -1171,34 +1457,32 @@ export default function CaptionMakerPage() {
           />
 
           {/* Bilingual Language Switcher Toggle */}
-          {(project.rawTranscriptHindi || project.rawTranscriptEnglish) && (
-            <div className="flex items-center bg-zinc-800/90 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
-              <button
-                type="button"
-                onClick={() => handleSwitchLanguage('en')}
-                className={`px-2 py-0.5 rounded font-medium transition-all ${
-                  project.preferredLanguage === 'en'
-                    ? 'bg-amber-400 text-black shadow-sm font-semibold'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-                title="Show English captions"
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchLanguage('hi')}
-                className={`px-2 py-0.5 rounded font-medium transition-all ${
-                  project.preferredLanguage === 'hi'
-                    ? 'bg-amber-400 text-black shadow-sm font-semibold'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-                title="Show Hindi captions"
-              >
-                हिन्दी
-              </button>
-            </div>
-          )}
+          <div className="flex items-center bg-zinc-800/90 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
+            <button
+              type="button"
+              onClick={() => handleSwitchLanguage('en')}
+              className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
+                project.preferredLanguage === 'en'
+                  ? 'bg-amber-400 text-black shadow-sm font-semibold'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Show English captions"
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchLanguage('hi')}
+              className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
+                project.preferredLanguage === 'hi'
+                  ? 'bg-amber-400 text-black shadow-sm font-semibold'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Show Hindi captions"
+            >
+              हिन्दी
+            </button>
+          </div>
 
           {/* Live AI Pre-Check Verification Badge */}
           <button
@@ -1375,12 +1659,18 @@ export default function CaptionMakerPage() {
               <AssetUploadSection
                 image={project.image}
                 audio={project.audio}
-                onImageChange={(img, aud) => {
-                  if (img) handleImageUploaded(img, aud);
+                onImageChange={(img) => {
+                  if (img) handleImageUploaded(img);
                   else {
+                    const isAudioEmpty = !project.audio;
+                    if (isAudioEmpty) {
+                      setCenterViewMode('video');
+                    }
                     updateProjectWithHistory((prev) => ({
                       ...prev,
                       image: undefined,
+                      title: isAudioEmpty ? 'Untitled Reel' : prev.title,
+                      thumbnailSettings: isAudioEmpty ? undefined : prev.thumbnailSettings,
                       updatedAt: new Date().toISOString(),
                     }));
                   }
@@ -1388,11 +1678,7 @@ export default function CaptionMakerPage() {
                 onAudioChange={(aud) => {
                   if (aud) handleAudioUploaded(aud);
                   else {
-                    updateProjectWithHistory((prev) => ({
-                      ...prev,
-                      audio: undefined,
-                      updatedAt: new Date().toISOString(),
-                    }));
+                    handleAudioRemoved();
                   }
                 }}
                 onTranscribe={handleTranscribe}
@@ -1400,6 +1686,63 @@ export default function CaptionMakerPage() {
                 onFitModeChange={handleFitModeChange}
                 onPositionChange={handleImagePositionChange}
                 onScaleChange={handleImageScaleChange}
+                preferredLanguage={project.preferredLanguage || 'en'}
+                onLanguageChange={handleSwitchLanguage}
+                bgMusic={project.bgMusic}
+                onBgMusicChange={handleBgMusicChange}
+                voiceVolume={project.voiceVolume ?? 1.0}
+                voiceMuted={project.voiceMuted ?? false}
+                studioDenoise={project.studioDenoise ?? false}
+                onVoiceVolumeChange={(val) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    voiceVolume: val,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
+                onVoiceMutedChange={(muted) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    voiceMuted: muted,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
+                onStudioDenoiseChange={(denoise) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    studioDenoise: denoise,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
+                audioAnalysis={project.audioAnalysis}
+                sfxCues={project.sfxCues}
+                autoSfxEnabled={project.autoSfxEnabled !== false}
+                onAutoSfxEnabledChange={(enabled) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    autoSfxEnabled: enabled,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
+                fillerSegments={project.fillerSegments}
+                onTrimFillers={handleTrimFillers}
+                isTrimmingFillers={isTrimmingFillers}
+                speaker1Color={project.speaker1Color || '#FFFFFF'}
+                speaker2Color={project.speaker2Color || '#06B6D4'}
+                onSpeaker1ColorChange={(col) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    speaker1Color: col,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
+                onSpeaker2ColorChange={(col) => {
+                  updateProjectWithHistory((prev) => ({
+                    ...prev,
+                    speaker2Color: col,
+                    updatedAt: new Date().toISOString(),
+                  }));
+                }}
               />
             ) : (
               <div className="flex flex-col h-full gap-2">
@@ -1427,32 +1770,41 @@ export default function CaptionMakerPage() {
                     </button>
                   </div>
 
-                  {(project.rawTranscriptHindi || project.rawTranscriptEnglish) && (
-                    <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchLanguage('en')}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                          project.preferredLanguage === 'en'
-                            ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        English
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchLanguage('hi')}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                          project.preferredLanguage === 'hi'
-                            ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        हिन्दी
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchLanguage('en')}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                        project.preferredLanguage === 'en'
+                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      English
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchLanguage('hi')}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                        project.preferredLanguage === 'hi'
+                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      हिन्दी
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchLanguage('hinglish')}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                        project.preferredLanguage === 'hinglish'
+                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Hinglish
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0">
                   <TranscriptEditor
@@ -1460,6 +1812,7 @@ export default function CaptionMakerPage() {
                     currentTime={currentTime}
                     onUpdateGroups={handleUpdateGroups}
                     onSeek={handleSeek}
+                    onClearAll={handleClearAllTranscript}
                   />
                 </div>
               </div>
@@ -1553,6 +1906,10 @@ export default function CaptionMakerPage() {
                 onTogglePlay={togglePlay}
                 onSeek={handleSeek}
                 totalDuration={audioDuration}
+                speaker1Color={project.speaker1Color || '#FFFFFF'}
+                speaker2Color={project.speaker2Color || '#06B6D4'}
+                sfxCues={project.sfxCues}
+                autoSfxEnabled={project.autoSfxEnabled !== false}
               />
             )}
           </div>

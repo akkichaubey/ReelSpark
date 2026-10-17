@@ -717,6 +717,30 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               </div>
             </div>
 
+            {/* Auto Animated Emojis on Key Words (CapCut / Submagic Viral Style) */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-zinc-200 font-semibold text-xs">
+                    <span>🔥</span>
+                    <span>Auto Viral Emojis</span>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">
+                      Submagic style
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
+                    Bouncing animated emojis on key words (💰, 🔥, 🎯, 🚀, 💡, 🏆)
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={style.showEmojis !== false}
+                  onChange={(e) => update({ showEmojis: e.target.checked })}
+                  className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
+                />
+              </label>
+            </div>
+
             {/* Active Word Zoom / Scale Slider (Text Zoom Settings) */}
             <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">
               <div className="flex justify-between items-center text-zinc-300">

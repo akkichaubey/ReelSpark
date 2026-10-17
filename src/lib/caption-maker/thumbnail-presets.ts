@@ -279,10 +279,11 @@ export function createDefaultThumbnailSettings(
   fontFamily: string = 'Montserrat',
   highlightColor: string = '#FCD905'
 ): ThumbnailSettings {
-  const title = projectTitle?.trim() || 'CREATE VIRAL REELS IN SECONDS';
+  const isDefaultOrEmpty = !projectTitle || projectTitle === 'Untitled Reel' || projectTitle === 'Motivational Reel Captions';
+  const title = isDefaultOrEmpty ? 'CREATE VIRAL REELS IN SECONDS' : projectTitle.trim();
   return {
     title,
-    subtitle: 'Step-by-step masterclass with AI subtitles',
+    subtitle: isDefaultOrEmpty ? 'Hook viewers in the first 3 seconds' : 'Step-by-step masterclass with AI subtitles',
     badgeText: 'MUST WATCH',
     badgeStyle: 'solid',
     badgeColor: '#FCD905',
@@ -404,7 +405,7 @@ export async function renderThumbnailToCanvas(
         if (isContain) {
           // Sync 1:1 with Video Reel Contain Mode (Position, Scale & Padding)
           const scalePercent = imageAsset?.scale ?? 85;
-          const scaleMultiplier = Math.min(Math.max(scalePercent, 30), 100) / 100;
+          const scaleMultiplier = Math.min(Math.max(scalePercent, 30), 200) / 100;
           const paddingPx = Math.round(width * 0.025); // ~27px on 1080p, matching p-3 on video preview
 
           const maxBoxW = (width - paddingPx * 2) * scaleMultiplier;
