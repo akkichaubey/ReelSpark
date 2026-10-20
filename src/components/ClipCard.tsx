@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { ClipCandidate } from '@/lib/types';
 import { getBilingualCandidateData } from '@/lib/bilingual';
-import { SocialPostModal } from '@/components/caption-maker/SocialPostModal';
 
 interface ClipCardProps {
   candidate: ClipCandidate;
@@ -57,9 +56,27 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [copiedQuote, setCopiedQuote] = useState(false);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
-  const [showSocialModal, setShowSocialModal] = useState(false);
 
   const bData = getBilingualCandidateData(candidate, lang);
+
+  const handleSocialPostClick = () => {
+    try {
+      const socialContext = {
+        transcript:
+          lang === 'hi'
+            ? candidate.transcriptHindi || candidate.transcript
+            : candidate.transcriptEnglish || candidate.transcript,
+        title: bData.title,
+        duration: candidate.duration,
+        language: lang,
+        clipId: candidate.id,
+      };
+      localStorage.setItem('reel_social_post_context', JSON.stringify(socialContext));
+    } catch (e) {
+      console.warn('Could not save social post context', e);
+    }
+    router.push(`/social-post?clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
+  };
 
   const copyTextToClipboard = async (text: string, onSuccess: () => void) => {
     try {
@@ -392,9 +409,9 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           {/* AI Social Post */}
           <button
             type="button"
-            onClick={() => setShowSocialModal(true)}
+            onClick={handleSocialPostClick}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-            title="Generate viral hooks, post captions & hashtags with AI"
+            title="Open AI Social Post dedicated studio to generate viral hooks, post captions & hashtags"
           >
             <Share2 className="w-3.5 h-3.5 text-amber-400" />
             <span>Social Post</span>
@@ -482,20 +499,6 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           )}
         </div>
       </div>
-
-      {/* AI Social Media Post Copywriter Modal */}
-      <SocialPostModal
-        isOpen={showSocialModal}
-        onClose={() => setShowSocialModal(false)}
-        transcript={
-          lang === 'hi'
-            ? candidate.transcriptHindi || candidate.transcript
-            : candidate.transcriptEnglish || candidate.transcript
-        }
-        title={bData.title}
-        duration={candidate.duration}
-        initialLanguage={lang}
-      />
     </div>
   );
 };

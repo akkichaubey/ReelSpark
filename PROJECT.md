@@ -11,7 +11,7 @@ Every discovered clip is strictly capped at **60 seconds**, contextually verifie
 ## 2. Core Features
 
 - **Two Ingestion Workflows**:
-  - **Upload Video File**: Local upload (MP4, MOV, WEBM, AVI) with real-time stream inspection using FFprobe.
+  - **Upload Media File**: Local upload supporting video (MP4, MOV, WEBM, AVI, MKV) and audio (MP3, WAV, M4A, AAC, OGG) up to 500MB with real-time stream inspection using FFprobe. Supports large files with Next.js 500MB proxy streaming.
   - **Public YouTube URL**: Extract YouTube ID, query Gemini video semantics, and prompt for an authorized local file when ready for FFmpeg rendering.
 - **Strict 60-Second Cap**: All generated candidates are hard-capped at 60 seconds, with configurable presets (`≤15s`, `≤30s`, `≤45s`, `≤60s`, `Auto best`).
 - **7-Factor Editorial Scoring Engine (0 - 100)**:
@@ -271,11 +271,13 @@ Download MP4 & Word/Phrase-level SRT
 
 The Studio upgrade adds 10 specialized, production-ready modules powering `/caption-maker`:
 
-### 1. AI Reel Social Media Post Copywriter (`generate-social/route.ts`)
+### 1. Dedicated AI Reel Social Media Post Copywriter Studio (`/social-post`, `generate-social/route.ts`)
+- **Standalone Dedicated Page**: Accessible directly via `/social-post`, top navigation studio switcher, and clip cards.
 - **Clip-Isolated Processing**: Strictly analyzes only the active clip's audio and transcript—guaranteed never to leak or reprocess the long source video.
 - **Multilingual Support**: Hindi, English, and Hinglish generation.
 - **6 Editorial Tones**: Motivational, Educational, Storytelling, Viral/Entertaining, Emotional, and Professional.
 - **Structured Schema**: Produces 3 viral hook variations, 1 high-converting post caption with formatted emojis, 2 compelling calls to action (CTAs), and 15 targeted hashtags.
+- **Context Preservation**: Bridges clip transcripts seamlessly from Clip Finder cards, Caption Maker projects in LocalStorage, or direct custom transcript entry.
 
 ### 2. Custom Brand Style Presets ("Save As My Style") (`custom-presets.ts`)
 - Reusable typography and styling presets stored in browser LocalStorage.

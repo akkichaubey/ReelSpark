@@ -54,10 +54,11 @@ pnpm dev
 Navigate to:
 - **AI Clip Finder**: [http://localhost:3000](http://localhost:3000)
 - **AI Reel Caption Studio**: [http://localhost:3000/caption-maker](http://localhost:3000/caption-maker)
+- **AI Social Post Studio**: [http://localhost:3000/social-post](http://localhost:3000/social-post)
 
 ### 4. Run Automated Tests
 ```bash
-# Run comprehensive 56-suite test runner
+# Run comprehensive 57-suite test runner
 pnpm test
 
 # Run Next.js production build check
@@ -69,7 +70,7 @@ pnpm build
 ## 📖 Complete Documentation
 
 - See [PROJECT.md](PROJECT.md) for complete architectural documentation, AI pipeline details, FFmpeg filter graphs, and security design.
-- See [TESTING.md](TESTING.md) for the automated test matrix covering all 56 verification suites.
+- See [TESTING.md](TESTING.md) for the automated test matrix covering all 57 verification suites.
 
 ---
 

@@ -84,7 +84,7 @@ export function saveProjectSnapshot(
   try {
     const snapshots = getProjectSnapshots();
     const newSnapshot: ProjectSnapshot = {
-      id: `snap_${Date.now()}`,
+      id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       timestamp: Date.now(),
       label,
       wordCount: project.transcript ? project.transcript.length : 0,

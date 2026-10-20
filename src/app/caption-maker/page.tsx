@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   CaptionProject,
   CaptionGroup,
@@ -29,7 +30,6 @@ import { ThumbnailPreview } from '@/components/caption-maker/ThumbnailPreview';
 import { OutputSettingsPanel } from '@/components/caption-maker/OutputSettingsPanel';
 import { ExportModal } from '@/components/caption-maker/ExportModal';
 import { KeyboardShortcutsDialog } from '@/components/caption-maker/KeyboardShortcutsDialog';
-import { SocialPostModal } from '@/components/caption-maker/SocialPostModal';
 import { SmartEditorModal } from '@/components/caption-maker/SmartEditorModal';
 import { ProjectHistoryModal } from '@/components/caption-maker/ProjectHistoryModal';
 import {
@@ -63,9 +63,12 @@ import {
   Loader2,
   AlertCircle,
   History,
+  Share2,
 } from 'lucide-react';
 
 export default function CaptionMakerPage() {
+  const router = useRouter();
+
   // --- Project State & Undo/Redo History ---
   const [project, setProject] = useState<CaptionProject>(() =>
     createDefaultCaptionProject()
@@ -89,7 +92,6 @@ export default function CaptionMakerPage() {
   // Modals & History
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
-  const [isSocialModalOpen, setIsSocialModalOpen] = useState<boolean>(false);
   const [isSmartEditorOpen, setIsSmartEditorOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
@@ -1565,6 +1567,13 @@ export default function CaptionMakerPage() {
               <Film className="w-3 h-3" />
               Clip Finder
             </Link>
+            <Link
+              href="/social-post"
+              className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
+            >
+              <Share2 className="w-3 h-3 text-amber-400" />
+              AI Social Post
+            </Link>
           </div>
         </div>
 
@@ -1757,16 +1766,6 @@ export default function CaptionMakerPage() {
             </span>
           </button>
 
-          {/* AI Social Post Copy Generator */}
-          <button
-            type="button"
-            onClick={() => setIsSocialModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs shadow-sm active:scale-95 transition-all cursor-pointer"
-            title="Generate Viral Hooks, Post Captions, CTAs & Hashtags with AI"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">AI Social Post</span>
-          </button>
 
           {/* Render / Export Modal Trigger */}
           <button
@@ -2194,24 +2193,8 @@ export default function CaptionMakerPage() {
         }}
         onOpenSocialPost={() => {
           setIsExportOpen(false);
-          setIsSocialModalOpen(true);
+          router.push('/social-post');
         }}
-      />
-
-      {/* AI Social Media Post Copywriter Modal */}
-      <SocialPostModal
-        isOpen={isSocialModalOpen}
-        onClose={() => setIsSocialModalOpen(false)}
-        transcript={
-          project.preferredLanguage === 'hi'
-            ? project.rawTranscriptHindi || project.transcript.map((w) => w.text).join(' ')
-            : project.preferredLanguage === 'hinglish'
-            ? project.rawTranscriptHinglish || project.transcript.map((w) => w.text).join(' ')
-            : project.rawTranscriptEnglish || project.transcript.map((w) => w.text).join(' ')
-        }
-        title={project.title}
-        duration={audioDuration}
-        initialLanguage={project.preferredLanguage || 'en'}
       />
 
       {/* AI Smart Editing & Silence Studio Modal */}

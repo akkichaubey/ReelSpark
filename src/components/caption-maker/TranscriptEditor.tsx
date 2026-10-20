@@ -145,41 +145,48 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   return (
     <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
       {/* Header & Controls */}
-      <div className="p-3.5 bg-zinc-950/70 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-zinc-100 text-sm tracking-wide">
-              Transcript & Captions
-            </h3>
-            <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full font-mono">
+      <div className="p-3 bg-zinc-950/80 border-b border-zinc-800 space-y-2.5">
+        {/* Row 1: Title and Status Badges */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-bold text-zinc-100 text-sm tracking-tight whitespace-nowrap">
+            Transcript & Captions
+          </h3>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full font-mono whitespace-nowrap border border-zinc-700/60 shadow-sm leading-none flex items-center">
               {totalWords} words
             </span>
-            <span className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
-              <Star className="w-3 h-3 fill-amber-400" /> {importantCount} highlighted
+            <span className="text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono whitespace-nowrap flex items-center gap-1 shadow-sm leading-none">
+              <Star className="w-3 h-3 fill-amber-400 shrink-0" />
+              <span>{importantCount} highlighted</span>
             </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Click words to edit or toggle emphasis. Audio stays perfectly synchronized.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Subtitle / Tip */}
+        <p className="text-[11px] text-zinc-400 leading-snug">
+          Click words to edit or toggle emphasis. Audio stays perfectly synchronized.
+        </p>
+
+        {/* Row 2: Action Buttons */}
+        <div className="flex items-center gap-2 pt-0.5">
           <button
+            type="button"
             onClick={handleAutoDetectAll}
             title="Auto-detect emotional/motivational keywords"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            Auto-Detect Keywords
+            <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <span>Auto-Detect Keywords</span>
           </button>
           {groups.length > 0 && onClearAll && (
             <button
+              type="button"
               onClick={onClearAll}
               title="Delete all transcript words and captions"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Clear Captions
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Clear Captions</span>
             </button>
           )}
         </div>

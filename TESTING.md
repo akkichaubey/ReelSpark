@@ -6,7 +6,7 @@ This document describes the automated test matrix, verification procedures, and 
 
 ## 1. Automated Test Execution
 
-Run the complete 56-suite test runner:
+Run the complete 58-suite test runner:
 
 ```bash
 # Direct node execution (reliable across Windows CMD and Linux)
@@ -25,7 +25,7 @@ pnpm build
 
 ---
 
-## 2. Complete Automated Test Matrix (56 Suites)
+## 2. Complete Automated Test Matrix (58 Suites)
 
 | Test # | Test Name | File Under Test | Scope & Verification Objectives |
 | :---: | :--- | :--- | :--- |
@@ -85,6 +85,8 @@ pnpm build
 | **54** | Advanced Multi-Resolution Export | `export-settings.ts` | 720p/1080p/2K/4K, 24/25/30/60 FPS, CRF quality, bitrate controls |
 | **55** | AI Smart Editing — Silence Studio | `smart-editor.ts` | Pause detection, filler jump-cuts, viral hook analyzer |
 | **56** | Project Autosave & Crash Recovery | `project-storage.ts` | Debounced autosave, version snapshots, duplicate, `.reelproj` |
+| **57** | Dedicated AI Social Post Studio Page | `social-post/page.tsx` | Clip context preservation, navigation bridge, and multi-tone generation |
+| **58** | Large Media & Audio Upload Support | `media-validation.ts` | 500MB upload allowance, `.m4a` audio validation, and Next.js `proxyClientMaxBodySize` configuration |
 
 ---
 
@@ -92,7 +94,7 @@ pnpm build
 
 Before releasing or deploying changes:
 1. **Automated Unit & Integration Tests**:
-   Ensure all 56 tests pass with 0 failures:
+   Ensure all 58 tests pass with 0 failures:
    ```bash
    cmd.exe /c node ./node_modules/tsx/dist/cli.mjs tests/test_suite.ts
    ```

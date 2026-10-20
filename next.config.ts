@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
     'remotion',
     'gsap',
   ],
+  experimental: {
+    proxyClientMaxBodySize: '500mb',
+  },
   turbopack: {
     rules: {
       "*.css": {

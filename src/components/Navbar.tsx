@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, PlusCircle, ChevronDown } from 'lucide-react';
+import { Film, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, PlusCircle, ChevronDown, Share2 } from 'lucide-react';
 
 interface NavbarProps {
   systemStatus: {
@@ -23,7 +23,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const pathname = usePathname();
   const isCaptionMaker = pathname === '/caption-maker';
-  const isClipFinder = !isCaptionMaker;
+  const isSocialPost = pathname === '/social-post';
+  const isClipFinder = !isCaptionMaker && !isSocialPost;
 
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 sm:px-8 py-3.5 flex items-center justify-between">
@@ -67,6 +68,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Sparkles className={`w-3.5 h-3.5 ${isCaptionMaker ? 'text-zinc-950' : 'text-amber-400'}`} />
             <span>AI Caption Maker</span>
+          </Link>
+          <Link
+            href="/social-post"
+            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+              isSocialPost
+                ? 'bg-amber-400 text-zinc-950 shadow-sm font-bold'
+                : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Share2 className={`w-3.5 h-3.5 ${isSocialPost ? 'text-zinc-950' : 'text-amber-400'}`} />
+            <span>AI Social Post</span>
           </Link>
         </div>
       </div>

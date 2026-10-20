@@ -56,6 +56,7 @@ import {
   FillerSegment,
   SyncedPhraseSegment,
 } from '../src/lib/caption-maker/types';
+import { validateUpload, MAX_UPLOAD_BYTES } from '../src/lib/media-validation';
 import { extractAudioFromVideo, detectBestVideoEncoder, cleanupTempStorage } from '../src/lib/caption-maker/ffmpeg-renderer';
 import { devanagariToHinglish, getKeywordEmoji, enrichWordsWithEmojis } from '../src/lib/caption-maker/hinglish-and-emoji';
 import { PRESET_BGM_TRACKS } from '../src/lib/caption-maker/sample-data';
@@ -3038,6 +3039,111 @@ async function runAllTests() {
     clearProjectFromLocalStorage();
     clearAllSnapshots();
     delete (global as any).window;
+  });
+
+  // 57. Dedicated AI Social Post Page Context & Navigation Bridge
+  await test('57. Dedicated AI Social Post Page Context & Navigation Bridge', async () => {
+    const { POST } = await import('../src/app/api/caption-maker/generate-social/route');
+    const { saveProjectToLocalStorage, clearProjectFromLocalStorage } = await import('../src/lib/caption-maker/project-storage');
+    const { createDefaultCaptionProject } = await import('../src/lib/caption-maker/sample-data');
+
+    // 1. Mock LocalStorage Environment
+    const mockStorage: Record<string, string> = {};
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => mockStorage[key] || null,
+        setItem: (key: string, val: string) => {
+          mockStorage[key] = val;
+        },
+        removeItem: (key: string) => {
+          delete mockStorage[key];
+        },
+      },
+    };
+
+    // 2. Test ClipCard navigation context serialization
+    const testClipContext = {
+      transcript: 'Success comes to those who refuse to quit when things get hard.',
+      title: 'Mindset of Winners',
+      duration: 45,
+      language: 'en' as const,
+      clipId: 'clip_winner_99',
+    };
+    (global as any).window.localStorage.setItem('reel_social_post_context', JSON.stringify(testClipContext));
+
+    const retrievedContextRaw = (global as any).window.localStorage.getItem('reel_social_post_context');
+    assert.ok(retrievedContextRaw, 'Should retrieve stored social post context');
+    const parsedContext = JSON.parse(retrievedContextRaw!);
+    assert.strictEqual(parsedContext.clipId, 'clip_winner_99');
+    assert.strictEqual(parsedContext.title, 'Mindset of Winners');
+    assert.strictEqual(parsedContext.duration, 45);
+
+    // 3. Test generate-social endpoint using the context data
+    const req = new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: parsedContext.transcript,
+        title: parsedContext.title,
+        duration: parsedContext.duration,
+        language: parsedContext.language,
+        tone: 'educational',
+        platform: 'all',
+      }),
+    });
+    const res = await POST(req as any);
+    assert.strictEqual(res.status, 200, 'Context payload must successfully generate social post');
+    const data = await res.json();
+    assert.strictEqual(data.success, true);
+    assert.ok(data.bundle.hooks.length >= 3);
+    assert.ok(data.bundle.variations.length === 3);
+
+    // 4. Test CaptionMaker fallback bridge (when no clip session context is present)
+    (global as any).window.localStorage.removeItem('reel_social_post_context');
+    const studioProject = createDefaultCaptionProject();
+    studioProject.title = 'Studio Project Reel';
+    studioProject.rawTranscriptHindi = 'सपने वो नहीं जो सोते हुए देखे जाएं, बल्कि वो हैं जो सोने ना दें।';
+    studioProject.preferredLanguage = 'hi';
+    saveProjectToLocalStorage(studioProject);
+
+    const savedProjectRaw = (global as any).window.localStorage.getItem('reel_caption_project_v2');
+    assert.ok(savedProjectRaw, 'CaptionMaker project must be stored in localStorage');
+    const parsedProject = JSON.parse(savedProjectRaw!);
+    assert.strictEqual(parsedProject.preferredLanguage, 'hi');
+    assert.ok(parsedProject.rawTranscriptHindi.includes('सपने'));
+
+    // Clean up
+    clearProjectFromLocalStorage();
+    (global as any).window.localStorage.removeItem('reel_social_post_context');
+    delete (global as any).window;
+  });
+
+  await test('Test 58: Large Media & Audio Upload Support (500MB allowance, .m4a format validation, and Next.js proxyClientMaxBodySize config)', async () => {
+    // 1. Verify MAX_UPLOAD_BYTES is 500MB
+    assert.strictEqual(MAX_UPLOAD_BYTES, 500 * 1024 * 1024, 'Max upload bytes must be 500MB');
+
+    // 2. Test audio file validation for .m4a, .mp3, .wav up to 500MB
+    const mockFile30MB = {
+      name: 'सोचना बंद करो, जीना शुरू करो। OSHO HINDI SPEECH_128k.m4a',
+      size: 30.7 * 1024 * 1024,
+    } as any;
+    const err30MB = validateUpload(mockFile30MB, ['video', 'audio']);
+    assert.strictEqual(err30MB, null, '30.7MB .m4a audio file must pass validation without error');
+
+    // 3. Test rejection for files exceeding 500MB
+    const mockFileOver500MB = {
+      name: 'too_large_audio.m4a',
+      size: 501 * 1024 * 1024,
+    } as any;
+    const errOver500MB = validateUpload(mockFileOver500MB, ['video', 'audio']);
+    assert.ok(errOver500MB && errOver500MB.includes('500 MB'), 'Files >500MB must be rejected');
+
+    // 4. Verify next.config.ts configures proxyClientMaxBodySize to 500mb
+    const nextConfigContent = fs.readFileSync(path.join(process.cwd(), 'next.config.ts'), 'utf-8');
+    assert.ok(
+      nextConfigContent.includes("proxyClientMaxBodySize: '500mb'"),
+      'next.config.ts must configure experimental.proxyClientMaxBodySize to 500mb to prevent Next.js proxy request body truncation'
+    );
   });
 
   console.log('\n======================================================');
