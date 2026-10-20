@@ -14,6 +14,11 @@ import {
 import { hexToRgba } from '@/lib/caption-maker/sample-data';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '@/lib/caption-maker/hinglish-and-emoji';
+import {
+  getNinePositionCoordinates,
+  applyWordTransform,
+  resolveNinePosition,
+} from '@/lib/caption-maker/text-transform';
 
 
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -44,6 +49,7 @@ interface CaptionPreviewProps {
   speaker2Color?: string;
   sfxCues?: SfxCue[];
   autoSfxEnabled?: boolean;
+  onUpdateStyle?: (updates: Partial<CaptionStyle>) => void;
 }
 
 export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
@@ -61,6 +67,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   speaker2Color,
   sfxCues,
   autoSfxEnabled = true,
+  onUpdateStyle,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -216,30 +223,24 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     }
   };
 
-  // Vertical & Horizontal position styling matching ASS anchor coordinates 1:1
-  const getPositionStyles = (): React.CSSProperties => {
-    const isCustomX = captionStyle.textAlign === 'custom' || captionStyle.position === 'custom';
-    const posX = isCustomX ? `${captionStyle.customX ?? 50}%` : '50%';
+  // Unified 9-position anchor and coordinates
+  const coords = getNinePositionCoordinates(
+    captionStyle.position,
+    captionStyle.customX,
+    captionStyle.customY,
+    captionStyle.textAlign
+  );
 
-    if (captionStyle.position === 'top') {
-      return { top: '18%', left: posX, transform: 'translate(-50%, 0)' };
-    }
-    if (captionStyle.position === 'center') {
-      return { top: '50%', left: posX, transform: 'translate(-50%, -50%)' };
-    }
-    if (captionStyle.position === 'bottom') {
-      return { top: '82%', left: posX, transform: 'translate(-50%, -100%)' };
-    }
+  const getPositionStyles = (): React.CSSProperties => {
     return {
-      top: `${captionStyle.customY ?? 20}%`,
-      left: posX,
-      transform: 'translate(-50%, -50%)',
+      top: coords.top,
+      left: coords.left,
+      transform: coords.transform,
     };
   };
 
-  const textAlign = captionStyle.textAlign === 'custom' ? 'center' : (captionStyle.textAlign || 'center');
-  const justifyAlign =
-    textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
+  const textAlign = coords.textAlign;
+  const justifyAlign = coords.alignItems;
 
   // Compute text shadow / neon glow based on textEffect
   const getTextShadow = (): string => {
@@ -335,7 +336,22 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       >
         {/* 1. Background Media Layer (Video or Image) */}
         {image ? (
-          (image.fitMode || 'contain') === 'contain' ? (
+          (image.fitMode || 'cover') === 'blur' ? (
+            <>
+              {isVideo ? (
+                <video src={image.fileUrl} muted playsInline className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image.fileUrl} alt="" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
+              )}
+              {isVideo ? (
+                <video src={image.fileUrl} muted playsInline className="absolute inset-0 w-full h-full object-contain" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image.fileUrl} alt={image.fileName} className="absolute inset-0 w-full h-full object-contain" />
+              )}
+            </>
+          ) : (image.fitMode || 'cover') === 'contain' ? (
             <div
               className="absolute inset-0 flex p-3 overflow-hidden"
               style={{
@@ -402,15 +418,100 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
           </div>
         )}
 
-        {/* 2. Safe Area Guides Overlay */}
+        {/* 2. Professional 9:16 Social Safe Area & 9-Position Guides Overlay */}
         {captionStyle.showSafeArea && (
-          <div className="absolute inset-x-6 inset-y-12 border-2 border-dashed border-sky-400/35 rounded-xl pointer-events-none z-10 flex flex-col justify-between p-2">
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-start">
-              SAFE AREA TOP
-            </span>
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-end">
-              REEL UI SAFE ZONE
-            </span>
+          <div className="absolute inset-0 pointer-events-none z-15 overflow-hidden select-none animate-in fade-in duration-200">
+            {/* Top Danger Zone (Instagram Stories / Reels Search & Audio header) */}
+            <div className="absolute inset-x-0 top-0 h-[14%] bg-red-950/25 border-b border-red-500/35 flex items-center justify-between px-3">
+              <span className="text-[9px] font-mono font-bold tracking-wider text-red-300/80 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-500/30">
+                TOP UI DANGER ZONE (14%)
+              </span>
+              <span className="text-[8px] font-mono text-red-400/60 hidden sm:inline">
+                Reels Header / Audio bar
+              </span>
+            </div>
+
+            {/* Bottom Danger Zone (Handle, Caption description & Audio disc) */}
+            <div className="absolute inset-x-0 bottom-0 h-[22%] bg-red-950/25 border-t border-red-500/35 flex flex-col justify-end p-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-mono font-bold tracking-wider text-red-300/80 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-500/30">
+                  BOTTOM UI DANGER ZONE (22%)
+                </span>
+                <span className="text-[8px] font-mono text-red-400/60 hidden sm:inline">
+                  @handle & description
+                </span>
+              </div>
+            </div>
+
+            {/* Right Action Icons Danger Zone (Like, Comment, Share, Remix, Sound Disc) */}
+            <div className="absolute right-0 top-[38%] bottom-[22%] w-[15%] bg-amber-950/25 border-l border-amber-500/35 flex flex-col items-center justify-around py-2">
+              <span className="text-[7px] font-mono text-amber-300/80 font-bold -rotate-90 whitespace-nowrap bg-amber-950/80 px-1 py-0.2 rounded border border-amber-500/30">
+                ACTION BAR
+              </span>
+              <div className="flex flex-col gap-2 items-center opacity-60">
+                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">♥</div>
+                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">💬</div>
+                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">↗</div>
+              </div>
+            </div>
+
+            {/* Inner Content Safe Action Zone (80% Safe Box) */}
+            <div className="absolute left-[10%] right-[15%] top-[14%] bottom-[22%] border-2 border-dashed border-sky-400/50 rounded-xl flex flex-col justify-between p-2 pointer-events-none">
+              <div className="flex items-center justify-between">
+                <span className="text-[8px] font-mono text-sky-300 font-bold bg-sky-950/85 border border-sky-400/40 px-1.5 py-0.5 rounded">
+                  SAFE ACTION ZONE
+                </span>
+                <span className="text-[8px] font-mono text-amber-400 font-bold bg-zinc-950/90 border border-amber-500/50 px-1.5 py-0.5 rounded">
+                  Anchor: {coords.ninePos.toUpperCase()}
+                </span>
+              </div>
+
+              {/* 9 Visual Anchor Reference Points */}
+              <div className="absolute inset-2 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                {(
+                  [
+                    'top-left', 'top-center', 'top-right',
+                    'center-left', 'center', 'center-right',
+                    'bottom-left', 'bottom-center', 'bottom-right',
+                  ] as const
+                ).map((posKey) => {
+                  const isActive = coords.ninePos === posKey;
+                  return (
+                    <div
+                      key={posKey}
+                      className={`flex items-center justify-center ${
+                        posKey.includes('left')
+                          ? 'justify-start'
+                          : posKey.includes('right')
+                          ? 'justify-end'
+                          : 'justify-center'
+                      } ${
+                        posKey.startsWith('top')
+                          ? 'items-start'
+                          : posKey.startsWith('bottom')
+                          ? 'items-end'
+                          : 'items-center'
+                      }`}
+                    >
+                      <div
+                        className={`transition-all ${
+                          isActive
+                            ? 'w-3.5 h-3.5 rounded-full bg-amber-400 ring-4 ring-amber-400/30 border border-black shadow-lg animate-pulse'
+                            : 'w-1.5 h-1.5 rounded-full bg-white/20'
+                        }`}
+                        title={`Anchor: ${posKey}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="text-right">
+                <span className="text-[8px] font-mono text-sky-400/70 bg-sky-950/60 px-1 py-0.2 rounded">
+                  9:16 REEL PREVIEW
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -457,7 +558,12 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             displayWord && (() => {
               const animPreset = captionStyle.animationPreset;
               const isLetterPreset = animPreset?.startsWith('letters-');
-              const soloWordText = captionStyle.uppercase ? displayWord.text.toUpperCase() : displayWord.text;
+              const soloWordText = applyWordTransform(
+                displayWord.text,
+                captionStyle.textTransform,
+                captionStyle.uppercase,
+                true
+              );
 
               let soloAnimStyle: React.CSSProperties = {};
               if (animPreset === 'words-slide-up') {
@@ -582,7 +688,13 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
               >
                 {displayGroup.words.map((w, idx) => {
                   const isCurrent = displayWord?.id === w.id;
-                  const wordText = captionStyle.uppercase ? w.text.toUpperCase() : w.text;
+                  const isSentenceStart = idx === 0 || /[.!?]$/.test(displayGroup.words[idx - 1]?.text || '');
+                  const wordText = applyWordTransform(
+                    w.text,
+                    captionStyle.textTransform,
+                    captionStyle.uppercase,
+                    isSentenceStart
+                  );
                   const matchedEmoji = w.emoji || getKeywordEmoji(w.text);
                   const showWordEmoji = captionStyle.showEmojis !== false && matchedEmoji && isCurrent;
 
@@ -746,9 +858,26 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       {/* Preset & Time Badge underneath preview */}
       <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
         <span className="capitalize">{outputSettings.preset.replace('-', ' ')}</span>
-        <span className="text-zinc-200">
-          {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
-        </span>
+        <div className="flex items-center gap-2">
+          {onUpdateStyle && (
+            <button
+              type="button"
+              onClick={() => onUpdateStyle({ showSafeArea: !captionStyle.showSafeArea })}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
+                captionStyle.showSafeArea
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-400/50 shadow-sm'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+              title="Toggle 9:16 Social Safe Area & 9-Position Guides"
+            >
+              <span>🛡️</span>
+              <span>Safe Area: {captionStyle.showSafeArea ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+          <span className="text-zinc-200 font-bold">
+            {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
+          </span>
+        </div>
       </div>
     </div>
   );

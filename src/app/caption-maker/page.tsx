@@ -29,6 +29,16 @@ import { ThumbnailPreview } from '@/components/caption-maker/ThumbnailPreview';
 import { OutputSettingsPanel } from '@/components/caption-maker/OutputSettingsPanel';
 import { ExportModal } from '@/components/caption-maker/ExportModal';
 import { KeyboardShortcutsDialog } from '@/components/caption-maker/KeyboardShortcutsDialog';
+import { SocialPostModal } from '@/components/caption-maker/SocialPostModal';
+import { SmartEditorModal } from '@/components/caption-maker/SmartEditorModal';
+import { ProjectHistoryModal } from '@/components/caption-maker/ProjectHistoryModal';
+import {
+  saveProjectToLocalStorage,
+  saveProjectSnapshot,
+  detectCrashRecovery,
+  ProjectSnapshot,
+} from '@/lib/caption-maker/project-storage';
+import { groupTranscriptWords } from '@/lib/caption-maker/caption-grouping';
 import {
   createDefaultThumbnailSettings,
   renderThumbnailToCanvas,
@@ -51,6 +61,8 @@ import {
   Image as ImageIcon,
   ShieldCheck,
   Loader2,
+  AlertCircle,
+  History,
 } from 'lucide-react';
 
 export default function CaptionMakerPage() {
@@ -74,9 +86,15 @@ export default function CaptionMakerPage() {
   const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('layout');
 
-  // Modals
+  // Modals & History
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+  const [isSocialModalOpen, setIsSocialModalOpen] = useState<boolean>(false);
+  const [isSmartEditorOpen, setIsSmartEditorOpen] = useState<boolean>(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
+  const [crashRecoverySnapshot, setCrashRecoverySnapshot] = useState<ProjectSnapshot | null>(null);
+  const isInitialMount = useRef<boolean>(true);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
 
@@ -118,15 +136,8 @@ export default function CaptionMakerPage() {
           ) {
             parsed.image = undefined;
           } else if (parsed.image) {
-            // Default any unset or previous default values to contain, bottom-left, and 100% scale
-            if (!parsed.image.fitMode || parsed.image.fitMode === 'cover') {
-              parsed.image.fitMode = 'contain';
-            }
-            if (!parsed.image.position || parsed.image.position === 'center') {
-              parsed.image.position = 'bottom-left';
-            }
-            if (parsed.image.scale === undefined || parsed.image.scale === 85) {
-              parsed.image.scale = 100;
+            if (!parsed.image.fitMode) {
+              parsed.image.fitMode = 'cover';
             }
           }
           if (!parsed.audio) {
@@ -209,6 +220,10 @@ export default function CaptionMakerPage() {
       } else {
         setLeftTab('assets');
       }
+      const recovery = detectCrashRecovery(restoredParsed);
+      if (recovery.hasRecovery && recovery.recoverySnapshot) {
+        setCrashRecoverySnapshot(recovery.recoverySnapshot);
+      }
       return;
     }
 
@@ -276,6 +291,10 @@ export default function CaptionMakerPage() {
               setAudioDuration(dynamicReelProj.audio.duration);
             }
             setLeftTab('transcript');
+            const recovery = detectCrashRecovery(dynamicReelProj);
+            if (recovery.hasRecovery && recovery.recoverySnapshot) {
+              setCrashRecoverySnapshot(recovery.recoverySnapshot);
+            }
             return;
           }
         }
@@ -290,6 +309,10 @@ export default function CaptionMakerPage() {
       setAudioDuration(fallbackProj.audio.duration);
     } else {
       setAudioDuration(0);
+    }
+    const recovery = detectCrashRecovery(fallbackProj);
+    if (recovery.hasRecovery && recovery.recoverySnapshot) {
+      setCrashRecoverySnapshot(recovery.recoverySnapshot);
     }
   }, []);
 
@@ -388,6 +411,18 @@ export default function CaptionMakerPage() {
       }
       setIsPlaying(false);
     } else {
+      const trimStart = project.trimRange?.start ?? 0;
+      const trimEnd =
+        project.trimRange?.end && project.trimRange.end > 0
+          ? project.trimRange.end
+          : audioDuration;
+
+      // Ensure playback starts within trimmed bounds
+      if (currentTime < trimStart || (trimEnd > 0 && currentTime >= trimEnd)) {
+        audioRef.current.currentTime = trimStart;
+        setCurrentTime(trimStart);
+      }
+
       try {
         const p = audioRef.current.play();
         if (p !== undefined) {
@@ -412,7 +447,19 @@ export default function CaptionMakerPage() {
       }
       setIsPlaying(true);
     }
-  }, [isPlaying, project.bgMusic, currentTime]);
+  }, [isPlaying, project.bgMusic, project.trimRange, currentTime, audioDuration]);
+
+  // Handle trim range change from timeline drag handles
+  const handleTrimChange = useCallback(
+    (start: number, end: number) => {
+      updateProjectWithHistory((prev) => ({
+        ...prev,
+        trimRange: { start, end },
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [updateProjectWithHistory]
+  );
 
   useEffect(() => {
     return () => {
@@ -451,7 +498,7 @@ export default function CaptionMakerPage() {
     [audioDuration, project.bgMusic]
   );
 
-  // 60fps playhead sync using requestAnimationFrame with live Auto-Ducking
+  // 60fps playhead sync using requestAnimationFrame with live Auto-Ducking and Trim boundary looping
   useEffect(() => {
     if (!isPlaying) return;
     let rafId: number | null = null;
@@ -459,6 +506,12 @@ export default function CaptionMakerPage() {
       if (audioRef.current && !audioRef.current.paused) {
         const cur = audioRef.current.currentTime;
         setCurrentTime(cur);
+
+        // Trim boundary enforcement: loop back or pause when reaching trimEnd
+        if (project.trimRange && project.trimRange.end > 0 && cur >= project.trimRange.end) {
+          audioRef.current.currentTime = project.trimRange.start;
+          setCurrentTime(project.trimRange.start);
+        }
 
         // Live Auto-Ducking in browser preview (VN & Instagram Style)
         if (bgMusicRef.current && project.bgMusic?.fileUrl) {
@@ -481,12 +534,17 @@ export default function CaptionMakerPage() {
         cancelAnimationFrame(rafId);
       }
     };
-  }, [isPlaying, project.bgMusic, project.transcript]);
+  }, [isPlaying, project.bgMusic, project.transcript, project.trimRange]);
 
   // Audio element events
   const handleAudioTimeUpdate = () => {
     if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+      const cur = audioRef.current.currentTime;
+      setCurrentTime(cur);
+      if (project.trimRange && project.trimRange.end > 0 && cur >= project.trimRange.end) {
+        audioRef.current.currentTime = project.trimRange.start;
+        setCurrentTime(project.trimRange.start);
+      }
     }
   };
 
@@ -515,15 +573,54 @@ export default function CaptionMakerPage() {
     }
   }, [project.bgMusic]);
 
-  // Save project to localStorage
+  // Debounced Autosave to localStorage
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    setAutosaveStatus('saving');
+    const timer = setTimeout(() => {
+      saveProjectToLocalStorage(project);
+      setAutosaveStatus('saved');
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [project]);
+
+  // Save project to localStorage and generate manual snapshot
   const handleSaveProject = () => {
     try {
-      localStorage.setItem('reel_caption_project_v2', JSON.stringify(project));
+      saveProjectToLocalStorage(project);
+      saveProjectSnapshot(project, 'Manual Save');
+      setAutosaveStatus('saved');
       setSaveSuccessNotice(true);
       setTimeout(() => setSaveSuccessNotice(false), 2500);
     } catch (e) {
       console.error('Save failed:', e);
     }
+  };
+
+  // Restore project from version snapshot
+  const handleRestoreProject = (restored: CaptionProject) => {
+    setProject(restored);
+    setHistory([restored]);
+    setHistoryIndex(0);
+    if (restored.audio?.duration) {
+      setAudioDuration(restored.audio.duration);
+    }
+    saveProjectToLocalStorage(restored);
+    setCrashRecoverySnapshot(null);
+  };
+
+  // Duplicate current project into a fresh working project
+  const handleDuplicateProject = (duplicated: CaptionProject) => {
+    setProject(duplicated);
+    setHistory([duplicated]);
+    setHistoryIndex(0);
+    if (duplicated.audio?.duration) {
+      setAudioDuration(duplicated.audio.duration);
+    }
+    saveProjectToLocalStorage(duplicated);
   };
 
   const handleResetProject = () => {
@@ -600,8 +697,8 @@ export default function CaptionMakerPage() {
     updateProjectWithHistory((prev) => {
       const normalizedImage: ImageAsset = {
         ...image,
-        fitMode: image.fitMode || 'contain',
-        position: image.position || 'bottom-left',
+        fitMode: image.fitMode || 'cover',
+        position: image.position || 'center',
         scale: image.scale ?? 100,
       };
       return {
@@ -730,8 +827,8 @@ export default function CaptionMakerPage() {
         width,
         height,
         format: 'png',
-        fitMode: 'contain',
-        position: 'bottom-left',
+        fitMode: 'cover',
+        position: 'center',
         scale: 100,
         mediaType: 'image',
       };
@@ -1243,6 +1340,7 @@ export default function CaptionMakerPage() {
       autoSfxEnabled: activeProj.autoSfxEnabled !== false,
       speaker1Color: activeProj.speaker1Color,
       speaker2Color: activeProj.speaker2Color,
+      outputSettings: activeProj.outputSettings,
       thumbnailDataUrl,
       mergeThumbnail: shouldMerge,
       thumbnailMergeMode: options?.thumbnailMergeMode || 'intro_and_poster',
@@ -1404,6 +1502,35 @@ export default function CaptionMakerPage() {
         />
       )}
 
+      {/* Crash Recovery Notification Banner */}
+      {crashRecoverySnapshot && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 z-40 relative">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Auto-Recovery Found:</strong> An unsaved snapshot from{' '}
+              {new Date(crashRecoverySnapshot.timestamp).toLocaleTimeString()} ({crashRecoverySnapshot.wordCount} words) was found.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleRestoreProject(crashRecoverySnapshot.project)}
+              className="px-2.5 py-1 bg-amber-400 text-black font-semibold rounded hover:bg-amber-300 transition-colors shadow-sm cursor-pointer"
+            >
+              Restore Session
+            </button>
+            <button
+              type="button"
+              onClick={() => setCrashRecoverySnapshot(null)}
+              className="px-2 py-1 bg-zinc-800 text-zinc-400 hover:text-white rounded transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Navbar Header */}
       <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 flex items-center justify-between shrink-0 z-30">
         {/* Brand & Studio Switcher */}
@@ -1556,6 +1683,29 @@ export default function CaptionMakerPage() {
             <Keyboard className="w-3.5 h-3.5" />
           </button>
 
+          {/* Autosave Status Indicator */}
+          <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/60 border border-zinc-700/50 text-[11px] text-zinc-400">
+            <span
+              className={`w-2 h-2 rounded-full transition-colors ${
+                autosaveStatus === 'saving'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-emerald-400'
+              }`}
+            />
+            <span>{autosaveStatus === 'saving' ? 'Saving...' : 'Autosaved'}</span>
+          </div>
+
+          {/* Version Snapshots Modal Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsHistoryModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Project Version History & Snapshots"
+          >
+            <History className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Versions</span>
+          </button>
+
           {/* Save */}
           <button
             onClick={handleSaveProject}
@@ -1605,6 +1755,17 @@ export default function CaptionMakerPage() {
             >
               {project.outputSettings.aspectRatio}
             </span>
+          </button>
+
+          {/* AI Social Post Copy Generator */}
+          <button
+            type="button"
+            onClick={() => setIsSocialModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs shadow-sm active:scale-95 transition-all cursor-pointer"
+            title="Generate Viral Hooks, Post Captions, CTAs & Hashtags with AI"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">AI Social Post</span>
           </button>
 
           {/* Render / Export Modal Trigger */}
@@ -1727,6 +1888,7 @@ export default function CaptionMakerPage() {
                 fillerSegments={project.fillerSegments}
                 onTrimFillers={handleTrimFillers}
                 isTrimmingFillers={isTrimmingFillers}
+                onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
                 speaker1Color={project.speaker1Color || '#FFFFFF'}
                 speaker2Color={project.speaker2Color || '#06B6D4'}
                 onSpeaker1ColorChange={(col) => {
@@ -1910,6 +2072,9 @@ export default function CaptionMakerPage() {
                 speaker2Color={project.speaker2Color || '#06B6D4'}
                 sfxCues={project.sfxCues}
                 autoSfxEnabled={project.autoSfxEnabled !== false}
+                onUpdateStyle={(updates) =>
+                  handleChangeStyle({ ...project.captionStyle, ...updates })
+                }
               />
             )}
           </div>
@@ -1970,6 +2135,7 @@ export default function CaptionMakerPage() {
                 <OutputSettingsPanel
                   settings={project.outputSettings}
                   onChangeSettings={handleChangeOutput}
+                  audioDuration={audioDuration}
                 />
               </div>
             ) : rightTab === 'thumbnail' ? (
@@ -2001,8 +2167,12 @@ export default function CaptionMakerPage() {
           currentTime={currentTime}
           isPlaying={isPlaying}
           groups={project.captionGroups}
+          trimRange={project.trimRange}
           onSeek={handleSeek}
           onTogglePlay={togglePlay}
+          onTrimChange={handleTrimChange}
+          onUpdateGroups={handleUpdateGroups}
+          onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
         />
       </footer>
 
@@ -2012,6 +2182,7 @@ export default function CaptionMakerPage() {
         onClose={() => setIsExportOpen(false)}
         project={project}
         onStartRender={handleStartRender}
+        onUpdateOutputSettings={handleChangeOutput}
         isRendering={isRendering}
         renderProgress={renderProgress}
         renderStatusText={renderStatusText}
@@ -2021,12 +2192,84 @@ export default function CaptionMakerPage() {
           setRightTab('thumbnail');
           setCenterViewMode('thumbnail');
         }}
+        onOpenSocialPost={() => {
+          setIsExportOpen(false);
+          setIsSocialModalOpen(true);
+        }}
+      />
+
+      {/* AI Social Media Post Copywriter Modal */}
+      <SocialPostModal
+        isOpen={isSocialModalOpen}
+        onClose={() => setIsSocialModalOpen(false)}
+        transcript={
+          project.preferredLanguage === 'hi'
+            ? project.rawTranscriptHindi || project.transcript.map((w) => w.text).join(' ')
+            : project.preferredLanguage === 'hinglish'
+            ? project.rawTranscriptHinglish || project.transcript.map((w) => w.text).join(' ')
+            : project.rawTranscriptEnglish || project.transcript.map((w) => w.text).join(' ')
+        }
+        title={project.title}
+        duration={audioDuration}
+        initialLanguage={project.preferredLanguage || 'en'}
+      />
+
+      {/* AI Smart Editing & Silence Studio Modal */}
+      <SmartEditorModal
+        isOpen={isSmartEditorOpen}
+        onClose={() => setIsSmartEditorOpen(false)}
+        words={project.transcript}
+        captionGroups={project.captionGroups}
+        totalDuration={audioDuration}
+        audio={project.audio}
+        fillerSegments={project.fillerSegments}
+        onApplyTrimmedAudio={(data) => {
+          setAudioDuration(data.duration);
+          updateProjectWithHistory((prev) => ({
+            ...prev,
+            audio: prev.audio
+              ? {
+                  ...prev.audio,
+                  fileUrl: data.audioUrl,
+                  storagePath: data.storagePath || prev.audio.storagePath,
+                  duration: data.duration,
+                }
+              : undefined,
+            transcript: data.transcript,
+            captionGroups: data.captionGroups,
+            fillerSegments: [],
+            isAudioSynced: true,
+            syncVersion: 4,
+            updatedAt: new Date().toISOString(),
+          }));
+        }}
+        onUpdateWords={(updatedWords) => {
+          const newGroups = groupTranscriptWords(updatedWords, 4);
+          updateProjectWithHistory((prev) => ({
+            ...prev,
+            transcript: updatedWords,
+            captionGroups: newGroups,
+            updatedAt: new Date().toISOString(),
+          }));
+        }}
+        onSetTrimRange={(range) => {
+          handleTrimChange(range.start, range.end);
+        }}
       />
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
+      />
+
+      {/* Project Version History, Snapshots & Crash Recovery Modal */}
+      <ProjectHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        currentProject={project}
+        onRestoreProject={handleRestoreProject}
+        onDuplicateProject={handleDuplicateProject}
       />
     </div>
   );

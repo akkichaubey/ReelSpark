@@ -6,6 +6,7 @@ import { getFfmpegPath, getFfprobePath } from '../config';
 import { escapeFilterPath, detectBestVideoEncoder, cleanupTempStorage } from '../ffmpeg';
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, SfxCue, TranscriptWord } from './types';
 import { generateAssSubtitles } from './ass-generator';
+import { buildFfmpegEncodingArgs } from './export-settings';
 
 const execFileAsync = promisify(execFile);
 
@@ -207,8 +208,8 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     words,
     style,
     outputSettings,
-    imageFitMode = 'contain',
-    imagePosition = 'bottom-left',
+    imageFitMode = 'cover',
+    imagePosition = 'center',
     imageScale = 100,
     bgMusicPath,
     onProgress,
@@ -245,7 +246,9 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
   const { padX, padY } = getImagePositionPadCoords(imagePosition);
   let filterComplex = '';
 
-  if (imageFitMode === 'contain') {
+  if (imageFitMode === 'blur') {
+    filterComplex = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=25:5[bg];[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,subtitles='${escapedAss}'[outv]`;
+  } else if (imageFitMode === 'contain') {
     if (scalePct <= 1.0) {
       filterComplex = `[0:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${width}:${height}:${padX}:${padY}:color=black,subtitles='${escapedAss}'[outv]`;
     } else {
@@ -351,16 +354,7 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     : [];
 
   const encoder = await detectBestVideoEncoder();
-  const encoderArgs: string[] = ['-c:v', encoder];
-  if (encoder === 'libx264') {
-    encoderArgs.push('-preset', 'fast', '-crf', '22', '-pix_fmt', 'yuv420p');
-  } else if (encoder === 'h264_nvenc') {
-    encoderArgs.push('-preset', 'p4', '-pix_fmt', 'yuv420p');
-  } else if (encoder === 'h264_qsv') {
-    encoderArgs.push('-global_quality', '23', '-pix_fmt', 'nv12');
-  } else {
-    encoderArgs.push('-pix_fmt', 'yuv420p');
-  }
+  const { videoArgs, audioArgs } = buildFfmpegEncodingArgs(outputSettings, encoder);
 
   const audioMapArgs = ['-map', '[outa]'];
 
@@ -373,9 +367,8 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     '-filter_complex', filterComplex + audioFilter,
     '-map', '[outv]',
     ...audioMapArgs,
-    ...encoderArgs,
-    '-c:a', 'aac',
-    '-b:a', '192k',
+    ...videoArgs,
+    ...audioArgs,
     '-shortest',
     '-t', audioDuration.toFixed(2),
     outputPath,

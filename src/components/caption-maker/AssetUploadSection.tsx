@@ -44,6 +44,12 @@ import {
   SfxCue,
 } from '@/lib/caption-maker/types';
 import { PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
+import {
+  getCustomBgmTracks,
+  saveCustomBgmTrack,
+  deleteCustomBgmTrack,
+  validateBgmFile,
+} from '@/lib/caption-maker/custom-bgm';
 
 interface AssetUploadSectionProps {
   image?: ImageAsset;
@@ -76,6 +82,7 @@ interface AssetUploadSectionProps {
   onScaleChange?: (scale: number) => void;
   preferredLanguage?: 'en' | 'hi' | 'hinglish';
   onLanguageChange?: (lang: 'en' | 'hi' | 'hinglish') => void;
+  onOpenSmartEditor?: () => void;
 }
 
 export const POS_ALIGNMENT: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -138,6 +145,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   onScaleChange,
   preferredLanguage = 'en',
   onLanguageChange,
+  onOpenSmartEditor,
 }) => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -150,7 +158,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isUploadingBgm, setIsUploadingBgm] = useState(false);
+  const [customBgmTracks, setCustomBgmTracks] = useState<BgMusicTrack[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Load custom BGM library from localStorage
+  React.useEffect(() => {
+    setCustomBgmTracks(getCustomBgmTracks());
+  }, []);
 
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -171,30 +185,55 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   };
 
   const handleCustomBgmUpload = async (file: File) => {
+    setUploadError(null);
+    const validation = validateBgmFile(file);
+    if (!validation.valid) {
+      setUploadError(validation.error || 'Invalid audio file');
+      return;
+    }
+
     try {
       setIsUploadingBgm(true);
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('type', 'bgm');
-      const res = await fetch('/api/files/upload', {
+      formData.append('type', 'audio');
+      const res = await fetch('/api/caption-maker/upload', {
         method: 'POST',
         body: formData,
       });
       const data = await res.json();
-      if (data?.fileUrl) {
-        onBgMusicChange?.({
+      if (!res.ok || !data?.success || !data.asset) {
+        throw new Error(data?.error || 'Unable to upload background music');
+      }
+      if (data.asset.fileUrl) {
+        const newTrack: BgMusicTrack = {
           id: `custom_bgm_${Date.now()}`,
           title: file.name.replace(/\.[^/.]+$/, ''),
-          fileUrl: data.fileUrl,
-          storagePath: data.storagePath,
+          fileUrl: data.asset.fileUrl,
+          storagePath: data.asset.storagePath,
           volume: 0.2,
           custom: true,
-        });
+          fadeInDuration: 0.8,
+          fadeOutDuration: 1.2,
+          autoDucking: true,
+        };
+        const updated = saveCustomBgmTrack(newTrack);
+        setCustomBgmTracks(updated);
+        onBgMusicChange?.(newTrack);
       }
-    } catch (err) {
-      console.error('Custom BGM upload error:', err);
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to upload custom background music');
     } finally {
       setIsUploadingBgm(false);
+    }
+  };
+
+  const handleDeleteCustomBgm = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = deleteCustomBgmTrack(id);
+    setCustomBgmTracks(updated);
+    if (bgMusic?.id === id) {
+      onBgMusicChange?.(undefined);
     }
   };
 
@@ -335,7 +374,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         {image ? (
           <div className="space-y-3">
             <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/60 aspect-[16/9] flex items-center justify-center group">
-              {(image.fitMode || 'contain') === 'contain' ? (
+              {(image.fitMode || 'cover') === 'contain' ? (
                 <div
                   className="w-full h-full flex p-1.5 transition-all duration-200"
                   style={{
@@ -429,13 +468,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <span>Fit Mode:</span>
               </span>
               <div className="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-white/10 text-[10px] font-semibold">
-                {(['cover', 'contain'] as ImageFitMode[]).map((mode) => (
+                {(['cover', 'contain', 'blur'] as ImageFitMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => onFitModeChange(mode)}
                     className={`px-2 py-0.5 rounded uppercase transition-all cursor-pointer ${
-                      (image.fitMode || 'contain') === mode
+                      (image.fitMode || 'cover') === mode
                         ? 'bg-white text-zinc-950 font-bold shadow-sm'
                         : 'text-zinc-400 hover:text-white'
                     }`}
@@ -447,7 +486,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </div>
 
             {/* 9 Positioning Options when Contain is selected */}
-            {(image.fitMode || 'contain') === 'contain' && (
+            {(image.fitMode || 'cover') === 'contain' && (
               <div className="pt-2.5 border-t border-white/5 space-y-2.5 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-zinc-300 font-medium flex items-center space-x-1.5">
@@ -840,32 +879,46 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </div>
             )}
 
-            {/* 2. AI Smart Silence & Filler Trimmer ("AI Jump-Cutter") */}
-            {fillerSegments && fillerSegments.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
-                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                    AI Jump-Cutter
-                  </span>
+            {/* 2. AI Smart Editing & Silence Studio ("AI Jump-Cutter") */}
+            <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                  AI Smart Edit & Silence Studio
+                </span>
+                {fillerSegments && fillerSegments.length > 0 && (
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50">
-                    {fillerSegments.length} Gaps Detected
+                    {fillerSegments.length} Gaps
                   </span>
-                </div>
-                <p className="text-[10px] text-zinc-300">
-                  Detected filler words (&ldquo;{fillerSegments.slice(0, 3).map((f) => f.text).join('&rdquo;, &ldquo;')}&rdquo;) & pauses.
-                </p>
-                <button
-                  type="button"
-                  onClick={onTrimFillers}
-                  disabled={isTrimmingFillers}
-                  className="w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Scissors className="w-3.5 h-3.5" />
-                  <span>{isTrimmingFillers ? 'Trimming & Re-aligning...' : '✂️ 1-Click Jump-Cut (Clean Audio)'}</span>
-                </button>
+                )}
               </div>
-            )}
+              <p className="text-[10px] text-zinc-300">
+                Auto-detect dead air, awkward pauses, and viral hook moments on this clip.
+              </p>
+              <div className="flex items-center gap-2">
+                {onOpenSmartEditor && (
+                  <button
+                    type="button"
+                    onClick={onOpenSmartEditor}
+                    className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Open Smart Studio</span>
+                  </button>
+                )}
+                {fillerSegments && fillerSegments.length > 0 && onTrimFillers && (
+                  <button
+                    type="button"
+                    onClick={onTrimFillers}
+                    disabled={isTrimmingFillers}
+                    className="py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    <span>{isTrimmingFillers ? 'Trimming...' : 'Quick Trim'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
             {/* 3. AI Auto-Sound Effects (SFX) Track Card */}
             <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
@@ -1133,19 +1186,64 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </button>
             );
           })}
+          </div>
+
+          {/* User's Custom Uploaded BGM Library */}
+          {customBgmTracks.length > 0 && (
+            <div className="space-y-1.5 pt-1 border-t border-white/5">
+              <span className="text-[10px] text-zinc-400 font-semibold block">
+                My Uploaded Music ({customBgmTracks.length})
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {customBgmTracks.map((customTrack) => {
+                  const isSelected = bgMusic?.id === customTrack.id;
+                  return (
+                    <div
+                      key={customTrack.id}
+                      onClick={() =>
+                        onBgMusicChange?.({
+                          ...customTrack,
+                          volume: bgMusic?.volume ?? 0.2,
+                        })
+                      }
+                      className={`p-2 rounded-lg border text-left flex items-center justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-purple-500/20 border-purple-500/50 text-white font-semibold shadow-sm'
+                          : 'bg-zinc-950/60 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-1 flex items-center gap-1.5">
+                        <span className="text-[10px]">🎵</span>
+                        <span className="text-xs truncate">{customTrack.title}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteCustomBgm(e, customTrack.id)}
+                          title="Remove track from library"
+                          className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Upload Custom Track Trigger Button */}
           <button
             type="button"
             onClick={() => bgmCustomInputRef.current?.click()}
-            className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border text-left flex items-center justify-between transition-all cursor-pointer ${
-              bgMusic?.custom
-                ? 'bg-purple-500/20 border-purple-500/50 text-white font-semibold'
-                : 'bg-zinc-950/60 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-            }`}
+            disabled={isUploadingBgm}
+            className="w-full py-2 px-3 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500/60 bg-purple-950/20 hover:bg-purple-950/40 text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 disabled:opacity-50"
           >
-            <span className="truncate">{isUploadingBgm ? 'Uploading...' : bgMusic?.custom ? bgMusic.title : '+ Custom Track'}</span>
-            {bgMusic?.custom && <Check className="w-3 h-3 text-purple-400 shrink-0" />}
+            <UploadCloud className="w-4 h-4 text-purple-400" />
+            <span>{isUploadingBgm ? 'Uploading Track...' : '+ Upload Custom MP3 / WAV Music'}</span>
           </button>
-        </div>
 
         <input
           ref={bgmCustomInputRef}

@@ -5,6 +5,7 @@ import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath, sanitizeFilename } from '@/lib/storage';
 import { probeAudioDuration, extractAudioFromVideo } from '@/lib/caption-maker/ffmpeg-renderer';
 import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
+import { validateUpload } from '@/lib/media-validation';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,11 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+    const permittedKinds = type === 'image' ? ['image'] as const : type === 'video' ? ['video'] as const : ['audio', 'video'] as const;
+    const uploadError = validateUpload(file, [...permittedKinds]);
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError }, { status: 400 });
     }
 
     const safeName = sanitizeFilename(file.name);
@@ -119,8 +125,8 @@ export async function POST(req: NextRequest) {
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
-        fitMode: 'contain',
-        position: 'bottom-left',
+        fitMode: 'cover',
+        position: 'center',
         scale: 100,
         mediaType: 'video',
         duration: Math.round(duration * 100) / 100,
@@ -143,8 +149,8 @@ export async function POST(req: NextRequest) {
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
-        fitMode: 'contain',
-        position: 'bottom-left',
+        fitMode: 'cover',
+        position: 'center',
         scale: 100,
         mediaType: 'image',
       };

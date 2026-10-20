@@ -199,6 +199,10 @@ pnpm test:e2e
   - `storage/projects/{id}/srt/`
   - `storage/projects/{id}/zips/`
 - **Temp Cleanup**: Automated eviction of temporary processing files.
+- **Local-only by default**: Requests from non-local hosts are rejected unless
+  `REELSPARK_ALLOW_REMOTE=true` is deliberately configured behind authentication.
+- **Bounded uploads**: Media uploads are limited to 500 MB and checked against
+  the supported extension set before disk processing.
 
 ---
 
@@ -260,4 +264,72 @@ Download MP4 & Word/Phrase-level SRT
    - Keyboard shortcuts (`Space` to toggle play/pause, `←/→` to seek, `R` to render, `Ctrl+S` to save).
 6. **"Create Reel" Card Bridge**:
    - Every candidate card in the AI Clip Finder features a **Create Reel** button that automatically loads the clip's transcript, title, audio, and duration into the Caption Maker.
+
+---
+
+## 15. Professional AI Reel Studio Engine (Advanced Capabilities)
+
+The Studio upgrade adds 10 specialized, production-ready modules powering `/caption-maker`:
+
+### 1. AI Reel Social Media Post Copywriter (`generate-social/route.ts`)
+- **Clip-Isolated Processing**: Strictly analyzes only the active clip's audio and transcript—guaranteed never to leak or reprocess the long source video.
+- **Multilingual Support**: Hindi, English, and Hinglish generation.
+- **6 Editorial Tones**: Motivational, Educational, Storytelling, Viral/Entertaining, Emotional, and Professional.
+- **Structured Schema**: Produces 3 viral hook variations, 1 high-converting post caption with formatted emojis, 2 compelling calls to action (CTAs), and 15 targeted hashtags.
+
+### 2. Custom Brand Style Presets ("Save As My Style") (`custom-presets.ts`)
+- Reusable typography and styling presets stored in browser LocalStorage.
+- Built-in presets: Hormozi Pop, Devotional Gold, Beast Bold, Minimalist Modern, Cyberpunk Neon, and Elegant Serif.
+- Users can customize font family, size, weights, glow, stroke, active word color, text effects, background style, and save as their own named brand preset.
+
+### 3. Multi-Format Subtitle Exporter (`srt-generator.ts`)
+- Standalone `.srt` generation with relative zero-based offsets (`00:00:00,000`).
+- WebVTT (`.vtt`) format with cue indices, headers, and standard time formatting.
+- Plain text (`.txt`) transcript export in both paragraph and sentence-break formats.
+
+### 4. Interactive Waveform Drag Handles for Trimming (`CaptionTimeline.tsx`)
+- Visual audio waveform canvas with draggable start and end handles.
+- Snaps trim boundaries to speech word boundaries.
+- Live audition playback scoped strictly within the active trim range.
+
+### 5. Custom Background Music (BGM) Library (`custom-bgm.ts`)
+- Upload custom MP3 and WAV background audio tracks with client-side file size and MIME validation.
+- Persistent library storage in LocalStorage.
+- Dual audio mixer with master voice volume (up to 200%), background music volume (0% - 100%), loop toggle, and start offset.
+- Fade-in and fade-out envelope controls (0 to 5 seconds).
+- Intelligent speech auto-ducking that reduces BGM volume by 70% during active spoken speech segments.
+
+### 6. Text Transformations & 9-Position Safe Area Guides (`text-transform.ts`)
+- Real-time text case transforms: `uppercase`, `lowercase`, `sentence`, or `original` case.
+- Applied synchronously to Remotion/GSAP web preview and burned-in ASS FFmpeg subtitles.
+- 9-position anchor grid (Top-Left, Top-Center, Top-Right, Center-Left, Center-Center, Center-Right, Bottom-Left, Bottom-Center, Bottom-Right) with customizable X and Y offset percentages.
+- Instagram Reels & YouTube Shorts safe-zone overlay toggle (15% top margin, 20% bottom margin, 8% side margins).
+
+### 7. Word-Level Timing Adjustment Studio (`timing-adjuster.ts`)
+- Nudge individual word start/end timestamps by -100ms, -50ms, +50ms, or +100ms.
+- Snap word starts to the preceding word's end timestamp.
+- Distribute word durations evenly within phrases.
+- Acoustic gap detection identifying awkward pauses (>300ms) between adjacent words.
+
+### 8. Advanced Multi-Resolution Export Settings (`export-settings.ts`)
+- **Resolution Presets**: 720p HD, 1080p Full HD, 2K QHD, 4K UHD.
+- **Aspect Ratios**: 9:16 Vertical, 1:1 Square, 4:5 Portrait, 16:9 Landscape.
+- **Frame Rate Selection**: 24 FPS (Cinematic), 25 FPS (PAL), 30 FPS (Standard), 60 FPS (Ultra Smooth).
+- **Quality (CRF) Controls**: CRF 16 (Lossless/High), CRF 18 (Master), CRF 23 (Balanced), CRF 28 (Compact).
+- **Encoder Tuning**: Ultrafast, fast, medium, and slower CPU presets with audio bitrate options from 128k to 320k.
+- Automatic file size and render time estimations.
+
+### 9. AI Smart Editing — Silence Studio & Viral Highlight Analyzer (`smart-editor.ts`)
+- **Dead-Air & Silence Detection**: Scans transcript intervals and detects silences above a configurable threshold (0.3s to 2.0s).
+- **Verbal Filler Removal**: Detects speech hesitations ("umm", "uh", "you know", "like") and flags them for excision.
+- **Jump-Cut Audio Applicator**: Trims silences and filler segments while keeping word timestamps accurately synchronized.
+- **AI Viral Highlight Analyzer**: Calculates hook score (0-100), overall viral score, and identifies punchline keywords to automatically mark with viral highlight styling.
+
+### 10. Project Autosave, Version History Snapshots & Crash Recovery (`project-storage.ts`)
+- **Debounced Autosave (1200ms)**: Automatically syncs active project state to LocalStorage.
+- **Version History Snapshots**: Automatic and manual snapshot capture with FIFO capping at 10 snapshots.
+- **Project Duplication**: 1-click duplication generating fresh project IDs and cloned state.
+- **`.reelproj` JSON Export & Import**: Standardized project schema exchange format for backup and migration.
+- **Crash Recovery Guard**: Detects unsaved sessions on reload and presents an immediate 1-click restore banner.
+
 

@@ -1,4 +1,5 @@
 import { CaptionGroup, CaptionStyle, OutputSettings, TranscriptWord } from './types';
+import { getNinePositionCoordinates, applyWordTransform } from './text-transform';
 
 /**
  * Convert Hex/CSS color to ASS color format: &HBBGGRR& or &HAABBGGRR&
@@ -70,34 +71,16 @@ export function generateAssSubtitles(
       ? 0
       : Math.max(1, Math.round((style.shadowBlur || 6) * scaleFactor * 0.35));
 
-  // Alignment: 1=BL, 2=BC, 3=BR; 4=ML, 5=MC, 6=MR; 7=TL, 8=TC, 9=TR
-  let alignment = 2;
-  const isCustomX = style.textAlign === 'custom';
-  const alignCol = style.textAlign === 'left' ? 1 : style.textAlign === 'right' ? 3 : 2;
-
-  let posX = isCustomX
-    ? Math.round(((style.customX ?? 50) / 100) * width)
-    : style.textAlign === 'left'
-    ? Math.round(width * 0.08)
-    : style.textAlign === 'right'
-    ? Math.round(width * 0.92)
-    : Math.round(width / 2);
-
-  let posY = Math.round(height * 0.82); // default bottom
-
-  if (style.position === 'top') {
-    alignment = style.textAlign === 'left' ? 7 : style.textAlign === 'right' ? 9 : 8;
-    posY = Math.round(height * 0.18);
-  } else if (style.position === 'center') {
-    alignment = style.textAlign === 'left' ? 4 : style.textAlign === 'right' ? 6 : 5;
-    posY = Math.round(height * 0.5);
-  } else if (style.position === 'custom') {
-    alignment = style.textAlign === 'left' ? 4 : style.textAlign === 'right' ? 6 : 5;
-    posX = Math.round(((style.customX ?? 50) / 100) * width);
-    posY = Math.round(((style.customY ?? 20) / 100) * height);
-  } else {
-    alignment = alignCol;
-  }
+  // Unified 9-position anchor and coordinates
+  const coords = getNinePositionCoordinates(
+    style.position,
+    style.customX,
+    style.customY,
+    style.textAlign
+  );
+  const alignment = coords.assAlignment;
+  const posX = Math.round((coords.assXPercent / 100) * width);
+  const posY = Math.round((coords.assYPercent / 100) * height);
 
   // Header & Styles section (Spacing: 0 is mandatory for Devanagari ligatures, otherwise style.letterSpacing)
   const spacing = hasDevanagari ? 0 : Math.round(style.letterSpacing ?? 0);
@@ -122,7 +105,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (style.captionMode === 'word-by-word') {
     // Mode 1: Individual word events
     for (const word of words) {
-      const text = style.uppercase ? word.text.toUpperCase() : word.text;
+      const text = applyWordTransform(word.text, style.textTransform, style.uppercase, true);
       const startAss = formatAssTime(word.start);
       const endAss = formatAssTime(Math.max(word.start + 0.15, word.end));
 
@@ -170,7 +153,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         // Build formatted line: active word has highlight styling without \\k tags
         const lineParts = group.words.map((w, i) => {
-          const raw = style.uppercase ? w.text.toUpperCase() : w.text;
+          const isSentenceStart = i === 0 || /[.!?]$/.test(group.words[i - 1]?.text || '');
+          const raw = applyWordTransform(w.text, style.textTransform, style.uppercase, isSentenceStart);
           const isCurrent = i === wIdx;
 
           const isSpk2 = w.speakerId === 'Speaker 2' || w.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');

@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22 <25",
+    "pnpm": ">=12"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "tsx tests/test_suite.ts",
+    "test:qa": "tsx tests/qa_full_audit.ts",
     "test:e2e": "node scripts/test_api.js",
     "postinstall": "node scripts/patch-remotion.js"
   },

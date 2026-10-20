@@ -31,20 +31,21 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Copy dependency manifests
-COPY package*.json ./
+# Copy dependency manifests and use the pinned pnpm version.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable
 
-# Install dependencies
-RUN npm ci
+# Install exactly the dependency graph committed to the repository.
+RUN pnpm install --frozen-lockfile
 
 # Copy full application source
 COPY . .
 
 # Build Next.js application
-RUN npm run build
+RUN pnpm build
 
 # Expose server port
 EXPOSE 3000
 
 # Start production server
-CMD ["npm", "start"]
+CMD ["pnpm", "start"]

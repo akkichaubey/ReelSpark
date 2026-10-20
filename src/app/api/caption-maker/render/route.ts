@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
-import { assertSafePath, loadProject, sanitizeFilename } from '@/lib/storage';
+import { assertSafePath, assertStorageFile, loadProject, resolveStoragePath, sanitizeFilename } from '@/lib/storage';
 import { extractClipAudio } from '@/lib/ffmpeg';
 import { renderReelVideo, cleanupTempStorage } from '@/lib/caption-maker/ffmpeg-renderer';
 import { generatePhraseLevelSrt, generateWordLevelSrt } from '@/lib/caption-maker/srt-generator';
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, TranscriptWord } from '@/lib/caption-maker/types';
+import { DEFAULT_OUTPUT_SETTINGS } from '@/lib/caption-maker/sample-data';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
+import { validateCaptionRenderRequest } from '@/lib/media-validation';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const validationError = validateCaptionRenderRequest(body);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const {
       projectId = `reel_${Date.now()}`,
       imagePath: rawImagePath,
@@ -51,15 +55,12 @@ export async function POST(req: NextRequest) {
     // 1. Resolve image file path
     const imageUrl = rawImageUrl || body.image?.fileUrl;
     let imagePath = rawImagePath || body.image?.storagePath;
-
-    if (imagePath && !path.isAbsolute(imagePath)) {
-      imagePath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), imagePath);
-    }
+    if (imagePath) imagePath = assertStorageFile(imagePath);
 
     if ((!imagePath || !fs.existsSync(/*turbopackIgnore: true*/ imagePath)) && imageUrl) {
       if (imageUrl.includes('/api/files/')) {
         const rel = imageUrl.replace(/.*\/api\/files\//, '');
-        imagePath = path.join(APP_CONFIG.storageRoot, rel);
+        imagePath = resolveStoragePath(rel);
       } else if (imageUrl.includes('sample-image.jpg')) {
         imagePath = path.join(process.cwd(), 'public', 'sample-image.jpg');
       }
@@ -68,15 +69,12 @@ export async function POST(req: NextRequest) {
     // 2. Resolve audio file path
     const audioUrl = rawAudioUrl || body.audio?.fileUrl;
     let audioPath = rawAudioPath || body.audio?.storagePath;
-
-    if (audioPath && !path.isAbsolute(audioPath)) {
-      audioPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), audioPath);
-    }
+    if (audioPath) audioPath = assertStorageFile(audioPath);
 
     if ((!audioPath || !fs.existsSync(/*turbopackIgnore: true*/ audioPath)) && audioUrl) {
       if (audioUrl.includes('/api/files/')) {
         const rel = audioUrl.replace(/.*\/api\/files\//, '');
-        audioPath = path.join(APP_CONFIG.storageRoot, rel);
+        audioPath = resolveStoragePath(rel);
       } else if (audioUrl.includes('/clip-audio')) {
         // Extract project ID and clipId from /api/projects/:id/clip-audio?clipId=:clipId
         const match = audioUrl.match(/\/api\/projects\/([^/?#]+)\/clip-audio/);
@@ -152,8 +150,8 @@ export async function POST(req: NextRequest) {
       body.transcript ||
       (resolvedGroups.length > 0 ? resolvedGroups.flatMap((g) => g.words) : []);
 
-    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'contain';
-    const imagePosition = rawImagePosition || body.image?.position || 'bottom-left';
+    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'cover';
+    const imagePosition = rawImagePosition || body.image?.position || 'center';
     const imageScale = body.image?.scale ?? body.imageScale ?? 100;
     const mediaType: 'image' | 'video' = body.image?.mediaType || body.mediaType || 'image';
 
@@ -195,11 +193,13 @@ export async function POST(req: NextRequest) {
         bgMusicPath = path.join(process.cwd(), 'public', bgMusic.fileUrl.replace(/^\//, ''));
       } else if (bgMusic.fileUrl.includes('/api/files/')) {
         const rel = bgMusic.fileUrl.replace(/.*\/api\/files\//, '');
-        bgMusicPath = path.join(APP_CONFIG.storageRoot, rel);
+        bgMusicPath = resolveStoragePath(rel);
       } else if (bgMusic.storagePath && fs.existsSync(bgMusic.storagePath)) {
-        bgMusicPath = bgMusic.storagePath;
+        bgMusicPath = assertStorageFile(bgMusic.storagePath);
       }
     }
+
+    const resolvedOutputSettings: OutputSettings = outputSettings || DEFAULT_OUTPUT_SETTINGS;
 
     // 6. Render MP4 via FFmpeg with word-level ASS styling, hardware acceleration & dual audio mixing
     const renderRes = await renderReelVideo({
@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       groups: resolvedGroups,
       words: resolvedTranscript,
       style: captionStyle,
-      outputSettings,
+      outputSettings: resolvedOutputSettings,
       imageFitMode,
       imagePosition,
       imageScale,

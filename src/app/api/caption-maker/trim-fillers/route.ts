@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
+import { assertStorageFile, resolveStoragePath } from '@/lib/storage';
 import { probeVideo } from '@/lib/ffmpeg';
 import {
   computeKeepIntervals,
@@ -25,16 +26,22 @@ export async function POST(req: NextRequest) {
       sfxCues = [] as SfxCue[],
     } = body;
 
-    let targetPath = storagePath;
+    let targetPath: string | undefined;
+    if (storagePath) {
+      targetPath = assertStorageFile(storagePath);
+    }
 
     // Resolve from fileUrl if storagePath is not directly passed
     if ((!targetPath || !fs.existsSync(/*turbopackIgnore: true*/ targetPath)) && fileUrl) {
       const decodedUrl = decodeURIComponent(fileUrl);
       if (decodedUrl.startsWith('/api/files/')) {
         const relPart = decodedUrl.replace('/api/files/', '');
-        targetPath = path.join(APP_CONFIG.storageRoot, relPart);
+        targetPath = resolveStoragePath(relPart);
       } else if (decodedUrl.startsWith('/')) {
-        targetPath = path.join(process.cwd(), 'public', decodedUrl.replace(/^\/+/, ''));
+        const publicPath = path.resolve(process.cwd(), 'public', decodedUrl.replace(/^\/+/, ''));
+        const publicRoot = path.resolve(process.cwd(), 'public');
+        if (!publicPath.startsWith(`${publicRoot}${path.sep}`)) throw new Error('Invalid public media path');
+        targetPath = publicPath;
       }
     }
 

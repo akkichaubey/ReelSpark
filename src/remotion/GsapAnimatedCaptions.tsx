@@ -5,6 +5,7 @@ import { CaptionGroup, CaptionStyle, TranscriptWord } from '../lib/caption-maker
 import { hexToRgba } from '../lib/caption-maker/sample-data';
 import { getGoogleFontUrl } from '../lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '../lib/caption-maker/hinglish-and-emoji';
+import { getNinePositionCoordinates, applyWordTransform } from '../lib/caption-maker/text-transform';
 
 interface GsapAnimatedCaptionsProps {
   words: TranscriptWord[];
@@ -153,31 +154,26 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   };
 
   // Vertical & Horizontal position styling matching ASS/Preview anchors 1:1
-  const getContainerPositionStyles = (): React.CSSProperties => {
-    const isCustomX = style.textAlign === 'custom' || style.position === 'custom';
-    const posX = isCustomX ? `${style.customX ?? 50}%` : '50%';
+  const coords = getNinePositionCoordinates(
+    style.position,
+    style.customX,
+    style.customY,
+    style.textAlign
+  );
 
-    if (style.position === 'top') {
-      return { top: '18%', left: posX, transform: 'translateX(-50%)' };
-    }
-    if (style.position === 'center') {
-      return { top: '50%', left: posX, transform: 'translate(-50%, -50%)' };
-    }
-    if (style.position === 'bottom') {
-      return { top: '82%', left: posX, transform: 'translateX(-50%)' };
-    }
+  const getContainerPositionStyles = (): React.CSSProperties => {
     return {
-      top: `${style.customY ?? 20}%`,
-      left: posX,
-      transform: 'translate(-50%, -50%)',
+      top: coords.top,
+      left: coords.left,
+      transform: coords.transform,
     };
   };
 
   const getGroupVerticalAnchor = (): React.CSSProperties => {
-    if (style.position === 'bottom') {
+    if (coords.ninePos.startsWith('bottom')) {
       return { bottom: 0 };
     }
-    if (style.position === 'top') {
+    if (coords.ninePos.startsWith('top')) {
       return { top: 0 };
     }
     return { top: '50%', transform: 'translateY(-50%)' };
@@ -489,7 +485,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
           }}
         >
           {words.map((w) => {
-            const text = style.uppercase ? w.text.toUpperCase() : w.text;
+            const text = applyWordTransform(w.text, style.textTransform, style.uppercase, true);
             const isLetterPreset = style.animationPreset?.startsWith('letters-');
             const soloEmoji = w.emoji || getKeywordEmoji(w.text);
             return (
@@ -587,8 +583,9 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                     textAlign,
                   }}
                 >
-                  {group.words.map((w) => {
-                    const text = style.uppercase ? w.text.toUpperCase() : w.text;
+                  {group.words.map((w, wIndex) => {
+                    const isSentenceStart = wIndex === 0 || /[.!?]$/.test(group.words[wIndex - 1]?.text || '');
+                    const text = applyWordTransform(w.text, style.textTransform, style.uppercase, isSentenceStart);
                     const isWordBadge = style.highlightAnimation === 'background' || Boolean(style.activeWordBgColor);
                     const isLetterPreset = style.animationPreset?.startsWith('letters-');
                     const wordEmoji = w.emoji || getKeywordEmoji(w.text);
