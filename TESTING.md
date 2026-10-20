@@ -6,7 +6,7 @@ This document describes the automated test matrix, verification procedures, and 
 
 ## 1. Automated Test Execution
 
-Run the complete 58-suite test runner:
+Run the complete 60-suite test runner:
 
 ```bash
 # Direct node execution (reliable across Windows CMD and Linux)
@@ -25,7 +25,7 @@ pnpm build
 
 ---
 
-## 2. Complete Automated Test Matrix (58 Suites)
+## 2. Complete Automated Test Matrix (60 Suites)
 
 | Test # | Test Name | File Under Test | Scope & Verification Objectives |
 | :---: | :--- | :--- | :--- |
@@ -87,6 +87,15 @@ pnpm build
 | **56** | Project Autosave & Crash Recovery | `project-storage.ts` | Debounced autosave, version snapshots, duplicate, `.reelproj` |
 | **57** | Dedicated AI Social Post Studio Page | `social-post/page.tsx` | Clip context preservation, navigation bridge, and multi-tone generation |
 | **58** | Large Media & Audio Upload Support | `media-validation.ts` | 500MB upload allowance, `.m4a` audio validation, and Next.js `proxyClientMaxBodySize` configuration |
+| **59** | Clipping Studio Phase 1 Foundation | `contracts.ts`, `supabase.ts` | Media service contracts, timestamp parser, SQL migration, Supabase fallback |
+| **60** | Clipping Studio Phase 2 Timeline & Bulk | `contracts.ts`, `MediaLibrary.tsx` | Media range URLs, frame calculations, bulk timestamp line parser, non-destructive editing |
+| **61** | Clipping Studio Phase 3 Merge Studio | `merge-planner.ts`, `MergeStudio.tsx` | Independent multi-recipe builder, lossless stream-copy vs filter-complex concat planning, reordering |
+| **62** | Clipping Studio Phase 4 Export Queue | `export-engine.ts`, `ExportStudio.tsx` | Local FFmpeg export daemon on 127.0.0.1, stream copy, audio extraction, progress tracking, provenance |
+| **63** | Clipping Studio Phase 5 Persistence & Recovery | `local-persistence.ts`, `StudioNavbar.tsx` | Local persistence, project duplication, 30-step undo/redo, autosave crash snapshots, Supabase sync |
+| **64** | Social Media Reel Safe-Zone Measurement System | `safe-zone.ts`, `SafeAreaOverlay.tsx` | 8-section test suite verifying $1080 \times 1920$ canvas divisibility, 4 platform presets (Instagram, Facebook, Shorts, Threads), 4:5 and 1:1 mathematical derivation, responsive scaling invariance across $360\text{--}1080\text{px}$, custom overrides, and zero export bleeding |
+| **65** | Caption & Thumbnail Safe-Zone Two-Way Sync | `safe-zone.ts`, `ThumbnailPreview.tsx`, `page.tsx` | Two-way platform and override synchronization between video reel caption studio and thumbnail cover creator, 1:1 profile grid ($1080 \times 1080\,\text{px}$) and 4:5 in-feed ($1080 \times 1350\,\text{px}$) bounds, and format dimension checks |
+| **66** | Comprehensive Presets Analysis & Property Isolation | `sample-data.ts`, `thumbnail-presets.ts` | 7-section analysis verifying all 11 reel style presets, property bleed prevention, 6 thumbnail presets, 6 studio gradients, physical BGM audio file existence, and Indic/Devanagari grapheme cluster segmentation |
+| **67** | Safe Area Dimension & Codec Verification | `safe-zone.ts`, `ass-generator.ts` | Even-number codec checks, platform presets registry, safe area boundaries, ASS subtitle wrapping, and pre-flight validation |
 
 ---
 
@@ -94,12 +103,24 @@ pnpm build
 
 Before releasing or deploying changes:
 1. **Automated Unit & Integration Tests**:
-   Ensure all 58 tests pass with 0 failures:
+   Ensure all core tests pass with 0 failures:
    ```bash
-   cmd.exe /c node ./node_modules/tsx/dist/cli.mjs tests/test_suite.ts
+   pnpm test
    ```
-2. **Next.js Compilation & Type-Checking**:
-   Ensure 14/14 static and dynamic routes compile cleanly with zero TypeScript errors:
+2. **Specialized Safe-Zone & Preset Test Suites**:
    ```bash
-   cmd.exe /c node ./node_modules/next/dist/bin/next build
+   # Social Media Reel Safe-Zone Measurement System
+   pnpm test:safe-zone
+
+   # Caption & Thumbnail Safe-Zone Two-Way Sync
+   pnpm test:safe-sync
+
+   # Presets Comprehensive Analysis & Isolation
+   pnpm test:presets
+   ```
+3. **Next.js Compilation & Type-Checking**:
+   Ensure all static and dynamic routes compile cleanly with zero TypeScript errors:
+   ```bash
+   pnpm typecheck
+   pnpm build
    ```

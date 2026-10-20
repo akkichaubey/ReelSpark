@@ -728,6 +728,7 @@ export default function CaptionMakerPage() {
       return {
         ...project.thumbnailSettings,
         aspectRatio: initialThumbAspect,
+        safeZoneOverrides: project.thumbnailSettings.safeZoneOverrides || project.captionStyle?.safeZoneOverrides,
       };
     }
 
@@ -740,7 +741,7 @@ export default function CaptionMakerPage() {
         ? project.title
         : firstCaptionPhrase || 'CREATE VIRAL REELS IN SECONDS';
 
-    return createDefaultThumbnailSettings(
+    const defaults = createDefaultThumbnailSettings(
       resolvedTitle,
       initialThumbAspect,
       (project.captionStyle?.position as any) || 'top',
@@ -748,6 +749,12 @@ export default function CaptionMakerPage() {
       project.captionStyle?.fontFamily || 'Montserrat',
       project.captionStyle?.importantColor || '#FCD905'
     );
+
+    return {
+      ...defaults,
+      showSafeArea: project.captionStyle?.showSafeArea ?? true,
+      safeZoneOverrides: project.captionStyle?.safeZoneOverrides,
+    };
   }, [
     project.thumbnailSettings,
     project.title,
@@ -756,15 +763,33 @@ export default function CaptionMakerPage() {
     project.captionStyle?.customY,
     project.captionStyle?.fontFamily,
     project.captionStyle?.importantColor,
+    project.captionStyle?.showSafeArea,
+    project.captionStyle?.safeZoneOverrides,
     initialThumbAspect,
   ]);
 
   const handleChangeThumbnailSettings = (newSettings: ThumbnailSettings) => {
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      thumbnailSettings: newSettings,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      // Sync safe-zone platform/overrides to captionStyle so video reel view stays synchronized
+      const currentStyle = prev.captionStyle;
+      const syncedStyle: CaptionStyle = newSettings.safeZoneOverrides
+        ? {
+            ...currentStyle,
+            showSafeArea: newSettings.showSafeArea !== false,
+            safeZoneOverrides: {
+              ...currentStyle.safeZoneOverrides,
+              ...newSettings.safeZoneOverrides,
+            },
+          }
+        : currentStyle;
+
+      return {
+        ...prev,
+        captionStyle: syncedStyle,
+        thumbnailSettings: newSettings,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const handleDownloadThumbnail = async (format: 'png' | 'jpeg') => {
@@ -1197,11 +1222,27 @@ export default function CaptionMakerPage() {
   };
 
   const handleChangeStyle = (style: CaptionStyle) => {
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      captionStyle: style,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      // Sync safe-zone platform/overrides to thumbnailSettings so thumbnail view stays synchronized
+      const currentThumb = prev.thumbnailSettings || currentThumbSettings;
+      const syncedThumb: ThumbnailSettings = {
+        ...currentThumb,
+        showSafeArea: style.showSafeArea,
+        safeZoneOverrides: style.safeZoneOverrides
+          ? {
+              ...currentThumb.safeZoneOverrides,
+              ...style.safeZoneOverrides,
+            }
+          : currentThumb.safeZoneOverrides,
+      };
+
+      return {
+        ...prev,
+        captionStyle: style,
+        thumbnailSettings: syncedThumb,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const handleChangeOutput = (outputSettings: OutputSettings) => {
@@ -1212,15 +1253,27 @@ export default function CaptionMakerPage() {
           ? asp
           : '9:16';
 
+      const currentThumb = prev.thumbnailSettings || currentThumbSettings;
+      const presetPlatform = outputSettings.preset;
+
       return {
         ...prev,
         outputSettings,
-        thumbnailSettings: prev.thumbnailSettings
-          ? {
-              ...prev.thumbnailSettings,
-              aspectRatio: targetAspect,
-            }
-          : undefined,
+        captionStyle: {
+          ...prev.captionStyle,
+          safeZoneOverrides: {
+            ...prev.captionStyle.safeZoneOverrides,
+            platform: presetPlatform,
+          },
+        },
+        thumbnailSettings: {
+          ...currentThumb,
+          aspectRatio: targetAspect,
+          safeZoneOverrides: {
+            ...currentThumb.safeZoneOverrides,
+            platform: presetPlatform,
+          },
+        },
         updatedAt: new Date().toISOString(),
       };
     });
@@ -2043,6 +2096,12 @@ export default function CaptionMakerPage() {
                   handleChangeThumbnailSettings({
                     ...currentThumbSettings,
                     showSafeArea: currentThumbSettings.showSafeArea === false ? true : false,
+                  });
+                }}
+                onUpdateSettings={(updates) => {
+                  handleChangeThumbnailSettings({
+                    ...currentThumbSettings,
+                    ...updates,
                   });
                 }}
                 onEditBadge={() => {

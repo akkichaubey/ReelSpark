@@ -39,6 +39,23 @@ next-env.d.ts
 !/storage/.gitkeep
 /temp/*
 !/temp/.gitkeep
+/uploads/*
+/rendered/*
+public/uploads/*
+public/temp/*
+public/rendered/*
+
+# Standalone Media Service Runtime
+/services/media-service/temp/*
+/services/media-service/uploads/*
+
+# Supabase Local Cache & State
+.supabase/
+
+# Local AI / Whisper Models & Weights
+models/
+whisper-models/
+*.pt
 
 # Native Media Binaries & Executables
 # Windows/Mac/Linux binaries exceed GitHub's 100MB per-file upload limit

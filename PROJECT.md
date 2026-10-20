@@ -334,4 +334,45 @@ The Studio upgrade adds 10 specialized, production-ready modules powering `/capt
 - **`.reelproj` JSON Export & Import**: Standardized project schema exchange format for backup and migration.
 - **Crash Recovery Guard**: Detects unsaved sessions on reload and presents an immediate 1-click restore banner.
 
+---
+
+## 16. Multi-Platform Social Safe-Zone Engine & Overlay Studio (`safe-zone.ts`, `SafeAreaOverlay.tsx`)
+
+A mathematically verified, responsive safe-zone measurement system built specifically for vertical Reels, Shorts, and Threads video:
+
+### 1. Coordinate System & Base Canvas
+- **Resolution**: $1080 \times 1920$ pixels (standard 9:16 portrait export canvas).
+- **Even-Pixel Enforcement**: Dimensions divisible by 2 for H.264/H.265 encoder compatibility.
+- **Normalized Percentages**: Invariant relative ratios scale smoothly across any responsive preview size without distortion or drift.
+
+### 2. Platform Safe-Zone Specifications
+| Platform | Top Danger Zone | Bottom Danger Zone | Right Action Rail | Usable Safe Canvas | Source Standard |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Instagram Reels** | 14.0% (~269px) | 22.0% (~422px) (35% warning) | 15.0% (~162px) | $853 \times 1229\,\text{px}$ | Meta Official Guidelines |
+| **Facebook Reels** | 14.0% (~269px) | 26.0% (~499px) | 14.0% (~151px) | $864 \times 1152\,\text{px}$ | Meta Standard Specs |
+| **YouTube Shorts** | 10.0% (~192px) | 23.0% (~442px) (+1.2% scrubber) | 14.0% (~151px) | $870 \times 1286\,\text{px}$ | YouTube Creator Docs |
+| **Threads Video** | 9.0% (~173px) | 20.0% (~384px) | None (0%) | $950 \times 1363\,\text{px}$ | Threads Mobile Specs |
+
+### 3. Dynamic Visual Guides
+- **Viral Hook & Headline Box**: `Y: 16%–72%` horizontally centered.
+- **Eye-Line Guide**: Rule-of-thirds eye level reference at `Y: 33.3%`.
+- **4:5 In-Feed Crop Lines**: `Y: 14.84375%–85.15625%` ($1080 \times 1350\,\text{px}$) for Instagram/Facebook feed previews.
+- **1:1 Profile Grid Center Square**: `Y: 21.875%–78.125%` ($1080 \times 1080\,\text{px}$) for profile grid displays.
+- **9-Position Anchors**: Top-Left through Bottom-Right strictly clamped inside the calculated safe boundaries.
+
+### 4. Interactive Calibration Controls
+- Independent sliders for Top Danger, Bottom Danger, Right Margin, and Left Margin.
+- Live pixel readouts and usable canvas calculation.
+- 1-click **Reset to Official** button restoring platform-verified defaults.
+
+---
+
+## 17. Unified Caption & Thumbnail Cover Cohesion (`ThumbnailPreview.tsx`, `ThumbnailStylePanel.tsx`)
+
+ReelSpark enforces unified safe-zone cohesion across both the video playback preview and the thumbnail cover creator:
+1. **Two-Way Synchronization**: Platform selection or manual margin adjustments in either the Video Reel view or Thumbnail view instantly propagate to both with zero state divergence.
+2. **Thumbnail Profile Grid Optimization**: The green 1:1 Profile Grid safe zone highlights the exact square tile visible on Instagram profiles, including simulated play counts (`▶ 1.2M`) in the lower left corner.
+3. **Zero Layout Shift**: Both previews maintain a strict single-line `h-7` bottom status bar, preventing UI jumping when switching between video reel and thumbnail views.
+4. **Export Cleanliness**: All overlay guides, grids, and labels exist purely in the editor DOM (`pointer-events-none`) and never appear in exported ASS subtitles, rendered MP4s, or downloaded PNG/JPEG thumbnail covers.
+
 

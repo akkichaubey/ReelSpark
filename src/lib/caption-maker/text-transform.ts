@@ -234,12 +234,12 @@ export function getNinePositionCoordinates(
       return {
         ninePos,
         top: '16%',
-        left: '88%',
+        left: '84%',
         transform: 'translate(-100%, 0)',
         alignItems: 'flex-end',
         textAlign: 'right',
         assAlignment: 9,
-        assXPercent: 88,
+        assXPercent: 84,
         assYPercent: 16,
       };
 
@@ -273,53 +273,84 @@ export function getNinePositionCoordinates(
       return {
         ninePos,
         top: '50%',
-        left: '88%',
+        left: '84%',
         transform: 'translate(-100%, -50%)',
         alignItems: 'flex-end',
         textAlign: 'right',
         assAlignment: 6,
-        assXPercent: 88,
+        assXPercent: 84,
         assYPercent: 50,
       };
 
     case 'bottom-left':
       return {
         ninePos,
-        top: '82%',
+        top: '76%',
         left: '12%',
         transform: 'translate(0, -100%)',
         alignItems: 'flex-start',
         textAlign: 'left',
         assAlignment: 1,
         assXPercent: 12,
-        assYPercent: 82,
+        assYPercent: 76,
       };
 
     case 'bottom-right':
       return {
         ninePos,
-        top: '82%',
-        left: '88%',
+        top: '76%',
+        left: '84%',
         transform: 'translate(-100%, -100%)',
         alignItems: 'flex-end',
         textAlign: 'right',
         assAlignment: 3,
-        assXPercent: 88,
-        assYPercent: 82,
+        assXPercent: 84,
+        assYPercent: 76,
       };
 
     case 'bottom-center':
     default:
       return {
         ninePos: 'bottom-center',
-        top: '82%',
+        top: '76%',
         left: '50%',
         transform: 'translate(-50%, -100%)',
         alignItems: 'center',
         textAlign: 'center',
         assAlignment: 2,
         assXPercent: 50,
-        assYPercent: 82,
+        assYPercent: 76,
       };
   }
+}
+
+/**
+ * Safely splits a string into true typographical grapheme clusters / characters.
+ * Handles complex Indic / Devanagari scripts (Hindi, Marathi, Nepali, Sanskrit),
+ * emojis (including multi-byte flags and skin tones), and Latin characters without
+ * breaking ligatures, viramas (halant), or matras into orphaned dotted circles (◌).
+ */
+export function splitGraphemes(text: string): string[] {
+  if (!text) return [];
+  if (typeof Intl !== 'undefined' && (Intl as any).Segmenter) {
+    try {
+      const segmenter = new (Intl as any).Segmenter(undefined, { granularity: 'grapheme' });
+      return Array.from(segmenter.segment(text), (s: any) => s.segment);
+    } catch {
+      // Fallback below
+    }
+  }
+
+  // Regex fallback matching Unicode grapheme clusters (combining marks, zero-width joiners)
+  const matches = text.match(/[\P{M}\u200D](\p{M}|\u200D)*/gu);
+  if (matches) return matches;
+
+  return Array.from(text);
+}
+
+/**
+ * Checks if a string contains Indic/Devanagari characters (U+0900 to U+097F).
+ */
+export function isDevanagari(text: string): boolean {
+  return /[\u0900-\u097F]/.test(text || '');
 }

@@ -9,7 +9,8 @@ import {
 } from '@/lib/caption-maker/thumbnail-presets';
 import { ImageAsset, ImagePosition, OutputSettings } from '@/lib/caption-maker/types';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
-import { Download, Sparkles, Tag, Type, SlidersHorizontal, Edit3 } from 'lucide-react';
+import { Download, Sparkles } from 'lucide-react';
+import { SafeAreaOverlay } from './SafeAreaOverlay';
 
 // Exact 1:1 position alignment map matching CaptionPreview.tsx
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -32,6 +33,7 @@ interface ThumbnailPreviewProps {
   onDownload?: (format: 'png' | 'jpeg') => void;
   onApplyAsReelImage?: () => void;
   onToggleSafeArea?: () => void;
+  onUpdateSettings?: (updates: Partial<ThumbnailSettings>) => void;
   onEditBadge?: () => void;
   onEditTitle?: () => void;
 }
@@ -43,6 +45,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   onDownload,
   onApplyAsReelImage,
   onToggleSafeArea,
+  onUpdateSettings,
   onEditBadge,
   onEditTitle,
 }) => {
@@ -50,7 +53,6 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(360);
   const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
-  const [appliedNotice, setAppliedNotice] = useState<boolean>(false);
 
   const isVideo =
     image?.mediaType === 'video' ||
@@ -130,11 +132,13 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
 
     let topVal = '50%';
     let yTranslate = '-50%';
+    const is916 = (settings.aspectRatio || outputSettings.aspectRatio) === '9:16';
+
     if (settings.position === 'top') {
-      topVal = '18%';
+      topVal = is916 ? '23%' : '14%';
       yTranslate = '0';
     } else if (settings.position === 'bottom') {
-      topVal = '82%';
+      topVal = is916 ? '76%' : '86%';
       yTranslate = '-100%';
     } else if (settings.position === 'custom') {
       topVal = `${settings.customY ?? 50}%`;
@@ -188,11 +192,6 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   const justifyAlign =
     effectiveTextAlign === 'left' ? 'flex-start' : effectiveTextAlign === 'right' ? 'flex-end' : 'center';
 
-  const handleApplyCover = () => {
-    onApplyAsReelImage?.();
-    setAppliedNotice(true);
-    setTimeout(() => setAppliedNotice(false), 2500);
-  };
 
   // Title words parser with active #FCD905 highlight support
   const renderTitleWords = () => {
@@ -323,32 +322,48 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
           />
         )}
 
-        {/* 3. Safe Area Guides Overlay (100% parity with Video Reel) */}
-        {settings.showSafeArea !== false && (
-          <div className="absolute inset-x-6 inset-y-12 border-2 border-dashed border-sky-400/35 rounded-xl pointer-events-none z-10 flex flex-col justify-between p-2">
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-start">
-              SAFE AREA TOP
-            </span>
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-end">
-              REEL UI SAFE ZONE
-            </span>
-          </div>
-        )}
+        {/* 3. Professional Social Safe Area & 1:1 Profile Crop Guides Overlay */}
+        <SafeAreaOverlay
+          aspectRatio={settings.aspectRatio || outputSettings.aspectRatio || '9:16'}
+          preset={settings.safeZoneOverrides?.platform || outputSettings.preset}
+          mode="thumbnail"
+          showGuides={settings.showSafeArea !== false}
+          customOverrides={settings.safeZoneOverrides}
+          onSelectPlatform={(p) => {
+            if (onUpdateSettings) {
+              onUpdateSettings({
+                safeZoneOverrides: {
+                  ...settings.safeZoneOverrides,
+                  platform: p,
+                  topDangerPercent: undefined,
+                  bottomDangerPercent: undefined,
+                  rightMarginPercent: undefined,
+                  leftMarginPercent: undefined,
+                },
+              });
+            }
+          }}
+        />
 
         {/* 4. Live Thumbnail Title & Hook Typography Layer */}
-        <div
-          style={{
-            ...getTitlePositionStyles(),
-            width: '90%',
-            maxWidth: '90%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: justifyAlign,
-            justifyContent: 'center',
-            textAlign: effectiveTextAlign,
-          }}
-          className="absolute z-20 pointer-events-none transition-all duration-150"
-        >
+        {(() => {
+          const is916 = (settings.aspectRatio || outputSettings.aspectRatio) === '9:16';
+          const titleWidth = is916 ? '82%' : '88%';
+
+          return (
+            <div
+              style={{
+                ...getTitlePositionStyles(),
+                width: titleWidth,
+                maxWidth: titleWidth,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: justifyAlign,
+                justifyContent: 'center',
+                textAlign: effectiveTextAlign,
+              }}
+              className="absolute z-20 pointer-events-none transition-all duration-150"
+            >
           {/* Glass Card Container if boxBackground enabled */}
           <div
             style={
@@ -488,46 +503,9 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             )}
           </div>
         </div>
+          );
+        })()}
 
-        {/* 5. Live Badge Indicator & Edit / Safe Area Controls */}
-        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/75 backdrop-blur-md border border-amber-500/30 text-[10px] font-bold text-amber-300 flex items-center gap-1.5 pointer-events-none z-30 shadow-md">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          LIVE THUMBNAIL COVER
-        </div>
-
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-30">
-          {onEditBadge && (
-            <button
-              type="button"
-              onClick={onEditBadge}
-              className="px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-black font-bold text-[10px] flex items-center gap-1 shadow-md cursor-pointer transition-all active:scale-95"
-              title="Edit Badge Pill & Spacing"
-            >
-              <SlidersHorizontal className="w-3 h-3 stroke-[2.5]" />
-              <span>Edit Badge & Spacing</span>
-            </button>
-          )}
-
-          {onToggleSafeArea && (
-            <button
-              type="button"
-              onClick={onToggleSafeArea}
-              className={`px-2 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-md ${
-                settings.showSafeArea !== false
-                  ? 'bg-sky-950/80 border-sky-400/50 text-sky-300 hover:text-sky-200'
-                  : 'bg-black/75 border-zinc-700 text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Toggle Safe Area Guides Overlay"
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  settings.showSafeArea !== false ? 'bg-sky-400 animate-pulse' : 'bg-zinc-500'
-                }`}
-              />
-              <span>SAFE AREA: {settings.showSafeArea !== false ? 'ON' : 'OFF'}</span>
-            </button>
-          )}
-        </div>
 
         {/* 6. Offscreen Canvas for High-Resolution Export & Video Merging */}
         <canvas
@@ -537,84 +515,36 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
       </div>
 
       {/* Preset, Dimensions & Quick Actions underneath preview */}
-      <div className="flex flex-wrap items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 gap-2 text-xs text-zinc-400 font-mono">
-        <div className="flex items-center gap-1.5">
-          <span className="capitalize text-zinc-300 font-medium">
-            {settings.preset ? settings.preset.replace('-', ' ') : 'Custom'} ({settings.aspectRatio})
-          </span>
-          {onEditBadge && (
-            <button
-              type="button"
-              onClick={onEditBadge}
-              className="flex items-center gap-1 text-[11px] font-sans font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-all cursor-pointer"
-              title="Edit Badge Pill & Spacing"
-            >
-              <Tag className="w-3 h-3" />
-              <span>Edit Badge</span>
-            </button>
-          )}
-          {onEditTitle && (
-            <button
-              type="button"
-              onClick={onEditTitle}
-              className="flex items-center gap-1 text-[11px] font-sans font-bold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2 py-0.5 rounded border border-zinc-700 transition-all cursor-pointer"
-              title="Edit Title Text"
-            >
-              <Type className="w-3 h-3 text-amber-400" />
-              <span>Edit Title</span>
-            </button>
-          )}
-        </div>
+      <div className="h-7 flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
+        <span className="capitalize text-zinc-300 font-medium truncate">
+          {(settings.safeZoneOverrides?.platform || settings.preset || 'instagram-reel').replace('-', ' ')} ({settings.aspectRatio || '9:16'})
+        </span>
 
         <div className="flex items-center gap-2">
           {onToggleSafeArea && (
-            <>
-              <button
-                type="button"
-                onClick={onToggleSafeArea}
-                className={`text-[11px] font-sans font-medium transition-colors cursor-pointer ${
-                  settings.showSafeArea !== false
-                    ? 'text-sky-400 hover:text-sky-300 font-semibold'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-                title="Toggle Safe Area Overlay Guide"
-              >
-                Safe Area: {settings.showSafeArea !== false ? 'ON' : 'OFF'}
-              </button>
-              <span className="text-zinc-600">|</span>
-            </>
+            <button
+              type="button"
+              onClick={onToggleSafeArea}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
+                settings.showSafeArea !== false
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-400/50 shadow-sm'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+              title="Toggle Safe Area Overlay Guide"
+            >
+              <span>🛡️</span>
+              <span>Safe Area: {settings.showSafeArea !== false ? 'ON' : 'OFF'}</span>
+            </button>
           )}
           <button
             type="button"
             onClick={() => onDownload?.('png')}
-            className="flex items-center gap-1 text-[11px] font-sans font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400 hover:bg-amber-300 text-black font-bold text-[10px] transition-colors cursor-pointer shadow-sm"
             title="Download Full Resolution PNG"
           >
             <Download className="w-3 h-3 stroke-[2.5]" />
             <span>Download PNG</span>
           </button>
-          <span className="text-zinc-600">|</span>
-          <button
-            type="button"
-            onClick={() => onDownload?.('jpeg')}
-            className="text-[11px] font-sans font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Download JPEG"
-          >
-            JPEG
-          </button>
-          {onApplyAsReelImage && (
-            <>
-              <span className="text-zinc-600">|</span>
-              <button
-                type="button"
-                onClick={handleApplyCover}
-                className="text-[11px] font-sans font-semibold text-amber-300 hover:text-amber-200 transition-colors cursor-pointer"
-                title="Set this thumbnail cover as the reel background image"
-              >
-                {appliedNotice ? 'Applied!' : 'Set as Reel Bg'}
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>

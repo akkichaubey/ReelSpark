@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Play, Pause, Sparkles } from 'lucide-react';
 import {
   CaptionGroup,
@@ -11,14 +11,17 @@ import {
   SfxCue,
   TranscriptWord,
 } from '@/lib/caption-maker/types';
-import { hexToRgba } from '@/lib/caption-maker/sample-data';
+import { hexToRgba, getContrastingTextColor } from '@/lib/caption-maker/sample-data';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '@/lib/caption-maker/hinglish-and-emoji';
 import {
   getNinePositionCoordinates,
   applyWordTransform,
   resolveNinePosition,
+  splitGraphemes,
+  isDevanagari,
 } from '@/lib/caption-maker/text-transform';
+import { SafeAreaOverlay } from './SafeAreaOverlay';
 
 
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -162,7 +165,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   // Nirmala UI and Segoe UI act as graceful secondary fallbacks if a glyph is missing.
   const cleanPrimaryFont =
     captionStyle.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Inter';
-  const effectiveFontFamily = `"${cleanPrimaryFont}", "Nirmala UI", "Segoe UI", sans-serif`;
+  const effectiveFontFamily = `"${cleanPrimaryFont}", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Segoe UI", sans-serif`;
 
   // Active word and active caption group identification locked to exact acoustic speech intervals
   const activeGroup = captionGroups.find(
@@ -210,7 +213,9 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   const getAspectRatioClasses = () => {
     switch (outputSettings.preset) {
       case 'instagram-reel':
+      case 'facebook-reel':
       case 'youtube-short':
+      case 'threads-video':
         return 'aspect-[9/16] max-h-[580px]';
       case 'instagram-portrait':
         return 'aspect-[4/5] max-h-[500px]';
@@ -325,7 +330,17 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     return {};
   };
 
-  const previewLetterSpacing = `${Math.round((captionStyle.letterSpacing ?? 0) * previewScale)}px`;
+  const hasDevanagari = useMemo(() => {
+    const sampleText =
+      (displayGroup?.words || []).map((w) => w.text).join(' ') +
+      ' ' +
+      (displayWord?.text || '');
+    return isDevanagari(sampleText);
+  }, [displayGroup, displayWord]);
+
+  const previewLetterSpacing = hasDevanagari
+    ? '0px'
+    : `${Math.round((captionStyle.letterSpacing ?? 0) * previewScale)}px`;
   const previewLineHeight = captionStyle.lineHeight ?? 1.3;
 
   return (
@@ -418,117 +433,50 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
           </div>
         )}
 
-        {/* 2. Professional 9:16 Social Safe Area & 9-Position Guides Overlay */}
-        {captionStyle.showSafeArea && (
-          <div className="absolute inset-0 pointer-events-none z-15 overflow-hidden select-none animate-in fade-in duration-200">
-            {/* Top Danger Zone (Instagram Stories / Reels Search & Audio header) */}
-            <div className="absolute inset-x-0 top-0 h-[14%] bg-red-950/25 border-b border-red-500/35 flex items-center justify-between px-3">
-              <span className="text-[9px] font-mono font-bold tracking-wider text-red-300/80 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-500/30">
-                TOP UI DANGER ZONE (14%)
-              </span>
-              <span className="text-[8px] font-mono text-red-400/60 hidden sm:inline">
-                Reels Header / Audio bar
-              </span>
-            </div>
-
-            {/* Bottom Danger Zone (Handle, Caption description & Audio disc) */}
-            <div className="absolute inset-x-0 bottom-0 h-[22%] bg-red-950/25 border-t border-red-500/35 flex flex-col justify-end p-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-mono font-bold tracking-wider text-red-300/80 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-500/30">
-                  BOTTOM UI DANGER ZONE (22%)
-                </span>
-                <span className="text-[8px] font-mono text-red-400/60 hidden sm:inline">
-                  @handle & description
-                </span>
-              </div>
-            </div>
-
-            {/* Right Action Icons Danger Zone (Like, Comment, Share, Remix, Sound Disc) */}
-            <div className="absolute right-0 top-[38%] bottom-[22%] w-[15%] bg-amber-950/25 border-l border-amber-500/35 flex flex-col items-center justify-around py-2">
-              <span className="text-[7px] font-mono text-amber-300/80 font-bold -rotate-90 whitespace-nowrap bg-amber-950/80 px-1 py-0.2 rounded border border-amber-500/30">
-                ACTION BAR
-              </span>
-              <div className="flex flex-col gap-2 items-center opacity-60">
-                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">♥</div>
-                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">💬</div>
-                <div className="w-4 h-4 rounded-full border border-amber-400/50 flex items-center justify-center text-[8px] text-amber-300">↗</div>
-              </div>
-            </div>
-
-            {/* Inner Content Safe Action Zone (80% Safe Box) */}
-            <div className="absolute left-[10%] right-[15%] top-[14%] bottom-[22%] border-2 border-dashed border-sky-400/50 rounded-xl flex flex-col justify-between p-2 pointer-events-none">
-              <div className="flex items-center justify-between">
-                <span className="text-[8px] font-mono text-sky-300 font-bold bg-sky-950/85 border border-sky-400/40 px-1.5 py-0.5 rounded">
-                  SAFE ACTION ZONE
-                </span>
-                <span className="text-[8px] font-mono text-amber-400 font-bold bg-zinc-950/90 border border-amber-500/50 px-1.5 py-0.5 rounded">
-                  Anchor: {coords.ninePos.toUpperCase()}
-                </span>
-              </div>
-
-              {/* 9 Visual Anchor Reference Points */}
-              <div className="absolute inset-2 grid grid-cols-3 grid-rows-3 pointer-events-none">
-                {(
-                  [
-                    'top-left', 'top-center', 'top-right',
-                    'center-left', 'center', 'center-right',
-                    'bottom-left', 'bottom-center', 'bottom-right',
-                  ] as const
-                ).map((posKey) => {
-                  const isActive = coords.ninePos === posKey;
-                  return (
-                    <div
-                      key={posKey}
-                      className={`flex items-center justify-center ${
-                        posKey.includes('left')
-                          ? 'justify-start'
-                          : posKey.includes('right')
-                          ? 'justify-end'
-                          : 'justify-center'
-                      } ${
-                        posKey.startsWith('top')
-                          ? 'items-start'
-                          : posKey.startsWith('bottom')
-                          ? 'items-end'
-                          : 'items-center'
-                      }`}
-                    >
-                      <div
-                        className={`transition-all ${
-                          isActive
-                            ? 'w-3.5 h-3.5 rounded-full bg-amber-400 ring-4 ring-amber-400/30 border border-black shadow-lg animate-pulse'
-                            : 'w-1.5 h-1.5 rounded-full bg-white/20'
-                        }`}
-                        title={`Anchor: ${posKey}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="text-right">
-                <span className="text-[8px] font-mono text-sky-400/70 bg-sky-950/60 px-1 py-0.2 rounded">
-                  9:16 REEL PREVIEW
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 2. Professional Dynamic Social Safe Area & Guides Overlay */}
+        <SafeAreaOverlay
+          aspectRatio={outputSettings.aspectRatio}
+          preset={captionStyle.safeZoneOverrides?.platform || outputSettings.preset}
+          mode="reel"
+          showGuides={captionStyle.showSafeArea}
+          activeNinePos={coords.ninePos}
+          customOverrides={captionStyle.safeZoneOverrides}
+          onSelectPlatform={(p) => {
+            if (onUpdateStyle) {
+              onUpdateStyle({
+                safeZoneOverrides: {
+                  ...captionStyle.safeZoneOverrides,
+                  platform: p,
+                },
+              });
+            }
+          }}
+        />
 
         {/* 3. Real-Time Animated Caption Layer */}
-        <div
-          style={{
-            ...getPositionStyles(),
-            width: '88%',
-            maxWidth: '88%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: justifyAlign,
-            justifyContent: 'center',
-            textAlign,
-          }}
-          className="absolute z-20 pointer-events-none transition-all"
-        >
+        {(() => {
+          const isVertical916 =
+            outputSettings.preset === 'instagram-reel' ||
+            outputSettings.preset === 'facebook-reel' ||
+            outputSettings.preset === 'youtube-short' ||
+            outputSettings.preset === 'threads-video' ||
+            outputSettings.aspectRatio === '9:16';
+          const captionWidth = isVertical916 ? '78%' : '88%';
+
+          return (
+            <div
+              style={{
+                ...getPositionStyles(),
+                width: captionWidth,
+                maxWidth: captionWidth,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: justifyAlign,
+                justifyContent: 'center',
+                textAlign,
+              }}
+              className="absolute z-20 pointer-events-none transition-all"
+            >
           {/* Rohaid Ali CodePen GSAP Text Animation Keyframes */}
           <style
             dangerouslySetInnerHTML={{
@@ -628,7 +576,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     </span>
                   )}
                   {isLetterPreset ? (
-                    soloWordText.split('').map((char, cIdx) => (
+                    splitGraphemes(soloWordText).map((char, cIdx) => (
                       <span
                         key={cIdx}
                         style={{
@@ -749,7 +697,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   }
 
                   const wordColor = isWordPillActive
-                    ? '#000000'
+                    ? getContrastingTextColor(wordBg || '#FCD905')
                     : isCurrent
                     ? activeColor
                     : (w.isImportant ? captionStyle.importantColor : speakerColor);
@@ -797,6 +745,10 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         textUnderlineOffset: isUnderline ? '4px' : undefined,
                         textShadow: activeTextShadow,
                         overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
+                        paddingTop: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
+                        paddingBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
+                        marginTop: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
+                        marginBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
                         ...wordAnimStyle,
                       }}
                       className="relative transition-all duration-75"
@@ -813,7 +765,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         </span>
                       )}
                       {isLetterPreset ? (
-                        wordText.split('').map((char, cIdx) => (
+                        splitGraphemes(wordText).map((char, cIdx) => (
                           <span
                             key={cIdx}
                             style={{
@@ -838,6 +790,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             )
           )}
         </div>
+          );
+        })()}
 
         {/* 4. Center Play/Pause Clickable Overlay */}
         <button
@@ -856,7 +810,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       </div>
 
       {/* Preset & Time Badge underneath preview */}
-      <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
+      <div className="h-7 flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
         <span className="capitalize">{outputSettings.preset.replace('-', ' ')}</span>
         <div className="flex items-center gap-2">
           {onUpdateStyle && (

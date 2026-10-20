@@ -12,8 +12,22 @@ export const PLATFORM_PRESETS: Record<
     aspectRatio: '9:16',
     description: '1080 × 1920 (9:16 Vertical)',
   },
+  'facebook-reel': {
+    label: 'Facebook Reel',
+    width: 1080,
+    height: 1920,
+    aspectRatio: '9:16',
+    description: '1080 × 1920 (9:16 Vertical)',
+  },
   'youtube-short': {
     label: 'YouTube Short',
+    width: 1080,
+    height: 1920,
+    aspectRatio: '9:16',
+    description: '1080 × 1920 (9:16 Vertical)',
+  },
+  'threads-video': {
+    label: 'Threads Video',
     width: 1080,
     height: 1920,
     aspectRatio: '9:16',
@@ -66,6 +80,21 @@ export function hexToRgba(hex: string, alpha = 1): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/**
+ * Calculates optimal black or white contrasting text color based on background luminance (YIQ standard).
+ */
+export function getContrastingTextColor(hexColor: string): '#000000' | '#FFFFFF' {
+  if (!hexColor || typeof hexColor !== 'string' || !hexColor.startsWith('#')) return '#000000';
+  let clean = hexColor.replace('#', '').trim();
+  if (clean.length === 3) clean = clean.split('').map((c) => c + c).join('');
+  if (clean.length !== 6) return '#000000';
+  const r = parseInt(clean.substring(0, 2), 16) || 0;
+  const g = parseInt(clean.substring(2, 4), 16) || 0;
+  const b = parseInt(clean.substring(4, 6), 16) || 0;
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? '#000000' : '#FFFFFF';
+}
+
 export interface ReelStylePreset {
   id: string;
   name: string;
@@ -76,6 +105,27 @@ export interface ReelStylePreset {
   description: string;
   style: Partial<CaptionStyle>;
 }
+
+export const PRESET_CLEANUP_DEFAULTS: Partial<CaptionStyle> = {
+  strokeWidth: 0,
+  strokeColor: 'transparent',
+  shadowBlur: 0,
+  shadowColor: 'transparent',
+  shadowOffsetX: 0,
+  shadowOffsetY: 0,
+  backgroundStyle: 'none',
+  backgroundColor: 'transparent',
+  backgroundOpacity: 0,
+  backgroundRadius: 0,
+  backgroundPadding: 8,
+  activeWordBgColor: undefined,
+  textEffect: 'none',
+  glowColor: undefined,
+  glowSpread: 0,
+  letterSpacing: 0,
+  zoomScale: 1.0,
+  textOpacity: 1.0,
+};
 
 export const REEL_STYLE_PRESETS: ReelStylePreset[] = [
   {

@@ -18,7 +18,13 @@ import {
 import { resolveNinePosition } from '@/lib/caption-maker/text-transform';
 import {
   REEL_STYLE_PRESETS,
+  PRESET_CLEANUP_DEFAULTS,
 } from '@/lib/caption-maker/sample-data';
+import {
+  PLATFORM_SAFE_ZONE_PRESETS,
+  getSafeZoneConfig,
+  SafeZoneOverrides,
+} from '@/lib/caption-maker/safe-zone';
 import {
   Type,
   Palette,
@@ -129,11 +135,16 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
     onChangeStyle({ ...style, ...partial });
   };
 
-  const applyPreset = (presetStyle: Partial<CaptionStyle>) => {
+  const applyPreset = (presetStyle: Partial<CaptionStyle>, presetId?: string) => {
     if (presetStyle.fontFamily) {
       loadGoogleFontInDocument(presetStyle.fontFamily);
     }
-    onChangeStyle({ ...style, ...presetStyle });
+    onChangeStyle({
+      ...style,
+      ...PRESET_CLEANUP_DEFAULTS,
+      ...presetStyle,
+      ...(presetId ? { presetId } : {}),
+    });
   };
 
   return (
@@ -287,7 +298,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     return (
                       <div
                         key={preset.id}
-                        onClick={() => applyPreset(preset.style)}
+                        onClick={() => applyPreset(preset.style, preset.id)}
                         className={`group relative p-2.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
                           isCustomActive
                             ? 'border-amber-400 bg-zinc-900/90 shadow-md shadow-amber-400/20 ring-1 ring-amber-400'
@@ -353,19 +364,21 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 {REEL_STYLE_PRESETS.map((preset) => {
                   const isActive =
-                    (preset.id === 'cinematic-subtitle' &&
-                      style.fontFamily?.includes('Montserrat') &&
-                      style.animationPreset === 'clean') ||
-                    (style.fontFamily === preset.style.fontFamily &&
-                      style.animationPreset === preset.style.animationPreset &&
-                      style.strokeWidth === preset.style.strokeWidth &&
-                      style.textEffect === preset.style.textEffect);
+                    style.presetId === preset.id ||
+                    (!style.presetId &&
+                      ((preset.id === 'cinematic-subtitle' &&
+                        style.fontFamily?.includes('Montserrat') &&
+                        style.animationPreset === 'clean') ||
+                      (style.fontFamily === preset.style.fontFamily &&
+                        style.animationPreset === preset.style.animationPreset &&
+                        style.strokeWidth === preset.style.strokeWidth &&
+                        style.textEffect === preset.style.textEffect)));
 
                   return (
                     <button
                       key={preset.id}
                       type="button"
-                      onClick={() => applyPreset(preset.style)}
+                      onClick={() => applyPreset(preset.style, preset.id)}
                       className={`group relative p-2.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
                         isActive
                           ? 'border-amber-400 bg-zinc-900/90 shadow-md shadow-amber-400/20 ring-1 ring-amber-400'
@@ -404,6 +417,180 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Quick Active & Primary Colors Customizer for Selected Preset */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-zinc-200">
+                    Active & Primary Colors
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const activePreset = REEL_STYLE_PRESETS.find((p) => p.id === style.presetId);
+                    update({
+                      importantColor: activePreset?.style.importantColor || '#FCD905',
+                      textColor: activePreset?.style.textColor || '#FFFFFF',
+                      activeWordBgColor: activePreset?.style.activeWordBgColor,
+                      glowColor:
+                        style.textEffect === 'neon-glow'
+                          ? activePreset?.style.glowColor || activePreset?.style.importantColor || '#FCD905'
+                          : style.glowColor,
+                    });
+                  }}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800 border border-zinc-700/60 transition-colors cursor-pointer"
+                  title="Reset colors back to preset defaults"
+                >
+                  Reset to Default
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* 1. Active Spoken Word Color */}
+                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-amber-400">
+                      Active Spoken Word
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {style.importantColor}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        style.importantColor?.startsWith('#') && style.importantColor.length === 7
+                          ? style.importantColor
+                          : '#FCD905'
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        update({
+                          importantColor: val,
+                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        });
+                      }}
+                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
+                      title="Choose active spoken word color"
+                    />
+                    <input
+                      type="text"
+                      value={style.importantColor}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        update({
+                          importantColor: val,
+                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        });
+                      }}
+                      maxLength={7}
+                      placeholder="#FCD905"
+                      className="w-full bg-zinc-950 border border-zinc-700/80 text-amber-300 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase font-semibold"
+                    />
+                  </div>
+                  {/* Quick Active Color Swatches */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {[
+                      { col: '#FCD905', title: 'Viral Gold (Default)' },
+                      { col: '#00F2FE', title: 'Neon Cyan' },
+                      { col: '#A3E635', title: 'Neon Lime' },
+                      { col: '#FF007A', title: 'Hot Pink' },
+                      { col: '#FF6B00', title: 'Flame Orange' },
+                      { col: '#C084FC', title: 'Purple' },
+                      { col: '#EF4444', title: 'Alert Red' },
+                      { col: '#FFFFFF', title: 'Pure White' },
+                    ].map((s) => (
+                      <button
+                        key={s.col}
+                        type="button"
+                        onClick={() => {
+                          update({
+                            importantColor: s.col,
+                            glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
+                            activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
+                          });
+                        }}
+                        style={{ backgroundColor: s.col }}
+                        title={s.title}
+                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
+                          style.importantColor?.toUpperCase() === s.col.toUpperCase()
+                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
+                            : 'border-zinc-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Primary / Normal Text Color */}
+                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-zinc-300">
+                      Primary Text (Default)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => update({ textColor: '#FFFFFF' })}
+                      className="text-[9px] font-mono text-zinc-500 hover:text-white cursor-pointer"
+                      title="Keep primary text default #FFFFFF"
+                    >
+                      Default: #FFF
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        style.textColor?.startsWith('#') && style.textColor.length === 7
+                          ? style.textColor
+                          : '#FFFFFF'
+                      }
+                      onChange={(e) => update({ textColor: e.target.value })}
+                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
+                      title="Choose primary text color"
+                    />
+                    <input
+                      type="text"
+                      value={style.textColor}
+                      onChange={(e) => update({ textColor: e.target.value })}
+                      maxLength={7}
+                      placeholder="#FFFFFF"
+                      className="w-full bg-zinc-950 border border-zinc-700/80 text-zinc-200 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase"
+                    />
+                  </div>
+                  {/* Quick Primary Text Swatches */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {[
+                      { col: '#FFFFFF', title: 'Pure White (Default)' },
+                      { col: '#FFFBEB', title: 'Warm Cream' },
+                      { col: '#D1D5DB', title: 'Soft Gray' },
+                      { col: '#93C5FD', title: 'Ice Blue' },
+                      { col: '#FDF6E2', title: 'Retro Beige' },
+                      { col: '#000000', title: 'Deep Black' },
+                    ].map((s) => (
+                      <button
+                        key={s.col}
+                        type="button"
+                        onClick={() => update({ textColor: s.col })}
+                        style={{ backgroundColor: s.col }}
+                        title={s.title}
+                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
+                          style.textColor?.toUpperCase() === s.col.toUpperCase()
+                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
+                            : 'border-zinc-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -733,6 +920,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     onClick={() =>
                       update({
                         importantColor: '#FCD905',
+                        activeWordBgColor: style.activeWordBgColor ? '#FCD905' : undefined,
                         glowColor: style.textEffect === 'neon-glow' ? '#FCD905' : style.glowColor,
                       })
                     }
@@ -746,24 +934,28 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <input
                     type="color"
                     value={style.importantColor?.startsWith('#') && style.importantColor.length === 7 ? style.importantColor : '#FCD905'}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value;
                       update({
-                        importantColor: e.target.value,
-                        glowColor: style.textEffect === 'neon-glow' ? e.target.value : style.glowColor,
-                      })
-                    }
+                        importantColor: val,
+                        activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                      });
+                    }}
                     className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
                     title="Choose active spoken word color"
                   />
                   <input
                     type="text"
                     value={style.importantColor}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value;
                       update({
-                        importantColor: e.target.value,
-                        glowColor: style.textEffect === 'neon-glow' ? e.target.value : style.glowColor,
-                      })
-                    }
+                        importantColor: val,
+                        activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                      });
+                    }}
                     maxLength={7}
                     placeholder="#FCD905"
                     className="w-20 bg-zinc-900 border border-zinc-700 text-amber-300 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase font-semibold"
@@ -784,6 +976,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       onClick={() =>
                         update({
                           importantColor: s.col,
+                          activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
                           glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
                         })
                       }
@@ -1484,9 +1677,9 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   className="w-full accent-amber-400 cursor-pointer"
                 />
                 <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-                  <span>10% (Left)</span>
+                  <span>10% (Left Safe)</span>
                   <span>50% (Center)</span>
-                  <span>90% (Right)</span>
+                  <span>84% (Right Safe)</span>
                 </div>
               </div>
 
@@ -1494,14 +1687,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               <div>
                 <div className="flex justify-between items-center mb-1 text-zinc-300 text-[11px]">
                   <span>Vertical (Y%)</span>
-                  <span className="font-mono text-amber-400 font-bold">{style.customY ?? 82}%</span>
+                  <span className="font-mono text-amber-400 font-bold">{style.customY ?? 76}%</span>
                 </div>
                 <input
                   type="range"
                   min="10"
                   max="90"
                   step="1"
-                  value={style.customY ?? 82}
+                  value={style.customY ?? 76}
                   onChange={(e) =>
                     update({
                       customY: Number(e.target.value),
@@ -1512,38 +1705,212 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   className="w-full accent-amber-400 cursor-pointer"
                 />
                 <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-                  <span>10% (Top)</span>
+                  <span>14% (Top Safe)</span>
                   <span>50% (Center)</span>
-                  <span>90% (Bottom)</span>
+                  <span>76% (Bottom Safe)</span>
                 </div>
               </div>
             </div>
 
-            {/* 4. Safe Area Guide Toggle */}
-            <div className="p-3 bg-gradient-to-r from-sky-950/40 via-zinc-950 to-zinc-950 border border-sky-500/30 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                  <ShieldAlert className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-bold text-zinc-200 text-xs">Safe Area Overlay</p>
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
-                      9:16 Social
-                    </span>
+            {/* 4. Social Media Safe-Zone & Platform Calibration Studio */}
+            {(() => {
+              const activeSafePlatform = style.safeZoneOverrides?.platform || 'instagram-reel';
+              const currentSafeConfig = getSafeZoneConfig(activeSafePlatform, style.safeZoneOverrides);
+
+              return (
+                <div className="p-3 bg-zinc-950/90 border border-sky-500/30 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-zinc-100 text-xs">Social Safe-Zone Studio</p>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                            9:16 Canvas
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-400">
+                          Verified boundaries for Instagram, Facebook, Shorts & Threads
+                        </p>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={style.showSafeArea}
+                      onChange={(e) => update({ showSafeArea: e.target.checked })}
+                      className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
+                    />
                   </div>
-                  <p className="text-[10px] text-zinc-400">
-                    Displays Instagram, YouTube Shorts & TikTok UI danger zones
-                  </p>
+
+                  {style.showSafeArea && (
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+                      {/* Platform Presets Switcher Pills */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-semibold text-zinc-300">
+                            Target Social Platform
+                          </span>
+                          <span className="text-[9px] font-mono text-amber-400 font-semibold">
+                            {currentSafeConfig.sourceLabel}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { id: 'instagram-reel', label: 'Instagram Reels', sub: '14% Top / 22% Bottom' },
+                            { id: 'facebook-reel', label: 'Facebook Reels', sub: '14% Top / 26% Bottom' },
+                            { id: 'youtube-short', label: 'YouTube Shorts', sub: '10% Top / 23% Bottom' },
+                            { id: 'threads-video', label: 'Threads Video', sub: '9% Top / 20% Bottom' },
+                          ].map((p) => {
+                            const isSelected = activeSafePlatform === p.id;
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  update({
+                                    safeZoneOverrides: {
+                                      ...style.safeZoneOverrides,
+                                      platform: p.id as any,
+                                      topDangerPercent: undefined,
+                                      bottomDangerPercent: undefined,
+                                      rightMarginPercent: undefined,
+                                      leftMarginPercent: undefined,
+                                    },
+                                  });
+                                }}
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-sky-500/20 border-sky-400 text-sky-200 shadow-sm'
+                                    : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                <span className="block font-semibold text-[11px]">{p.label}</span>
+                                <span className="text-[9px] font-mono text-zinc-500">{p.sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Calibration Sliders */}
+                      <div className="p-2.5 bg-zinc-900/70 border border-zinc-800 rounded-lg space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-zinc-300">
+                            Custom Danger Zone Calibration
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  topDangerPercent: undefined,
+                                  bottomDangerPercent: undefined,
+                                  rightMarginPercent: undefined,
+                                  leftMarginPercent: undefined,
+                                },
+                              });
+                            }}
+                            className="text-[9px] font-mono text-amber-400 hover:text-amber-300 cursor-pointer"
+                            title="Reset sliders back to official platform specifications"
+                          >
+                            Reset to Official
+                          </button>
+                        </div>
+
+                        {/* Top Danger Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Top UI Danger Zone</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.topDangerPercent}% (~{Math.round((1920 * currentSafeConfig.topDangerPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="25"
+                            step="0.5"
+                            value={currentSafeConfig.topDangerPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  topDangerPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Bottom Danger Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Bottom UI Danger Zone</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.bottomDangerPercent}% (~{Math.round((1920 * currentSafeConfig.bottomDangerPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="12"
+                            max="38"
+                            step="0.5"
+                            value={currentSafeConfig.bottomDangerPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  bottomDangerPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Right Action Bar Width Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Right Action Rail Width</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.rightMarginPercent}% (~{Math.round((1080 * currentSafeConfig.rightMarginPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="4"
+                            max="22"
+                            step="0.5"
+                            value={currentSafeConfig.rightMarginPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  rightMarginPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Summary Metric */}
+                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 px-1">
+                        <span>Usable Safe Canvas:</span>
+                        <span className="text-sky-300 font-bold">
+                          {Math.round(1080 * (1 - (currentSafeConfig.leftMarginPercent + currentSafeConfig.rightMarginPercent) / 100))} × {Math.round(1920 * (1 - (currentSafeConfig.topDangerPercent + currentSafeConfig.bottomDangerPercent) / 100))} px
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={style.showSafeArea}
-                onChange={(e) => update({ showSafeArea: e.target.checked })}
-                className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
-              />
-            </div>
+              );
+            })()}
           </div>
         )}
       </div>

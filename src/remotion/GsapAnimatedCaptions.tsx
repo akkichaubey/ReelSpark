@@ -2,10 +2,15 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { useCurrentFrame, useVideoConfig } from 'remotion';
 import gsap from 'gsap';
 import { CaptionGroup, CaptionStyle, TranscriptWord } from '../lib/caption-maker/types';
-import { hexToRgba } from '../lib/caption-maker/sample-data';
+import { hexToRgba, getContrastingTextColor } from '../lib/caption-maker/sample-data';
 import { getGoogleFontUrl } from '../lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '../lib/caption-maker/hinglish-and-emoji';
-import { getNinePositionCoordinates, applyWordTransform } from '../lib/caption-maker/text-transform';
+import {
+  getNinePositionCoordinates,
+  applyWordTransform,
+  splitGraphemes,
+  isDevanagari,
+} from '../lib/caption-maker/text-transform';
 
 interface GsapAnimatedCaptionsProps {
   words: TranscriptWord[];
@@ -22,6 +27,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   captionGroups,
   style,
   width,
+  height,
   speaker1Color,
   speaker2Color,
 }) => {
@@ -40,8 +46,10 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   const paddingX = Math.round((style.backgroundPadding ?? 14) * scaleFactor);
   const paddingY = Math.round(paddingX * 0.5);
 
-  // Container width constraint matching preview (88% of canvas width)
-  const containerWidth = Math.round(width * 0.88);
+  // Container width constraint matching platform safe areas: 78% for 9:16 vertical reels (avoiding 15% right action bar)
+  // and 88% for landscape/square/portrait feeds without vertical action bars.
+  const isVertical916 = height > width;
+  const containerWidth = Math.round(width * (isVertical916 ? 0.78 : 0.88));
   const textAlign = style.textAlign === 'custom' ? 'center' : (style.textAlign || 'center');
   const justifyAlign =
     textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
@@ -51,7 +59,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   }, [style.fontFamily]);
 
   const cleanFontFamily = useMemo(() => {
-    return `"${primaryFontName}", "Nirmala UI", "Segoe UI", sans-serif`;
+    return `"${primaryFontName}", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Segoe UI", sans-serif`;
   }, [primaryFontName]);
 
   const googleFontUrl = useMemo(() => {
@@ -179,7 +187,13 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
     return { top: '50%', transform: 'translateY(-50%)' };
   };
 
-  const letterSpacing = `${Math.round((style.letterSpacing ?? 0) * scaleFactor)}px`;
+  const hasDevanagari = useMemo(() => {
+    return isDevanagari(words.map((w) => w.text).join(' '));
+  }, [words]);
+
+  const letterSpacing = hasDevanagari
+    ? '0px'
+    : `${Math.round((style.letterSpacing ?? 0) * scaleFactor)}px`;
   const lineHeight = style.lineHeight ?? 1.3;
 
   // Build paused GSAP master timeline deterministically
@@ -391,7 +405,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
             }
 
             // At w.start: Pop/Punch/Glow to active state
-            const targetColor = isWordBadge ? '#000000' : activeColor;
+            const targetColor = isWordBadge ? getContrastingTextColor(wordBadgeColor || '#FCD905') : activeColor;
             const targetBg = isWordBadge ? wordBadgeColor : 'transparent';
 
             tl.to(wordSelector, {
@@ -526,7 +540,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                   </span>
                 )}
                 {isLetterPreset ? (
-                  text.split('').map((char, cIdx) => (
+                  splitGraphemes(text).map((char, cIdx) => (
                     <span
                       key={cIdx}
                       className="char-item"
@@ -586,7 +600,13 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                   {group.words.map((w, wIndex) => {
                     const isSentenceStart = wIndex === 0 || /[.!?]$/.test(group.words[wIndex - 1]?.text || '');
                     const text = applyWordTransform(w.text, style.textTransform, style.uppercase, isSentenceStart);
-                    const isWordBadge = style.highlightAnimation === 'background' || Boolean(style.activeWordBgColor);
+                    const isWordBadge =
+                      style.highlightAnimation === 'background' ||
+                      Boolean(
+                        style.activeWordBgColor &&
+                          style.highlightAnimation !== 'color-change' &&
+                          style.highlightAnimation !== 'none'
+                      );
                     const isLetterPreset = style.animationPreset?.startsWith('letters-');
                     const wordEmoji = w.emoji || getKeywordEmoji(w.text);
                     const isCurrent = currentTime >= w.start && currentTime <= w.end;
@@ -601,8 +621,13 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                           whiteSpace: 'nowrap',
                           transformOrigin: 'center center',
                           overflow: isLetterPreset || style.animationPreset === 'words-slide-up' ? 'hidden' : 'visible',
+                          paddingTop: isLetterPreset || style.animationPreset === 'words-slide-up' ? `${Math.round(fontSize * 0.12)}px` : undefined,
+                          paddingBottom: isLetterPreset || style.animationPreset === 'words-slide-up' ? `${Math.round(fontSize * 0.12)}px` : undefined,
+                          marginTop: isLetterPreset || style.animationPreset === 'words-slide-up' ? `-${Math.round(fontSize * 0.12)}px` : undefined,
+                          marginBottom: isLetterPreset || style.animationPreset === 'words-slide-up' ? `-${Math.round(fontSize * 0.12)}px` : undefined,
                           borderRadius: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
-                          padding: isWordBadge ? `${Math.round(2 * scaleFactor)}px ${Math.round(8 * scaleFactor)}px` : undefined,
+                          paddingLeft: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
+                          paddingRight: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
                           willChange: 'transform, color, opacity, background-color',
                         }}
                       >
@@ -623,7 +648,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                           </span>
                         )}
                         {isLetterPreset ? (
-                          text.split('').map((char, cIdx) => (
+                          splitGraphemes(text).map((char, cIdx) => (
                             <span
                               key={cIdx}
                               className="char-item"

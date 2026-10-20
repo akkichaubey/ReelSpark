@@ -61,6 +61,35 @@ const YoutubeIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+const FacebookIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
+
+const ThreadsIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M12 2a10 10 0 1 0 10 10c0-4.42-3.13-8-8-8-4 0-7 2.6-7 6.5s3 6.5 7 6.5c2.3 0 4.1-.9 5.2-2.3" />
+    <path d="M14 10.5c-.8-.5-1.7-.5-2.5 0-1.2.8-1.5 2.2-.7 3.4.8 1.1 2.2 1.3 3.4.5.6-.4.9-1 .8-1.7" />
+  </svg>
+);
+
 interface OutputSettingsPanelProps {
   settings: OutputSettings;
   onChangeSettings: (settings: OutputSettings) => void;
@@ -149,11 +178,25 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
       icon: InstagramIcon,
     },
     {
+      key: 'facebook-reel',
+      title: 'Facebook Reel',
+      sub: '9:16 Vertical',
+      ratio: '9:16',
+      icon: FacebookIcon,
+    },
+    {
       key: 'youtube-short',
       title: 'YouTube Short',
       sub: '9:16 Vertical',
       ratio: '9:16',
       icon: YoutubeIcon,
+    },
+    {
+      key: 'threads-video',
+      title: 'Threads Video',
+      sub: '9:16 Vertical',
+      ratio: '9:16',
+      icon: ThreadsIcon,
     },
     {
       key: 'instagram-portrait',

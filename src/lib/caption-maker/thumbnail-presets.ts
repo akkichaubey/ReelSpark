@@ -275,7 +275,7 @@ export function createDefaultThumbnailSettings(
   projectTitle?: string,
   initialAspectRatio: '9:16' | '4:5' | '1:1' | '16:9' = '9:16',
   position: ThumbnailLayoutPosition = 'top',
-  customY: number = 18,
+  customY: number = 23,
   fontFamily: string = 'Montserrat',
   highlightColor: string = '#FCD905'
 ): ThumbnailSettings {
@@ -677,20 +677,28 @@ export async function renderThumbnailToCanvas(
     subtitleHeight;
 
   let blockStartY = 0;
+  const is916 = settings.aspectRatio === '9:16';
+
   if (settings.position === 'top') {
-    blockStartY = height * 0.18;
+    // On 9:16 vertical covers, start at 23% to sit inside Instagram 1:1 Profile Grid Crop (21.9% to 78.1%)
+    // and clear the 14% Top Danger Zone.
+    blockStartY = is916 ? height * 0.23 : height * 0.14;
   } else if (settings.position === 'bottom') {
-    blockStartY = height * 0.82 - totalContentHeight;
+    // On 9:16 vertical covers, end at 76% to sit inside Instagram 1:1 Profile Grid Crop (ends at 78.1%)
+    // and clear the 22% Bottom Danger Zone.
+    blockStartY = (is916 ? height * 0.76 : height * 0.86) - totalContentHeight;
   } else if (settings.position === 'custom') {
     const customPercent = (settings.customY ?? 50) / 100;
     blockStartY = height * customPercent - totalContentHeight / 2;
   } else {
-    // center
+    // center (perfect center alignment for 1:1 Instagram profile grid crop)
     blockStartY = (height - totalContentHeight) / 2;
   }
 
-  // Keep within canvas bounds
-  blockStartY = Math.max(height * 0.06, Math.min(height * 0.94 - totalContentHeight, blockStartY));
+  // Keep within safe canvas bounds
+  const minTopBound = is916 ? height * 0.14 : height * 0.08;
+  const maxBottomBound = is916 ? height * 0.78 : height * 0.92;
+  blockStartY = Math.max(minTopBound, Math.min(maxBottomBound - totalContentHeight, blockStartY));
 
   // 8. Draw Box Backdrop if enabled
   if (settings.boxBackground) {

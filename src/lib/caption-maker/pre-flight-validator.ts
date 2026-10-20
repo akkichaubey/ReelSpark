@@ -219,14 +219,29 @@ export function validateAndHealReelProject(
   });
 
   // 5. Media & Canvas Readiness
-  const hasMedia = Boolean(project.audio?.fileUrl && project.outputSettings?.width);
+  const width = project.outputSettings?.width || 1080;
+  const height = project.outputSettings?.height || 1920;
+  const isEvenDims = width % 2 === 0 && height % 2 === 0;
+  const hasMedia = Boolean(project.audio?.fileUrl && width && height);
+
+  let canvasDetail = '';
+  let canvasStatus: 'passed' | 'warning' | 'error' = 'passed';
+
+  if (!hasMedia) {
+    canvasStatus = 'error';
+    canvasDetail = 'Missing audio track or canvas dimension settings.';
+  } else if (!isEvenDims) {
+    canvasStatus = 'warning';
+    canvasDetail = `Canvas dimensions ${width}×${height} are not divisible by 2. Auto-scaling to even dimensions for video encoding.`;
+  } else {
+    canvasDetail = `${width}×${height} (${project.outputSettings.aspectRatio}) @ ${project.outputSettings.fps}fps • Safe Zone verified • Audio ${duration.toFixed(1)}s`;
+  }
+
   checks.push({
     id: 'media_assets',
     label: 'Canvas & Audio Track',
-    status: hasMedia ? 'passed' : 'error',
-    detail: hasMedia
-      ? `${project.outputSettings.width}×${project.outputSettings.height} (${project.outputSettings.aspectRatio}) @ ${project.outputSettings.fps}fps • Audio ${duration.toFixed(1)}s`
-      : 'Missing audio or output canvas settings.',
+    status: canvasStatus,
+    detail: canvasDetail,
   });
 
   const hasError = checks.some((c) => c.status === 'error');

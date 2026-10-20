@@ -55,7 +55,9 @@ export type ImagePosition =
 
 export type PlatformPreset =
   | 'instagram-reel'
+  | 'facebook-reel'
   | 'youtube-short'
+  | 'threads-video'
   | 'instagram-portrait'
   | 'instagram-square'
   | 'youtube-landscape'
@@ -65,6 +67,7 @@ export type ResolutionTier = '720p' | '1080p' | '1440p' | '4k';
 export type VideoFps = 24 | 25 | 30 | 60;
 export type VideoQuality = 'draft' | 'standard' | 'high' | 'pro';
 export type VideoCodec = 'h264' | 'hevc' | 'auto';
+export type AspectRatio = '9:16' | '4:5' | '1:1' | '16:9';
 
 export interface OutputSettings {
   preset: PlatformPreset;
@@ -124,6 +127,7 @@ export type TextEffectType =
   | 'soft-ambient';
 
 export interface CaptionStyle {
+  presetId?: string;
   fontFamily: string;
   fontSize: number; // in pixels relative to 1080p width (default 64)
   fontWeight: FontWeight;
@@ -146,6 +150,19 @@ export interface CaptionStyle {
   uppercase: boolean;
   textTransform?: TextTransformMode; // 'uppercase' | 'lowercase' | 'sentence' | 'title' | 'none'
   showSafeArea: boolean;
+  safeZoneOverrides?: {
+    platform?: PlatformPreset;
+    topDangerPercent?: number;
+    bottomDangerPercent?: number;
+    rightMarginPercent?: number;
+    leftMarginPercent?: number;
+    showFaceGuide?: boolean;
+    showCropGuides?: boolean;
+    showActionRail?: boolean;
+    showDangerZones?: boolean;
+    showSafeActionBox?: boolean;
+    showHeadlineBox?: boolean;
+  };
   // Modern VN / Instagram & CapCut Extensions
   backgroundStyle?: BackgroundStyle;
   backgroundOpacity?: number; // 0 to 1
@@ -250,6 +267,19 @@ export interface ThumbnailSettings {
   gradientPreset?: string;
   customBgUrl?: string;
   showSafeArea?: boolean;
+  safeZoneOverrides?: {
+    platform?: PlatformPreset;
+    topDangerPercent?: number;
+    bottomDangerPercent?: number;
+    rightMarginPercent?: number;
+    leftMarginPercent?: number;
+    showFaceGuide?: boolean;
+    showCropGuides?: boolean;
+    showActionRail?: boolean;
+    showDangerZones?: boolean;
+    showSafeActionBox?: boolean;
+    showHeadlineBox?: boolean;
+  };
 }
 
 export interface BgMusicTrack {

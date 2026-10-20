@@ -8,12 +8,16 @@
 
 ### 1. Professional AI Reel Studio (`/caption-maker`)
 - **Word-by-Word Kinetic & Highlight Captions**: Exact verbatim speech synchronization in English, Hindi, and Hinglish with active-word pop and color highlights (`#FCD905`).
+- **Social Media Reel Safe-Zone Measurement Engine**: Verified boundary calculation and guides for **Instagram Reels** (14% top / 22% bottom / 15% rail / 35% warning), **Facebook Reels** (14% top / 26% bottom / 14% rail), **YouTube Shorts** (10% top / 23% bottom / 14% rail / 1.2% scrubber), and **Threads Video** (9% top / 20% bottom / no rail).
+- **Unified Reel Caption & Thumbnail Safe-Zone Studio**: Interactive calibration sliders (Top, Bottom, Right margin, Left margin), real-time usable canvas computation ($853 \times 1229\,\text{px}$ to $950 \times 1363\,\text{px}$), 1-click reset to official specs, Instagram 1:1 profile grid center square ($1080 \times 1080\,\text{px}$) and 4:5 in-feed crop lines ($1080 \times 1350\,\text{px}$).
+- **Two-Way Safe-Zone Synchronization**: Seamless real-time state synchronization between Video Reel caption playback and Thumbnail Cover creator with zero layout shifting.
+- **Thumbnail Cover Design Studio**: 6 high-converting presets (Hormozi, Cyber, Minimal, Cinema, Alert, Glass Card), 6 studio gradient backdrops, 1:1 Instagram profile grid safe zone preview with follower/play mock overlay, and direct PNG/JPEG download.
 - **AI Reel Social Media Post Copywriter**: Generate viral hooks, post captions, CTAs, and hashtags isolated strictly to the selected clip's transcript.
 - **Custom Brand Style Presets ("Save As My Style")**: Create, save, and reuse custom typography, glow colors, shadows, borders, text case, and safe-zone positioning.
 - **Multi-Format Subtitle Exporter**: One-click download of `.srt` (with relative offsets starting at `00:00:00,000`), `.vtt` (WebVTT for web players), and clean `.txt` transcripts.
 - **Interactive Audio Waveform Trimmer**: Visual waveform scrubber with draggable start and end handles, word boundary snapping, and real-time playback auditioning.
 - **Custom Background Music (BGM) Library**: Upload MP3/WAV tracks, custom library storage, volume controls, start offset adjustment, fade-in / fade-out (0-5s), and auto-ducking during speech.
-- **Advanced Text Case & 9-Position Guides**: Transform caption casing (UPPERCASE, lowercase, Sentence case, or original) and align captions to any of 9 screen positions with Instagram Reels and YouTube Shorts safe-zone guides.
+- **Advanced Text Case & 9-Position Guides**: Transform caption casing (UPPERCASE, lowercase, Sentence case, or original) and align captions to any of 9 screen positions with Instagram Reels, Facebook Reels, and YouTube Shorts safe-zone guides.
 - **Word-Level Timing Adjustment Studio**: Fine-tune individual word timestamps (-100ms, -50ms, +50ms, +100ms), snap adjacent words, distribute durations, and highlight audio gaps.
 - **Advanced Multi-Resolution Export**: Render at 720p, 1080p Full HD, 2K QHD, or 4K UHD at 24, 25, 30, or 60 FPS with CRF quality controls and bitrate presets.
 - **AI Smart Editing & Silence Studio**: Detect dead-air pauses and verbal fillers ("umm", "uh"), apply jump-cut edits with seamless audio, and score viral hooks with auto-highlighting.
@@ -58,19 +62,41 @@ Navigate to:
 
 ### 4. Run Automated Tests
 ```bash
-# Run comprehensive 57-suite test runner
+# Run comprehensive core test runner
 pnpm test
+
+# Run social media safe-zone measurement system test
+pnpm test:safe-zone
+
+# Run caption & thumbnail safe-zone two-way sync test
+pnpm test:safe-sync
+
+# Run comprehensive preset analysis & isolation test
+pnpm test:presets
+
+# Run TypeScript type check
+pnpm typecheck
 
 # Run Next.js production build check
 pnpm build
+```
+
+### 5. Video & Audio Clipping Studio Services (Phase 1)
+```bash
+# Start standalone local media service on 127.0.0.1:4000
+pnpm media-service
+
+# Apply Supabase database migrations (optional, local persistence active by default)
+# See CLIPPING_STUDIO.md for instructions and SQL file
 ```
 
 ---
 
 ## 📖 Complete Documentation
 
+- See [CLIPPING_STUDIO.md](CLIPPING_STUDIO.md) for the complete architecture, Supabase schema migrations, local media service, and development roadmap.
 - See [PROJECT.md](PROJECT.md) for complete architectural documentation, AI pipeline details, FFmpeg filter graphs, and security design.
-- See [TESTING.md](TESTING.md) for the automated test matrix covering all 57 verification suites.
+- See [TESTING.md](TESTING.md) for the automated test matrix covering all verification suites.
 
 ---
 

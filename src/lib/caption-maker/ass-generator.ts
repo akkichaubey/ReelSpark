@@ -84,6 +84,21 @@ export function generateAssSubtitles(
 
   // Header & Styles section (Spacing: 0 is mandatory for Devanagari ligatures, otherwise style.letterSpacing)
   const spacing = hasDevanagari ? 0 : Math.round(style.letterSpacing ?? 0);
+
+  // Platform-accurate safe margins: on 9:16 vertical reels, right margin must be 15% (~162px on 1080p)
+  // to prevent long text lines from bleeding into Instagram/TikTok/Shorts like & comment action buttons.
+  const isVertical916 =
+    output.aspectRatio === '9:16' ||
+    output.preset === 'instagram-reel' ||
+    output.preset === 'facebook-reel' ||
+    output.preset === 'youtube-short' ||
+    output.preset === 'threads-video' ||
+    (!output.aspectRatio && height > width);
+
+  const marginL = isVertical916 ? Math.round(width * 0.08) : Math.round(width * 0.06);
+  const marginR = isVertical916 ? Math.round(width * 0.15) : Math.round(width * 0.06);
+  const marginV = isVertical916 ? Math.round(height * 0.08) : Math.round(height * 0.06);
+
   let ass = `[Script Info]
 Title: AI Reel Animated Captions
 ScriptType: v4.00+
@@ -94,8 +109,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontFamily},${scaledFontSize},${primaryColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},${boldFlag},0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth},${scaledShadow},${alignment},40,40,60,1
-Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,100,100,${spacing},0,1,${importantOutline},${scaledShadow},${alignment},40,40,60,1
+Style: Default,${fontFamily},${scaledFontSize},${primaryColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},${boldFlag},0,0,0,100,100,${spacing},0,1,${scaledStrokeWidth},${scaledShadow},${alignment},${marginL},${marginR},${marginV},1
+Style: Important,${fontFamily},${Math.round(scaledFontSize * 1.08)},${importantColorAss},&H000000FF,${outlineColorAss},${shadowColorAss},-1,0,0,0,100,100,${spacing},0,1,${importantOutline},${scaledShadow},${alignment},${marginL},${marginR},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -25,6 +25,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
+import { StudioShell } from '@/components/clipping-studio/StudioShell';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -535,8 +536,9 @@ export default function DashboardPage() {
     displayCandidates.length > 0 && displayCandidates.every((c) => c.selected);
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-white selection:text-zinc-950">
-      {/* Navbar */}
+    <StudioShell>
+      <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-white selection:text-zinc-950">
+        {/* Navbar */}
       <Navbar
         systemStatus={systemStatus}
         onNewProject={() => setShowCreatorModal(true)}
@@ -884,5 +886,6 @@ export default function DashboardPage() {
         }}
       />
     </div>
+    </StudioShell>
   );
 }

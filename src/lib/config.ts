@@ -77,6 +77,29 @@ export async function checkFfmpegStatus(): Promise<{ available: boolean; path: s
   }
 }
 
+/**
+ * Verify whether FFprobe is available and return detected version.
+ */
+export async function checkFfprobeStatus(): Promise<{ available: boolean; path: string; version?: string; error?: string }> {
+  const binary = getFfprobePath();
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
+  try {
+    const { stdout, stderr } = await execFileAsync(binary, ['-version']);
+    const output = stdout || stderr;
+    const firstLine = output.split('\n')[0] || '';
+    return { available: true, path: binary, version: firstLine.trim() };
+  } catch (err: any) {
+    return {
+      available: false,
+      path: binary,
+      error: err?.message || 'FFprobe executable not found or failed to execute',
+    };
+  }
+}
+
 export interface AppSettings {
   geminiModel: string;
   geminiApiKey?: string;

@@ -57,6 +57,35 @@ import {
   SyncedPhraseSegment,
 } from '../src/lib/caption-maker/types';
 import { validateUpload, MAX_UPLOAD_BYTES } from '../src/lib/media-validation';
+import {
+  parseTimestampToMs,
+  formatMsToTimestamp,
+  parseTimestampRangeLine,
+  parseBulkTimestamps,
+  msToFrame,
+  frameToMs,
+  getMediaAssetWebUrl,
+  MergeRecipe,
+  MediaAsset,
+  Clip,
+  formatFilenameTemplate,
+} from '../src/lib/clipping-studio/contracts';
+import {
+  planMergeRecipe,
+  buildMergeFfmpegArgs,
+} from '../src/lib/clipping-studio/merge-planner';
+import {
+  buildSingleClipExportFfmpegArgs,
+  parseFfmpegProgress,
+} from '../src/lib/clipping-studio/export-engine';
+import {
+  createBlankClippingProject,
+  saveCrashRecoverySnapshot,
+  loadCrashRecoverySnapshot,
+  clearCrashRecoverySnapshot,
+} from '../src/lib/clipping-studio/local-persistence';
+import { getSupabaseStatus, syncProjectToSupabase } from '../src/lib/clipping-studio/supabase';
+import { checkFfprobeStatus } from '../src/lib/config';
 import { extractAudioFromVideo, detectBestVideoEncoder, cleanupTempStorage } from '../src/lib/caption-maker/ffmpeg-renderer';
 import { devanagariToHinglish, getKeywordEmoji, enrichWordsWithEmojis } from '../src/lib/caption-maker/hinglish-and-emoji';
 import { PRESET_BGM_TRACKS } from '../src/lib/caption-maker/sample-data';
@@ -3144,6 +3173,304 @@ async function runAllTests() {
       nextConfigContent.includes("proxyClientMaxBodySize: '500mb'"),
       'next.config.ts must configure experimental.proxyClientMaxBodySize to 500mb to prevent Next.js proxy request body truncation'
     );
+  });
+
+  await test('Test 59: Video & Audio Clipping Studio Phase 1 (Local Media Service Contracts, Timestamp Parsing, SQL Migration & Supabase Resilient Fallback)', async () => {
+    // 1. Millisecond timestamp parser accuracy
+    assert.strictEqual(parseTimestampToMs('00:01:15.500'), 75500);
+    assert.strictEqual(parseTimestampToMs('01:02:03.250'), 3723250);
+    assert.strictEqual(formatMsToTimestamp(75500), '00:01:15.500');
+
+    // 2. Bulk timestamp line parsing and boundary check
+    const validRange = parseTimestampRangeLine('00:00:10.000 to 00:00:20.000', 1);
+    assert.strictEqual(validRange.valid, true);
+    assert.strictEqual(validRange.durationMs, 10000);
+
+    const invalidRange = parseTimestampRangeLine('00:00:20.000 to 00:00:10.000', 2);
+    assert.strictEqual(invalidRange.valid, false);
+
+    // 3. Supabase configuration status check without throwing
+    const supabaseStatus = getSupabaseStatus();
+    assert.ok(typeof supabaseStatus.configured === 'boolean');
+    assert.ok(supabaseStatus.message.length > 0);
+
+    // 4. Version-controlled migration verification
+    const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261020000000_create_clipping_studio_schema.sql');
+    assert.ok(fs.existsSync(migrationPath), 'Phase 1 SQL migration must exist');
+    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS clipping_projects'));
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS merge_recipes'));
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS export_sources'));
+
+    // 5. FFprobe binary status
+    const ffprobe = await checkFfprobeStatus();
+    assert.strictEqual(ffprobe.available, true);
+  });
+
+  await test('Test 60: Video & Audio Clipping Studio Phase 2 (Media Import URL, Frame Calculations, and Bulk Timestamp Line Parser)', async () => {
+    // 1. Frame stepping calculations
+    assert.strictEqual(msToFrame(1000, 30), 30);
+    assert.strictEqual(frameToMs(30, 30), 1000);
+    assert.strictEqual(msToFrame(500, 30), 15);
+
+    // 2. Fractional second timestamps
+    assert.strictEqual(parseTimestampToMs('00:00:02.750'), 2750);
+    assert.strictEqual(formatMsToTimestamp(2750), '00:00:02.750');
+
+    // 3. Multi-line bulk timestamps parser with custom names
+    const bulkInput = `00:00:10.000 to 00:00:20.000 | Hook
+invalid_malformed_entry
+00:01:15 to 00:01:35 | Core Point`;
+    const bulkResult = parseBulkTimestamps(bulkInput, 120000);
+    assert.strictEqual(bulkResult.items.length, 3);
+    assert.strictEqual(bulkResult.validCount, 2);
+    assert.strictEqual(bulkResult.invalidCount, 1);
+    assert.strictEqual(bulkResult.items[0].name, 'Hook');
+    assert.strictEqual(bulkResult.items[0].durationMs, 10000);
+    assert.strictEqual(bulkResult.items[2].name, 'Core Point');
+    assert.strictEqual(bulkResult.items[2].durationMs, 20000);
+
+    // 4. Media Asset Web URL resolution
+    const mockAsset = {
+      projectId: 'proj_demo',
+      filename: 'sample.mp4',
+      localPath: path.join(process.cwd(), 'storage', 'clipping-studio', 'projects', 'proj_demo', 'media', 'sample.mp4'),
+    };
+    const url = getMediaAssetWebUrl(mockAsset);
+    assert.ok(url.startsWith('/api/files/'), 'Must resolve to /api/files/ route');
+    assert.ok(url.includes('sample.mp4'));
+  });
+
+  await test('Test 61: Video & Audio Clipping Studio Phase 3 (Merge Studio Independent Multi-Recipe Builder, Stream Copy vs Filter Complex Concat Planning)', async () => {
+    // 1. Mock source assets
+    const asset1: MediaAsset = {
+      id: 'a1',
+      projectId: 'proj1',
+      filename: 'source1.mp4',
+      localPath: 'C:\\media\\source1.mp4',
+      fileSizeBytes: 1000000,
+      metadata: {
+        durationSeconds: 100,
+        durationMs: 100000,
+        sizeBytes: 1000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+        width: 1920,
+        height: 1080,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+      },
+      createdAt: new Date().toISOString(),
+    };
+    const asset2Diff: MediaAsset = {
+      id: 'a2',
+      projectId: 'proj1',
+      filename: 'source2.mp4',
+      localPath: 'C:\\media\\source2.mp4',
+      fileSizeBytes: 1000000,
+      metadata: {
+        durationSeconds: 50,
+        durationMs: 50000,
+        sizeBytes: 1000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+        width: 1280,
+        height: 720,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const clip2: Clip = {
+      id: 'c2',
+      projectId: 'proj1',
+      mediaAssetId: 'a1',
+      name: 'Clip 2',
+      startMs: 10000,
+      endMs: 25000,
+      durationMs: 15000,
+      orderIndex: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const clip8: Clip = {
+      id: 'c8',
+      projectId: 'proj1',
+      mediaAssetId: 'a1',
+      name: 'Clip 8',
+      startMs: 40000,
+      endMs: 55000,
+      durationMs: 15000,
+      orderIndex: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const clipDiff: Clip = {
+      id: 'c_diff',
+      projectId: 'proj1',
+      mediaAssetId: 'a2',
+      name: 'Clip Diff',
+      startMs: 0,
+      endMs: 10000,
+      durationMs: 10000,
+      orderIndex: 2,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 2. Concat demuxer copy selection for matching clips
+    const losslessRecipe: MergeRecipe = {
+      id: 'r_lossless',
+      projectId: 'proj1',
+      name: 'Recipe A: 2 + 8',
+      outputFormat: 'mp4',
+      targetResolution: 'source',
+      normalizeAudio: false,
+      items: [
+        { id: 'i1', recipeId: 'r_lossless', clipId: 'c2', orderIndex: 0, transition: 'none' },
+        { id: 'i2', recipeId: 'r_lossless', clipId: 'c8', orderIndex: 1, transition: 'none' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const losslessPlan = planMergeRecipe(losslessRecipe, [clip2, clip8], [asset1]);
+    assert.strictEqual(losslessPlan.isValid, true);
+    assert.strictEqual(losslessPlan.strategy, 'concat_demuxer_copy');
+    assert.strictEqual(losslessPlan.totalDurationMs, 30000);
+
+    const losslessArgs = buildMergeFfmpegArgs(losslessPlan, 'list.txt', 'out.mp4');
+    assert.ok(losslessArgs.includes('-c') && losslessArgs.includes('copy'));
+
+    // 3. Filter complex encode selection for differing resolutions
+    const mixedRecipe: MergeRecipe = {
+      id: 'r_mixed',
+      projectId: 'proj1',
+      name: 'Recipe Mixed: 2 + Diff',
+      outputFormat: 'mp4',
+      targetResolution: 'source',
+      normalizeAudio: false,
+      items: [
+        { id: 'im1', recipeId: 'r_mixed', clipId: 'c2', orderIndex: 0, transition: 'none' },
+        { id: 'im2', recipeId: 'r_mixed', clipId: 'c_diff', orderIndex: 1, transition: 'none' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const mixedPlan = planMergeRecipe(mixedRecipe, [clip2, clipDiff], [asset1, asset2Diff]);
+    assert.strictEqual(mixedPlan.isValid, true);
+    assert.strictEqual(mixedPlan.strategy, 'filter_complex_encode');
+    assert.strictEqual(mixedPlan.requiresReencoding, true);
+    assert.ok(mixedPlan.reencodeReasons[0].includes('Different resolutions'));
+
+    const mixedArgs = buildMergeFfmpegArgs(mixedPlan, 'unused.txt', 'out_mixed.mp4');
+    assert.ok(mixedArgs.includes('-filter_complex'));
+    assert.ok(mixedArgs.includes('libx264'));
+  });
+
+  await test('Test 62: Video & Audio Clipping Studio Phase 4 (Local FFmpeg Export Queue, Stream Copy, Audio Extraction & Progress Tracking)', async () => {
+    // 1. Filename template token engine
+    const filename = formatFilenameTemplate('{project}_{name}_{index}_{time}_{res}', {
+      project: 'ReelSpark/Pro!Project',
+      name: 'Episode 1: Intro?',
+      index: 1,
+      time: '00_01_00',
+      res: '1080p',
+    });
+    assert.strictEqual(filename, 'ReelSpark_Pro_Project_Episode_1_Intro_1_00_01_00_1080p');
+
+    // 2. Stream-copy export arguments for matching input/output format
+    const mockClip: Clip = {
+      id: 'clip_t62',
+      projectId: 'proj_t62',
+      mediaAssetId: 'asset_t62',
+      name: 'Fast Stream Copy',
+      startMs: 5000,
+      endMs: 25000,
+      durationMs: 20000,
+      orderIndex: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const mockAsset: MediaAsset = {
+      id: 'asset_t62',
+      projectId: 'proj_t62',
+      filename: 'source.mp4',
+      localPath: 'C:\\media\\source.mp4',
+      fileSizeBytes: 10000000,
+      metadata: {
+        durationSeconds: 100,
+        durationMs: 100000,
+        sizeBytes: 10000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const copyArgs = buildSingleClipExportFfmpegArgs({
+      clip: mockClip,
+      mediaAsset: mockAsset,
+      outputFormat: 'mp4',
+      outputType: 'video_and_audio',
+      qualityProfile: 'source',
+      outputPath: 'C:\\exports\\out.mp4',
+    });
+    assert.ok(copyArgs.includes('-c') && copyArgs.includes('copy'));
+
+    // 3. Audio-only extraction flags
+    const audioArgs = buildSingleClipExportFfmpegArgs({
+      clip: mockClip,
+      mediaAsset: mockAsset,
+      outputFormat: 'mp3',
+      outputType: 'audio_only',
+      qualityProfile: 'high',
+      normalizeAudio: true,
+      outputPath: 'C:\\exports\\out.mp3',
+    });
+    assert.ok(audioArgs.includes('-vn'));
+    assert.ok(audioArgs.includes('libmp3lame'));
+    assert.ok(audioArgs.includes('-af'));
+
+    // 4. Progress parsing
+    const progress = parseFfmpegProgress('time=00:00:10.00', 20000);
+    assert.strictEqual(progress, 50);
+  });
+
+  await test('Test 63: Video & Audio Clipping Studio Phase 5 (Project Persistence, Duplication, Undo/Redo & Crash Recovery)', async () => {
+    // 1. Mock in-memory localStorage for test
+    const memoryStore: Record<string, string> = {};
+    const oldWindow = (global as any).window;
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => memoryStore[key] || null,
+        setItem: (key: string, val: string) => { memoryStore[key] = val; },
+        removeItem: (key: string) => { delete memoryStore[key]; },
+      },
+    };
+
+    // 2. Project creation & crash snapshot
+    const proj = createBlankClippingProject('Phase 5 Persistence Test');
+    saveCrashRecoverySnapshot(proj);
+    const recovery = loadCrashRecoverySnapshot(proj.id);
+    assert.ok(recovery);
+    assert.strictEqual(recovery.snapshot.name, 'Phase 5 Persistence Test');
+    clearCrashRecoverySnapshot(proj.id);
+    assert.strictEqual(loadCrashRecoverySnapshot(proj.id), null);
+
+    // 3. Supabase resilient sync fallback
+    const syncRes = await syncProjectToSupabase(proj);
+    assert.strictEqual(syncRes.success, true);
+    assert.ok(syncRes.message);
+
+    // Restore window
+    (global as any).window = oldWindow;
   });
 
   console.log('\n======================================================');
