@@ -3,6 +3,7 @@ import { CaptionProject, SyncedPhraseSegment, TranscriptWord } from './types';
 import { detectImportantWords } from './important-words';
 import { groupTranscriptWords } from './caption-grouping';
 import { DEFAULT_CAPTION_STYLE, DEFAULT_OUTPUT_SETTINGS } from './sample-data';
+import { devanagariToHinglish, enrichWordsWithEmojis } from './hinglish-and-emoji';
 
 export interface ClipAudioOverride {
   audioUrl: string;
@@ -13,8 +14,10 @@ export interface ClipAudioOverride {
   syncedSegments?: SyncedPhraseSegment[];
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
+  rawTranscriptHinglish?: string;
   titleHindi?: string;
   titleEnglish?: string;
+  titleHinglish?: string;
   isAudioSynced?: boolean;
 }
 
@@ -24,16 +27,22 @@ export interface ClipAudioOverride {
  */
 export function buildWordsFromSyncedSegments(
   segments: SyncedPhraseSegment[],
-  lang: 'hi' | 'en'
+  lang: 'hi' | 'en' | 'hinglish'
 ): TranscriptWord[] {
   const words: TranscriptWord[] = [];
   let wordIdx = 1;
 
   for (const seg of segments) {
-    const rawPhrase =
-      lang === 'hi'
-        ? seg.textHindi || seg.textEnglish || ''
-        : seg.textEnglish || seg.textHindi || '';
+    let rawPhrase = '';
+    if (lang === 'hi') {
+      rawPhrase = seg.textHindi || seg.textEnglish || '';
+    } else if (lang === 'hinglish') {
+      rawPhrase =
+        seg.textHinglish ||
+        (seg.textHindi ? devanagariToHinglish(seg.textHindi) : seg.textEnglish || '');
+    } else {
+      rawPhrase = seg.textEnglish || seg.textHindi || '';
+    }
     const tokens = rawPhrase
       .trim()
       .split(/\s+/)
@@ -65,12 +74,14 @@ export function buildWordsFromSyncedSegments(
         text: tokens[i],
         start: wStart,
         end: wEnd,
+        speakerId: seg.speakerId,
+        intensity: seg.intensity,
       });
       cursor = nextCursor;
     }
   }
 
-  return detectImportantWords(words);
+  return enrichWordsWithEmojis(detectImportantWords(words));
 }
 
 /**
@@ -83,18 +94,23 @@ export function buildWordsFromSyncedSegments(
 export function createCaptionProjectFromClip(
   candidate: ClipCandidate,
   activeProject?: Project | null,
-  preferredLanguage: 'hi' | 'en' = 'en',
+  preferredLanguage: 'hi' | 'en' | 'hinglish' = 'en',
   audioOverride?: ClipAudioOverride
 ): CaptionProject {
   const resolvedTranscriptHindi =
     audioOverride?.rawTranscriptHindi || candidate.transcriptHindi || candidate.transcript;
   const resolvedTranscriptEnglish =
     audioOverride?.rawTranscriptEnglish || candidate.transcriptEnglish || candidate.transcript;
+  const resolvedTranscriptHinglish =
+    audioOverride?.rawTranscriptHinglish ||
+    (resolvedTranscriptHindi ? devanagariToHinglish(resolvedTranscriptHindi) : resolvedTranscriptEnglish);
 
   // Select best transcript text based on preferred language or available fields
   let text = candidate.transcript;
   if (preferredLanguage === 'hi') {
     text = resolvedTranscriptHindi;
+  } else if (preferredLanguage === 'hinglish') {
+    text = resolvedTranscriptHinglish;
   } else if (preferredLanguage === 'en') {
     text = resolvedTranscriptEnglish;
   }
@@ -153,7 +169,7 @@ export function createCaptionProjectFromClip(
       };
     });
 
-    wordsWithImportance = detectImportantWords(rawWords);
+    wordsWithImportance = enrichWordsWithEmojis(detectImportantWords(rawWords));
   }
 
   const captionGroups = groupTranscriptWords(wordsWithImportance, 4);
@@ -188,14 +204,21 @@ export function createCaptionProjectFromClip(
 
   const resolvedTitleHindi = audioOverride?.titleHindi || candidate.titleHindi || candidate.title;
   const resolvedTitleEnglish = audioOverride?.titleEnglish || candidate.titleEnglish || candidate.title;
+  const resolvedTitleHinglish =
+    audioOverride?.titleHinglish || (resolvedTitleHindi ? devanagariToHinglish(resolvedTitleHindi) : candidate.title);
   const selectedTitle =
-    preferredLanguage === 'hi' ? resolvedTitleHindi : resolvedTitleEnglish;
+    preferredLanguage === 'hi'
+      ? resolvedTitleHindi
+      : preferredLanguage === 'hinglish'
+      ? resolvedTitleHinglish
+      : resolvedTitleEnglish;
 
   return {
     id: `reel_${candidate.id}_${Date.now()}`,
     title: selectedTitle || 'Viral Reel Caption',
     rawTranscriptHindi: resolvedTranscriptHindi,
     rawTranscriptEnglish: resolvedTranscriptEnglish,
+    rawTranscriptHinglish: resolvedTranscriptHinglish,
     preferredLanguage,
     sourceClipId: candidate.id,
     syncedSegments,
@@ -229,12 +252,12 @@ export function createCaptionProjectFromClip(
 }
 
 /**
- * Switch a CaptionProject between Hindi and English transcripts
+ * Switch a CaptionProject between Hindi, English, and Hinglish transcripts
  * while preserving styling, audio, images, and exact phrase timestamps.
  */
 export function switchProjectLanguage(
   project: CaptionProject,
-  newLang: 'en' | 'hi'
+  newLang: 'en' | 'hi' | 'hinglish'
 ): CaptionProject {
   if (project.syncedSegments && project.syncedSegments.length > 0) {
     const wordsWithImportance = buildWordsFromSyncedSegments(project.syncedSegments, newLang);
@@ -248,12 +271,26 @@ export function switchProjectLanguage(
     };
   }
 
-  const targetText =
-    newLang === 'hi'
-      ? project.rawTranscriptHindi || project.transcript.map((w) => w.text).join(' ')
-      : project.rawTranscriptEnglish || project.transcript.map((w) => w.text).join(' ');
+  let targetText = '';
+  if (newLang === 'hi') {
+    targetText = project.rawTranscriptHindi || project.transcript.map((w) => w.text).join(' ');
+  } else if (newLang === 'hinglish') {
+    targetText =
+      project.rawTranscriptHinglish ||
+      (project.rawTranscriptHindi
+        ? devanagariToHinglish(project.rawTranscriptHindi)
+        : project.transcript.map((w) => w.text).join(' '));
+  } else {
+    targetText = project.rawTranscriptEnglish || project.transcript.map((w) => w.text).join(' ');
+  }
 
-  if (!targetText) return project;
+  if (!targetText) {
+    return {
+      ...project,
+      preferredLanguage: newLang,
+      updatedAt: new Date().toISOString(),
+    };
+  }
 
   const duration = Math.max(3, project.audio?.duration || 15);
   const cleanTokens = targetText
@@ -282,7 +319,7 @@ export function switchProjectLanguage(
     };
   });
 
-  const wordsWithImportance = detectImportantWords(rawWords);
+  const wordsWithImportance = enrichWordsWithEmojis(detectImportantWords(rawWords));
   const captionGroups = groupTranscriptWords(wordsWithImportance, 4);
 
   return {

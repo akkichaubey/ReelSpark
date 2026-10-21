@@ -49,8 +49,8 @@ export function getCssObjectPosition(position?: ImagePosition): string {
 
 export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
   imageSrc,
-  fitMode = 'contain',
-  position = 'bottom-left',
+  fitMode = 'cover',
+  position = 'center',
   scale = 100,
   mediaType,
 }) => {
@@ -73,9 +73,25 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
           imageSrc.includes('type=video'))
     );
 
-  const align = posAlignment[position || 'bottom-left'];
+  const align = posAlignment[position || 'center'];
 
-  if ((fitMode || 'contain') === 'contain') {
+  if (fitMode === 'blur') {
+    const Media = isVideo ? OffthreadVideo : Img;
+    return (
+      <AbsoluteFill style={{ backgroundColor: '#000', overflow: 'hidden' }}>
+        <Media
+          src={imageSrc}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(24px)', transform: 'scale(1.08)' }}
+        />
+        <Media
+          src={imageSrc}
+          style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'contain' }}
+        />
+      </AbsoluteFill>
+    );
+  }
+
+  if ((fitMode || 'cover') === 'contain') {
     return (
       <AbsoluteFill
         style={{

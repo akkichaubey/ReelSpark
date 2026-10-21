@@ -15,6 +15,7 @@ import {
   Sliders,
   Copy,
   Check,
+  Share2,
 } from 'lucide-react';
 import { ClipCandidate } from '@/lib/types';
 import { getBilingualCandidateData } from '@/lib/bilingual';
@@ -57,6 +58,25 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   const [isCreatingReel, setIsCreatingReel] = useState(false);
 
   const bData = getBilingualCandidateData(candidate, lang);
+
+  const handleSocialPostClick = () => {
+    try {
+      const socialContext = {
+        transcript:
+          lang === 'hi'
+            ? candidate.transcriptHindi || candidate.transcript
+            : candidate.transcriptEnglish || candidate.transcript,
+        title: bData.title,
+        duration: candidate.duration,
+        language: lang,
+        clipId: candidate.id,
+      };
+      localStorage.setItem('reel_social_post_context', JSON.stringify(socialContext));
+    } catch (e) {
+      console.warn('Could not save social post context', e);
+    }
+    router.push(`/social-post?clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
+  };
 
   const copyTextToClipboard = async (text: string, onSuccess: () => void) => {
     try {
@@ -384,6 +404,17 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Sliders className="w-3.5 h-3.5 text-zinc-300" />
             <span>Studio</span>
+          </button>
+
+          {/* AI Social Post */}
+          <button
+            type="button"
+            onClick={handleSocialPostClick}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            title="Open AI Social Post dedicated studio to generate viral hooks, post captions & hashtags"
+          >
+            <Share2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Social Post</span>
           </button>
 
           {/* Create Reel in Amber/Gold */}

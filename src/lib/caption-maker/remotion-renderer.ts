@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, TranscriptWord } from './types';
+import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, SfxCue, TranscriptWord } from './types';
 import { RemotionCaptionProps } from '../../remotion/types';
 import { probeAudioDuration } from './ffmpeg-renderer';
 
@@ -18,6 +18,20 @@ export interface RenderRemotionOptions {
   imagePosition?: ImagePosition;
   imageScale?: number;
   mediaType?: 'image' | 'video';
+  voiceVolume?: number;
+  voiceMuted?: boolean;
+  bgMusicPath?: string;
+  bgMusicUrl?: string;
+  bgMusicVolume?: number;
+  bgMusicMuted?: boolean;
+  bgMusicFadeIn?: number;
+  bgMusicFadeOut?: number;
+  bgMusicAutoDucking?: boolean;
+  bgMusicOffset?: number;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
+  speaker1Color?: string;
+  speaker2Color?: string;
   onProgress?: (percent: number) => void;
 }
 
@@ -140,8 +154,8 @@ export async function renderRemotionReelVideo(
     words,
     style,
     outputSettings,
-    imageFitMode = 'contain',
-    imagePosition = 'bottom-left',
+    imageFitMode = 'cover',
+    imagePosition = 'center',
     imageScale = 100,
     mediaType,
     onProgress,
@@ -189,6 +203,32 @@ export async function renderRemotionReelVideo(
     }
   }
 
+  // 3b. Resolve background music source if provided
+  let resolvedBgMusicSrc = options.bgMusicUrl;
+  if (options.bgMusicPath && fs.existsSync(options.bgMusicPath)) {
+    try {
+      const mime = getMimeType(options.bgMusicPath);
+      resolvedBgMusicSrc = fileToDataUrl(options.bgMusicPath, mime);
+    } catch {
+      resolvedBgMusicSrc = options.bgMusicUrl;
+    }
+  }
+
+  // 3c. Resolve AI sound effect cues with self-contained data URLs
+  const resolvedSfxCues: SfxCue[] = (options.sfxCues || []).map((cue) => {
+    const sfxFile = path.join(process.cwd(), 'public', 'audio', 'sfx', `${cue.type}.mp3`);
+    let dataUrl: string | undefined;
+    if (fs.existsSync(sfxFile)) {
+      try {
+        dataUrl = fileToDataUrl(sfxFile, 'audio/mpeg');
+      } catch {}
+    }
+    return {
+      ...cue,
+      audioSrc: dataUrl || `/audio/sfx/${cue.type}.mp3`,
+    };
+  });
+
   // 4. Ensure Remotion composition bundle is ready
   const bundleLocation = await getRemotionBundle();
 
@@ -196,6 +236,19 @@ export async function renderRemotionReelVideo(
   const inputProps: RemotionCaptionProps = {
     imageSrc: resolvedImageSrc,
     audioSrc: resolvedAudioSrc,
+    voiceVolume: options.voiceVolume,
+    voiceMuted: options.voiceMuted,
+    bgMusicSrc: resolvedBgMusicSrc,
+    bgMusicVolume: options.bgMusicVolume ?? 0.20,
+    bgMusicMuted: options.bgMusicMuted,
+    bgMusicFadeIn: options.bgMusicFadeIn ?? 0.8,
+    bgMusicFadeOut: options.bgMusicFadeOut ?? 1.2,
+    bgMusicAutoDucking: options.bgMusicAutoDucking ?? true,
+    bgMusicOffset: options.bgMusicOffset ?? 0,
+    sfxCues: resolvedSfxCues,
+    autoSfxEnabled: options.autoSfxEnabled,
+    speaker1Color: options.speaker1Color,
+    speaker2Color: options.speaker2Color,
     transcript: words,
     captionGroups: groups,
     captionStyle: style,

@@ -27,10 +27,25 @@ export function sanitizeFilename(name: string): string {
 export function assertSafePath(targetPath: string, basePath = APP_CONFIG.storageRoot): string {
   const normalizedBase = path.resolve(basePath);
   const normalizedTarget = path.resolve(targetPath);
-  if (!normalizedTarget.startsWith(normalizedBase)) {
+  const relative = path.relative(normalizedBase, normalizedTarget);
+  // `startsWith()` is unsafe here: `storage-other` also starts with `storage`.
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error('Access denied: Path traversal detected');
   }
   return normalizedTarget;
+}
+
+/** Resolve a client-provided storage-relative path without allowing absolute paths. */
+export function resolveStoragePath(relativePath: string): string {
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    throw new Error('Access denied: expected a storage-relative path');
+  }
+  return assertSafePath(path.join(APP_CONFIG.storageRoot, relativePath), APP_CONFIG.storageRoot);
+}
+
+/** Verify an existing path belongs to local ReelSpark storage. */
+export function assertStorageFile(filePath: string): string {
+  return assertSafePath(filePath, APP_CONFIG.storageRoot);
 }
 
 export interface ProjectDirectories {

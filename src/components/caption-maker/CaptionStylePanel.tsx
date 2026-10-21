@@ -8,14 +8,23 @@ import {
   AnimationPreset,
   HighlightAnimation,
   CaptionPosition,
+  Caption9Position,
   FontWeight,
   TextAlignment,
+  TextTransformMode,
   BackgroundStyle,
   TextEffectType,
 } from '@/lib/caption-maker/types';
+import { resolveNinePosition } from '@/lib/caption-maker/text-transform';
 import {
   REEL_STYLE_PRESETS,
+  PRESET_CLEANUP_DEFAULTS,
 } from '@/lib/caption-maker/sample-data';
+import {
+  PLATFORM_SAFE_ZONE_PRESETS,
+  getSafeZoneConfig,
+  SafeZoneOverrides,
+} from '@/lib/caption-maker/safe-zone';
 import {
   Type,
   Palette,
@@ -36,12 +45,21 @@ import {
   ChevronUp,
   Plus,
   SlidersHorizontal,
+  BookmarkPlus,
+  BookmarkCheck,
+  Trash2,
 } from 'lucide-react';
 import {
   POPULAR_GOOGLE_FONTS,
   loadGoogleFontInDocument,
   loadFontBatch,
 } from '@/lib/caption-maker/google-fonts';
+import {
+  getCustomPresets,
+  saveCustomPreset,
+  deleteCustomPreset,
+  CustomStylePreset,
+} from '@/lib/caption-maker/custom-presets';
 
 interface CaptionStylePanelProps {
   style: CaptionStyle;
@@ -58,6 +76,35 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
   const [fontCategoryFilter, setFontCategoryFilter] = useState<
     'all' | 'viral' | 'clean' | 'display' | 'serif' | 'devanagari'
   >('all');
+
+  // Custom User Style Presets state
+  const [customPresets, setCustomPresets] = useState<CustomStylePreset[]>([]);
+  const [isSavingPreset, setIsSavingPreset] = useState<boolean>(false);
+  const [presetNameInput, setPresetNameInput] = useState<string>('');
+  const [presetDescInput, setPresetDescInput] = useState<string>('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
+
+  useEffect(() => {
+    setCustomPresets(getCustomPresets());
+  }, []);
+
+  const handleSavePreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!presetNameInput.trim()) return;
+    const created = saveCustomPreset(presetNameInput.trim(), style, presetDescInput.trim());
+    setCustomPresets(getCustomPresets());
+    setPresetNameInput('');
+    setPresetDescInput('');
+    setIsSavingPreset(false);
+    setSaveSuccessMsg(`Saved style "${created.name}"`);
+    setTimeout(() => setSaveSuccessMsg(''), 3000);
+  };
+
+  const handleDeletePreset = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = deleteCustomPreset(id);
+    setCustomPresets(updated);
+  };
 
   const currentFontName = style.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Inter';
 
@@ -88,11 +135,16 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
     onChangeStyle({ ...style, ...partial });
   };
 
-  const applyPreset = (presetStyle: Partial<CaptionStyle>) => {
+  const applyPreset = (presetStyle: Partial<CaptionStyle>, presetId?: string) => {
     if (presetStyle.fontFamily) {
       loadGoogleFontInDocument(presetStyle.fontFamily);
     }
-    onChangeStyle({ ...style, ...presetStyle });
+    onChangeStyle({
+      ...style,
+      ...PRESET_CLEANUP_DEFAULTS,
+      ...presetStyle,
+      ...(presetId ? { presetId } : {}),
+    });
   };
 
   return (
@@ -145,6 +197,162 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
         {/* ========================================================================= */}
         {activeTab === 'presets' && (
           <div className="space-y-4">
+            {/* Custom Brand Style Saver Card */}
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 via-zinc-900 to-zinc-950 border border-amber-500/30 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-400 text-black font-bold">
+                    <BookmarkPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-zinc-100 text-xs">Save As My Style</h4>
+                    <p className="text-[10px] text-zinc-400">Reuse your exact font, colors, stroke & badge anytime</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSavingPreset(!isSavingPreset)}
+                  className="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shadow-amber-400/20"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>{isSavingPreset ? 'Close' : 'Save Style'}</span>
+                </button>
+              </div>
+
+              {saveSuccessMsg && (
+                <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-semibold bg-green-500/10 border border-green-500/30 px-2.5 py-1.5 rounded-lg animate-in fade-in">
+                  <BookmarkCheck className="w-3.5 h-3.5" />
+                  <span>{saveSuccessMsg}</span>
+                </div>
+              )}
+
+              {isSavingPreset && (
+                <form onSubmit={handleSavePreset} className="pt-2 border-t border-zinc-800 space-y-2 animate-in fade-in">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-zinc-300 mb-1">
+                      Preset Name <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={presetNameInput}
+                      onChange={(e) => setPresetNameInput(e.target.value)}
+                      placeholder="e.g. My Podcast Gold, Dark Minimal, Neon Brand..."
+                      className="w-full bg-zinc-950 border border-zinc-700 focus:border-amber-400 text-zinc-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
+                      Description / Tags (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={presetDescInput}
+                      onChange={(e) => setPresetDescInput(e.target.value)}
+                      placeholder="e.g. Yellow glow, Montserrat bold, for motivational reels"
+                      className="w-full bg-zinc-950 border border-zinc-700 focus:border-amber-400 text-zinc-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsSavingPreset(false)}
+                      className="px-2.5 py-1 text-zinc-400 hover:text-zinc-200 text-[11px] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!presetNameInput.trim()}
+                      className="px-3 py-1.5 bg-amber-400 disabled:opacity-50 hover:bg-amber-300 text-black font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <BookmarkCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Save Preset</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* My Saved Styles Section (if user has custom presets) */}
+            {customPresets.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-zinc-200 font-semibold flex items-center gap-1.5">
+                    <BookmarkCheck className="w-3.5 h-3.5 text-amber-400" />
+                    My Saved Brand Styles
+                  </label>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700">
+                    {customPresets.length} saved
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {customPresets.map((preset) => {
+                    const isCustomActive =
+                      style.fontFamily === preset.style.fontFamily &&
+                      style.textColor === preset.style.textColor &&
+                      style.importantColor === preset.style.importantColor &&
+                      style.strokeWidth === preset.style.strokeWidth;
+
+                    return (
+                      <div
+                        key={preset.id}
+                        onClick={() => applyPreset(preset.style, preset.id)}
+                        className={`group relative p-2.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
+                          isCustomActive
+                            ? 'border-amber-400 bg-zinc-900/90 shadow-md shadow-amber-400/20 ring-1 ring-amber-400'
+                            : 'border-zinc-800 bg-zinc-950/70 hover:border-amber-400/60 hover:bg-zinc-900/80 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <span
+                            className={`font-semibold text-[11px] truncate pr-1 ${
+                              isCustomActive ? 'text-amber-300 font-bold' : 'text-zinc-100 group-hover:text-amber-300'
+                            }`}
+                          >
+                            {preset.name}
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {preset.badge || 'BRAND'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeletePreset(e, preset.id)}
+                              title="Delete preset"
+                              className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Live custom mini-preview */}
+                        <div
+                          style={{
+                            backgroundColor: preset.style.backgroundColor || '#09090b',
+                            color: preset.style.textColor || '#FFFFFF',
+                            fontFamily: preset.style.fontFamily,
+                            border: `1px solid ${
+                              preset.style.importantColor ? preset.style.importantColor + '40' : 'rgba(255,255,255,0.1)'
+                            }`,
+                          }}
+                          className="mt-1 py-1 px-2 rounded-md text-center font-bold text-[10px] tracking-wide truncate shadow-inner"
+                        >
+                          MY <span style={{ color: preset.style.importantColor || '#FCD905' }}>STYLE</span>
+                        </div>
+
+                        <span className="text-[10px] text-zinc-500 mt-1.5 line-clamp-1 leading-tight">
+                          {preset.description}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-zinc-200 font-semibold flex items-center gap-1.5">
@@ -156,19 +364,21 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 {REEL_STYLE_PRESETS.map((preset) => {
                   const isActive =
-                    (preset.id === 'cinematic-subtitle' &&
-                      style.fontFamily?.includes('Montserrat') &&
-                      style.animationPreset === 'clean') ||
-                    (style.fontFamily === preset.style.fontFamily &&
-                      style.animationPreset === preset.style.animationPreset &&
-                      style.strokeWidth === preset.style.strokeWidth &&
-                      style.textEffect === preset.style.textEffect);
+                    style.presetId === preset.id ||
+                    (!style.presetId &&
+                      ((preset.id === 'cinematic-subtitle' &&
+                        style.fontFamily?.includes('Montserrat') &&
+                        style.animationPreset === 'clean') ||
+                      (style.fontFamily === preset.style.fontFamily &&
+                        style.animationPreset === preset.style.animationPreset &&
+                        style.strokeWidth === preset.style.strokeWidth &&
+                        style.textEffect === preset.style.textEffect)));
 
                   return (
                     <button
                       key={preset.id}
                       type="button"
-                      onClick={() => applyPreset(preset.style)}
+                      onClick={() => applyPreset(preset.style, preset.id)}
                       className={`group relative p-2.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
                         isActive
                           ? 'border-amber-400 bg-zinc-900/90 shadow-md shadow-amber-400/20 ring-1 ring-amber-400'
@@ -207,6 +417,180 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Quick Active & Primary Colors Customizer for Selected Preset */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-zinc-200">
+                    Active & Primary Colors
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const activePreset = REEL_STYLE_PRESETS.find((p) => p.id === style.presetId);
+                    update({
+                      importantColor: activePreset?.style.importantColor || '#FCD905',
+                      textColor: activePreset?.style.textColor || '#FFFFFF',
+                      activeWordBgColor: activePreset?.style.activeWordBgColor,
+                      glowColor:
+                        style.textEffect === 'neon-glow'
+                          ? activePreset?.style.glowColor || activePreset?.style.importantColor || '#FCD905'
+                          : style.glowColor,
+                    });
+                  }}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800 border border-zinc-700/60 transition-colors cursor-pointer"
+                  title="Reset colors back to preset defaults"
+                >
+                  Reset to Default
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* 1. Active Spoken Word Color */}
+                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-amber-400">
+                      Active Spoken Word
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {style.importantColor}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        style.importantColor?.startsWith('#') && style.importantColor.length === 7
+                          ? style.importantColor
+                          : '#FCD905'
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        update({
+                          importantColor: val,
+                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        });
+                      }}
+                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
+                      title="Choose active spoken word color"
+                    />
+                    <input
+                      type="text"
+                      value={style.importantColor}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        update({
+                          importantColor: val,
+                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        });
+                      }}
+                      maxLength={7}
+                      placeholder="#FCD905"
+                      className="w-full bg-zinc-950 border border-zinc-700/80 text-amber-300 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase font-semibold"
+                    />
+                  </div>
+                  {/* Quick Active Color Swatches */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {[
+                      { col: '#FCD905', title: 'Viral Gold (Default)' },
+                      { col: '#00F2FE', title: 'Neon Cyan' },
+                      { col: '#A3E635', title: 'Neon Lime' },
+                      { col: '#FF007A', title: 'Hot Pink' },
+                      { col: '#FF6B00', title: 'Flame Orange' },
+                      { col: '#C084FC', title: 'Purple' },
+                      { col: '#EF4444', title: 'Alert Red' },
+                      { col: '#FFFFFF', title: 'Pure White' },
+                    ].map((s) => (
+                      <button
+                        key={s.col}
+                        type="button"
+                        onClick={() => {
+                          update({
+                            importantColor: s.col,
+                            glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
+                            activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
+                          });
+                        }}
+                        style={{ backgroundColor: s.col }}
+                        title={s.title}
+                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
+                          style.importantColor?.toUpperCase() === s.col.toUpperCase()
+                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
+                            : 'border-zinc-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Primary / Normal Text Color */}
+                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-zinc-300">
+                      Primary Text (Default)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => update({ textColor: '#FFFFFF' })}
+                      className="text-[9px] font-mono text-zinc-500 hover:text-white cursor-pointer"
+                      title="Keep primary text default #FFFFFF"
+                    >
+                      Default: #FFF
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        style.textColor?.startsWith('#') && style.textColor.length === 7
+                          ? style.textColor
+                          : '#FFFFFF'
+                      }
+                      onChange={(e) => update({ textColor: e.target.value })}
+                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
+                      title="Choose primary text color"
+                    />
+                    <input
+                      type="text"
+                      value={style.textColor}
+                      onChange={(e) => update({ textColor: e.target.value })}
+                      maxLength={7}
+                      placeholder="#FFFFFF"
+                      className="w-full bg-zinc-950 border border-zinc-700/80 text-zinc-200 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase"
+                    />
+                  </div>
+                  {/* Quick Primary Text Swatches */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {[
+                      { col: '#FFFFFF', title: 'Pure White (Default)' },
+                      { col: '#FFFBEB', title: 'Warm Cream' },
+                      { col: '#D1D5DB', title: 'Soft Gray' },
+                      { col: '#93C5FD', title: 'Ice Blue' },
+                      { col: '#FDF6E2', title: 'Retro Beige' },
+                      { col: '#000000', title: 'Deep Black' },
+                    ].map((s) => (
+                      <button
+                        key={s.col}
+                        type="button"
+                        onClick={() => update({ textColor: s.col })}
+                        style={{ backgroundColor: s.col }}
+                        title={s.title}
+                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
+                          style.textColor?.toUpperCase() === s.col.toUpperCase()
+                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
+                            : 'border-zinc-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -536,6 +920,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     onClick={() =>
                       update({
                         importantColor: '#FCD905',
+                        activeWordBgColor: style.activeWordBgColor ? '#FCD905' : undefined,
                         glowColor: style.textEffect === 'neon-glow' ? '#FCD905' : style.glowColor,
                       })
                     }
@@ -549,24 +934,28 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <input
                     type="color"
                     value={style.importantColor?.startsWith('#') && style.importantColor.length === 7 ? style.importantColor : '#FCD905'}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value;
                       update({
-                        importantColor: e.target.value,
-                        glowColor: style.textEffect === 'neon-glow' ? e.target.value : style.glowColor,
-                      })
-                    }
+                        importantColor: val,
+                        activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                      });
+                    }}
                     className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
                     title="Choose active spoken word color"
                   />
                   <input
                     type="text"
                     value={style.importantColor}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value;
                       update({
-                        importantColor: e.target.value,
-                        glowColor: style.textEffect === 'neon-glow' ? e.target.value : style.glowColor,
-                      })
-                    }
+                        importantColor: val,
+                        activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                        glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                      });
+                    }}
                     maxLength={7}
                     placeholder="#FCD905"
                     className="w-20 bg-zinc-900 border border-zinc-700 text-amber-300 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase font-semibold"
@@ -587,6 +976,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       onClick={() =>
                         update({
                           importantColor: s.col,
+                          activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
                           glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
                         })
                       }
@@ -650,16 +1040,109 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               </div>
             </div>
 
-            {/* Transform (ALL CAPS) */}
-            <label className="flex items-center gap-2 cursor-pointer bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-300 hover:border-zinc-700">
-              <input
-                type="checkbox"
-                checked={style.uppercase}
-                onChange={(e) => update({ uppercase: e.target.checked })}
-                className="accent-amber-400 rounded"
-              />
-              <span className="font-semibold text-[11px]">ALL CAPS (UPPERCASE TRANSFORMATION)</span>
-            </label>
+            {/* Text Case Transformation Studio */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="font-semibold text-zinc-200 text-xs block">
+                    Text Case Transformation
+                  </label>
+                  <span className="text-[10px] text-zinc-500 block">
+                    Convert spoken subtitle casing across all captions
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 uppercase font-bold">
+                  {style.textTransform || (style.uppercase ? 'uppercase' : 'none')}
+                </span>
+              </div>
+
+              {/* 4 Primary Transformation Mode Cards */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  {
+                    id: 'uppercase',
+                    label: 'UPPERCASE',
+                    desc: 'ALL CAPS (Viral standard)',
+                    preview: 'TRANSFORM YOUR REEL',
+                    setUppercase: true,
+                  },
+                  {
+                    id: 'sentence',
+                    label: 'Sentence case',
+                    desc: 'First letter capitalized',
+                    preview: 'Transform your reel',
+                    setUppercase: false,
+                  },
+                  {
+                    id: 'lowercase',
+                    label: 'lowercase',
+                    desc: 'All small letters',
+                    preview: 'transform your reel',
+                    setUppercase: false,
+                  },
+                  {
+                    id: 'title',
+                    label: 'Title Case',
+                    desc: 'Capitalize Each Word',
+                    preview: 'Transform Your Reel',
+                    setUppercase: false,
+                  },
+                ].map((item) => {
+                  const currentMode = style.textTransform || (style.uppercase ? 'uppercase' : 'none');
+                  const isSelected = currentMode === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        update({
+                          textTransform: item.id as TextTransformMode,
+                          uppercase: item.setUppercase,
+                        })
+                      }
+                      className={`p-2 rounded-lg border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-500/20 border-amber-500 text-white ring-1 ring-amber-500/40'
+                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-[11px] block">{item.label}</span>
+                        {isSelected && <span className="text-amber-400 font-bold text-xs">✓</span>}
+                      </div>
+                      <span className="text-[9px] text-zinc-500 line-clamp-1 mt-0.5">{item.desc}</span>
+                      <span className="text-[9px] font-mono text-amber-300/80 bg-zinc-950/60 px-1 py-0.5 rounded mt-1 truncate">
+                        {item.preview}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Original / As-Spoken Option */}
+              <button
+                type="button"
+                onClick={() =>
+                  update({
+                    textTransform: 'none',
+                    uppercase: false,
+                  })
+                }
+                className={`w-full py-1.5 px-2.5 rounded-lg border text-left flex items-center justify-between transition-all cursor-pointer ${
+                  (style.textTransform === 'none' || (!style.textTransform && !style.uppercase))
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 ring-1 ring-amber-500/30'
+                    : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div>
+                  <span className="font-semibold text-[11px] block">As Spoken (Original Transcript)</span>
+                  <span className="text-[9px] text-zinc-500">Preserve verbatim casing as transcribed</span>
+                </div>
+                {(style.textTransform === 'none' || (!style.textTransform && !style.uppercase)) && (
+                  <span className="text-amber-400 font-bold text-xs">✓</span>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
@@ -715,6 +1198,30 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <option value="none">None (Static)</option>
                 </select>
               </div>
+            </div>
+
+            {/* Auto Animated Emojis on Key Words (CapCut / Submagic Viral Style) */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-zinc-200 font-semibold text-xs">
+                    <span>🔥</span>
+                    <span>Auto Viral Emojis</span>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">
+                      Submagic style
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
+                    Bouncing animated emojis on key words (💰, 🔥, 🎯, 🚀, 💡, 🏆)
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={style.showEmojis !== false}
+                  onChange={(e) => update({ showEmojis: e.target.checked })}
+                  className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
+                />
+              </label>
             </div>
 
             {/* Active Word Zoom / Scale Slider (Text Zoom Settings) */}
@@ -998,132 +1505,412 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
         {/* ========================================================================= */}
         {activeTab === 'layout' && (
           <div className="space-y-4">
-            {/* Text Alignment */}
-            <div>
-              <label className="block text-zinc-300 font-medium mb-1.5">Horizontal Alignment</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {(
-                  [
-                    { id: 'left', icon: AlignLeft, label: 'Left' },
-                    { id: 'center', icon: AlignCenter, label: 'Center' },
-                    { id: 'right', icon: AlignRight, label: 'Right' },
-                    { id: 'custom', icon: SlidersHorizontal, label: 'Custom' },
-                  ] as const
-                ).map(({ id, icon: Icon, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() =>
-                      update({
-                        textAlign: id as TextAlignment,
-                        customX: id === 'custom' ? (style.customX ?? 50) : style.customX,
-                      })
-                    }
-                    className={`py-1.5 rounded-lg border text-center font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                      style.textAlign === id
-                        ? 'bg-amber-500 text-black border-amber-400 font-semibold'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="text-[11px]">{label}</span>
-                  </button>
-                ))}
-              </div>
-
-              {style.textAlign === 'custom' && (
-                <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
-                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
-                    <span>Horizontal Position (X%)</span>
-                    <span className="font-mono text-amber-400">{style.customX ?? 50}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="90"
-                    step="1"
-                    value={style.customX ?? 50}
-                    onChange={(e) => update({ customX: Number(e.target.value) })}
-                    className="w-full accent-amber-400 cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-                    <span>10% (Left)</span>
-                    <span>50% (Center)</span>
-                    <span>90% (Right)</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Position (Top, Center, Bottom, Custom) */}
-            <div>
-              <label className="block text-zinc-300 font-medium mb-1.5">Vertical Anchor</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {(
-                  [
-                    { id: 'top', label: 'Top' },
-                    { id: 'center', label: 'Center' },
-                    { id: 'bottom', label: 'Bottom' },
-                    { id: 'custom', label: 'Custom' },
-                  ] as const
-                ).map((pos) => (
-                  <button
-                    key={pos.id}
-                    type="button"
-                    onClick={() =>
-                      update({
-                        position: pos.id as CaptionPosition,
-                        customY: pos.id === 'custom' ? (style.customY ?? 20) : style.customY,
-                      })
-                    }
-                    className={`py-1.5 rounded-lg border text-center font-medium transition-all cursor-pointer ${
-                      style.position === pos.id
-                        ? 'bg-amber-500 text-black border-amber-400 font-semibold'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {pos.label}
-                  </button>
-                ))}
-              </div>
-
-              {style.position === 'custom' && (
-                <div className="mt-2.5 p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2">
-                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
-                    <span>Vertical Position (Y%)</span>
-                    <span className="font-mono text-amber-400">{style.customY ?? 20}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="90"
-                    step="1"
-                    value={style.customY ?? 20}
-                    onChange={(e) => update({ customY: Number(e.target.value) })}
-                    className="w-full accent-amber-400 cursor-pointer"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Safe Area Guide Toggle */}
-            <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-amber-400" />
+            {/* 1. Interactive 9-Position Visual Pad (3x3 Reel Canvas Anchors) */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-zinc-200 text-xs">Safe Area Overlay</p>
-                  <p className="text-[10px] text-zinc-500">
-                    Highlights 9:16 Instagram/TikTok button & caption dead zones
-                  </p>
+                  <label className="font-semibold text-zinc-200 text-xs block flex items-center gap-1.5">
+                    <Layout className="w-3.5 h-3.5 text-amber-400" />
+                    9-Position Canvas Anchor Pad
+                  </label>
+                  <span className="text-[10px] text-zinc-500 block">
+                    1-Click Instagram & TikTok screen positioning
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 uppercase font-bold">
+                  {resolveNinePosition(style.position, style.textAlign)}
+                </span>
+              </div>
+
+              {/* 3x3 Visual Interactive Grid */}
+              <div className="p-2.5 bg-black/60 rounded-xl border border-zinc-800/80 grid grid-cols-3 gap-1.5 max-w-[280px] mx-auto">
+                {(
+                  [
+                    { id: 'top-left', label: 'Top Left', pos: 'top', align: 'left', shortcut: 'TL' },
+                    { id: 'top-center', label: 'Top Center', pos: 'top', align: 'center', shortcut: 'TC' },
+                    { id: 'top-right', label: 'Top Right', pos: 'top', align: 'right', shortcut: 'TR' },
+                    { id: 'center-left', label: 'Center Left', pos: 'center', align: 'left', shortcut: 'CL' },
+                    { id: 'center', label: 'Center', pos: 'center', align: 'center', shortcut: 'CC' },
+                    { id: 'center-right', label: 'Center Right', pos: 'center', align: 'right', shortcut: 'CR' },
+                    { id: 'bottom-left', label: 'Bottom Left', pos: 'bottom', align: 'left', shortcut: 'BL' },
+                    { id: 'bottom-center', label: 'Bottom Center', pos: 'bottom', align: 'center', shortcut: 'BC' },
+                    { id: 'bottom-right', label: 'Bottom Right', pos: 'bottom', align: 'right', shortcut: 'BR' },
+                  ] as const
+                ).map((cell) => {
+                  const currentNine = resolveNinePosition(style.position, style.textAlign);
+                  const isCurrent = currentNine === cell.id && style.position !== 'custom';
+                  return (
+                    <button
+                      key={cell.id}
+                      type="button"
+                      onClick={() =>
+                        update({
+                          position: cell.id as CaptionPosition,
+                          ninePosition: cell.id as Caption9Position,
+                          textAlign: cell.align as TextAlignment,
+                        })
+                      }
+                      title={cell.label}
+                      className={`h-11 rounded-lg border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'bg-amber-400 text-black border-amber-300 font-bold shadow-md shadow-amber-400/20 scale-[1.02]'
+                          : 'bg-zinc-900/70 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="text-[10px] font-mono font-bold leading-none">{cell.shortcut}</span>
+                      <span className="text-[8px] opacity-75 mt-0.5 leading-none">{cell.label.split(' ')[0]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Horizontal Alignment & Vertical Anchor Selectors */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Horizontal Alignment */}
+              <div>
+                <label className="block text-zinc-300 font-medium mb-1 text-[11px]">Horizontal Align</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      { id: 'left', icon: AlignLeft, label: 'L' },
+                      { id: 'center', icon: AlignCenter, label: 'C' },
+                      { id: 'right', icon: AlignRight, label: 'R' },
+                    ] as const
+                  ).map(({ id, icon: Icon, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => update({ textAlign: id as TextAlignment })}
+                      className={`py-1.5 rounded-lg border text-center font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                        style.textAlign === id
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                      title={`Align ${id}`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">{label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-              <input
-                type="checkbox"
-                checked={style.showSafeArea}
-                onChange={(e) => update({ showSafeArea: e.target.checked })}
-                className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
-              />
+
+              {/* Vertical Anchor */}
+              <div>
+                <label className="block text-zinc-300 font-medium mb-1 text-[11px]">Vertical Anchor</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      { id: 'top', label: 'Top' },
+                      { id: 'center', label: 'Mid' },
+                      { id: 'bottom', label: 'Bot' },
+                    ] as const
+                  ).map((pos) => (
+                    <button
+                      key={pos.id}
+                      type="button"
+                      onClick={() => update({ position: pos.id as CaptionPosition })}
+                      className={`py-1.5 rounded-lg border text-center font-medium transition-all cursor-pointer text-[10px] ${
+                        (style.position === pos.id || style.position.startsWith(pos.id)) && style.position !== 'custom'
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {pos.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+
+            {/* 3. Custom Freeform Coordinate Sliders (X% & Y%) */}
+            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-semibold text-zinc-200 text-xs block">
+                    Custom Coordinates (Free Drag)
+                  </span>
+                  <span className="text-[10px] text-zinc-500 block">
+                    Fine-tune exact percentage placement on canvas
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    update({
+                      position: 'custom',
+                      textAlign: 'custom',
+                      customX: style.customX ?? 50,
+                      customY: style.customY ?? 50,
+                    })
+                  }
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer ${
+                    style.position === 'custom' || style.textAlign === 'custom'
+                      ? 'bg-amber-400 text-black border-amber-300 font-bold'
+                      : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-zinc-200'
+                  }`}
+                >
+                  {style.position === 'custom' ? 'Active' : 'Enable Freeform'}
+                </button>
+              </div>
+
+              {/* Horizontal Slider (X%) */}
+              <div>
+                <div className="flex justify-between items-center mb-1 text-zinc-300 text-[11px]">
+                  <span>Horizontal (X%)</span>
+                  <span className="font-mono text-amber-400 font-bold">{style.customX ?? 50}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="90"
+                  step="1"
+                  value={style.customX ?? 50}
+                  onChange={(e) =>
+                    update({
+                      customX: Number(e.target.value),
+                      position: 'custom',
+                      textAlign: 'custom',
+                    })
+                  }
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                  <span>10% (Left Safe)</span>
+                  <span>50% (Center)</span>
+                  <span>84% (Right Safe)</span>
+                </div>
+              </div>
+
+              {/* Vertical Slider (Y%) */}
+              <div>
+                <div className="flex justify-between items-center mb-1 text-zinc-300 text-[11px]">
+                  <span>Vertical (Y%)</span>
+                  <span className="font-mono text-amber-400 font-bold">{style.customY ?? 76}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="90"
+                  step="1"
+                  value={style.customY ?? 76}
+                  onChange={(e) =>
+                    update({
+                      customY: Number(e.target.value),
+                      position: 'custom',
+                      textAlign: 'custom',
+                    })
+                  }
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                  <span>14% (Top Safe)</span>
+                  <span>50% (Center)</span>
+                  <span>76% (Bottom Safe)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Social Media Safe-Zone & Platform Calibration Studio */}
+            {(() => {
+              const activeSafePlatform = style.safeZoneOverrides?.platform || 'instagram-reel';
+              const currentSafeConfig = getSafeZoneConfig(activeSafePlatform, style.safeZoneOverrides);
+
+              return (
+                <div className="p-3 bg-zinc-950/90 border border-sky-500/30 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-zinc-100 text-xs">Social Safe-Zone Studio</p>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                            9:16 Canvas
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-400">
+                          Verified boundaries for Instagram, Facebook, Shorts & Threads
+                        </p>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={style.showSafeArea}
+                      onChange={(e) => update({ showSafeArea: e.target.checked })}
+                      className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
+                    />
+                  </div>
+
+                  {style.showSafeArea && (
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+                      {/* Platform Presets Switcher Pills */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-semibold text-zinc-300">
+                            Target Social Platform
+                          </span>
+                          <span className="text-[9px] font-mono text-amber-400 font-semibold">
+                            {currentSafeConfig.sourceLabel}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { id: 'instagram-reel', label: 'Instagram Reels', sub: '14% Top / 22% Bottom' },
+                            { id: 'facebook-reel', label: 'Facebook Reels', sub: '14% Top / 26% Bottom' },
+                            { id: 'youtube-short', label: 'YouTube Shorts', sub: '10% Top / 23% Bottom' },
+                            { id: 'threads-video', label: 'Threads Video', sub: '9% Top / 20% Bottom' },
+                          ].map((p) => {
+                            const isSelected = activeSafePlatform === p.id;
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  update({
+                                    safeZoneOverrides: {
+                                      ...style.safeZoneOverrides,
+                                      platform: p.id as any,
+                                      topDangerPercent: undefined,
+                                      bottomDangerPercent: undefined,
+                                      rightMarginPercent: undefined,
+                                      leftMarginPercent: undefined,
+                                    },
+                                  });
+                                }}
+                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-sky-500/20 border-sky-400 text-sky-200 shadow-sm'
+                                    : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                <span className="block font-semibold text-[11px]">{p.label}</span>
+                                <span className="text-[9px] font-mono text-zinc-500">{p.sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Calibration Sliders */}
+                      <div className="p-2.5 bg-zinc-900/70 border border-zinc-800 rounded-lg space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-zinc-300">
+                            Custom Danger Zone Calibration
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  topDangerPercent: undefined,
+                                  bottomDangerPercent: undefined,
+                                  rightMarginPercent: undefined,
+                                  leftMarginPercent: undefined,
+                                },
+                              });
+                            }}
+                            className="text-[9px] font-mono text-amber-400 hover:text-amber-300 cursor-pointer"
+                            title="Reset sliders back to official platform specifications"
+                          >
+                            Reset to Official
+                          </button>
+                        </div>
+
+                        {/* Top Danger Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Top UI Danger Zone</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.topDangerPercent}% (~{Math.round((1920 * currentSafeConfig.topDangerPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="25"
+                            step="0.5"
+                            value={currentSafeConfig.topDangerPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  topDangerPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Bottom Danger Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Bottom UI Danger Zone</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.bottomDangerPercent}% (~{Math.round((1920 * currentSafeConfig.bottomDangerPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="12"
+                            max="38"
+                            step="0.5"
+                            value={currentSafeConfig.bottomDangerPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  bottomDangerPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Right Action Bar Width Slider */}
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                            <span>Right Action Rail Width</span>
+                            <span className="font-mono text-amber-400 font-bold">
+                              {currentSafeConfig.rightMarginPercent}% (~{Math.round((1080 * currentSafeConfig.rightMarginPercent) / 100)}px)
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="4"
+                            max="22"
+                            step="0.5"
+                            value={currentSafeConfig.rightMarginPercent}
+                            onChange={(e) =>
+                              update({
+                                safeZoneOverrides: {
+                                  ...style.safeZoneOverrides,
+                                  rightMarginPercent: Number(e.target.value),
+                                },
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Summary Metric */}
+                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 px-1">
+                        <span>Usable Safe Canvas:</span>
+                        <span className="text-sky-300 font-bold">
+                          {Math.round(1080 * (1 - (currentSafeConfig.leftMarginPercent + currentSafeConfig.rightMarginPercent) / 100))} × {Math.round(1920 * (1 - (currentSafeConfig.topDangerPercent + currentSafeConfig.bottomDangerPercent) / 100))} px
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

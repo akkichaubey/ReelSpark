@@ -5,6 +5,7 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { getProjectDirs, loadProject, sanitizeFilename, saveProject } from '@/lib/storage';
 import { probeVideo } from '@/lib/ffmpeg';
+import { validateUpload } from '@/lib/media-validation';
 
 export async function POST(
   req: NextRequest,
@@ -22,6 +23,10 @@ export async function POST(
 
     if (!file) {
       return NextResponse.json({ success: false, error: 'No video file provided' }, { status: 400 });
+    }
+    const uploadError = validateUpload(file, ['video', 'audio']);
+    if (uploadError) {
+      return NextResponse.json({ success: false, error: uploadError }, { status: 400 });
     }
 
     const dirs = getProjectDirs(project.id);

@@ -169,6 +169,8 @@ export function alignSegmentsToAcousticIntervals(
           end: Number(iv.end.toFixed(2)),
           textHindi: seg.textHindi,
           textEnglish: seg.textEnglish,
+          speakerId: seg.speakerId,
+          intensity: seg.intensity,
         });
       } else {
         // Multiple segments share this continuous speech interval ->
@@ -182,6 +184,8 @@ export function alignSegmentsToAcousticIntervals(
           end: Number(Math.max(snappedStart + 0.15, snappedEnd).toFixed(2)),
           textHindi: seg.textHindi,
           textEnglish: seg.textEnglish,
+          speakerId: seg.speakerId,
+          intensity: seg.intensity,
         });
       }
       continue;
@@ -205,6 +209,8 @@ export function alignSegmentsToAcousticIntervals(
         end: Number(targetIntervals[targetIntervals.length - 1].end.toFixed(2)),
         textHindi: seg.textHindi,
         textEnglish: seg.textEnglish,
+        speakerId: seg.speakerId,
+        intensity: seg.intensity,
       });
     } else if (partCount === targetIntervals.length) {
       for (let k = 0; k < targetIntervals.length; k++) {
@@ -215,6 +221,8 @@ export function alignSegmentsToAcousticIntervals(
           end: Number(targetIntervals[k].end.toFixed(2)),
           textHindi: hi,
           textEnglish: en,
+          speakerId: seg.speakerId,
+          intensity: seg.intensity,
         });
       }
     } else {
@@ -229,6 +237,8 @@ export function alignSegmentsToAcousticIntervals(
           end: Number(targetIntervals[endIvIdx].end.toFixed(2)),
           textHindi: hiParts[Math.min(p, hiParts.length - 1)] || '',
           textEnglish: enParts[Math.min(p, enParts.length - 1)] || '',
+          speakerId: seg.speakerId,
+          intensity: seg.intensity,
         });
       }
     }
@@ -309,6 +319,9 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
             titleHindi: cached.titleHindi,
             titleEnglish: cached.titleEnglish,
             syncedSegments: segments,
+            sfxCues: cached.sfxCues,
+            audioAnalysis: cached.audioAnalysis,
+            fillerSegments: cached.fillerSegments,
             language: preferredLanguage,
           };
         }
@@ -346,25 +359,64 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         : '';
 
     const prompt = `
-Listen carefully to this audio recording and transcribe it into short clause-by-clause segments with exact millisecond-accurate start and end timestamps in seconds relative to 0.0s.
+Listen carefully to this audio recording and analyze both the words spoken and the audio characteristics (vocal emotion, pauses, tempo, and sound design cues).
+
+Transcribe it into short clause-by-clause segments with exact millisecond-accurate start and end timestamps in seconds relative to 0.0s.
 ${intervalHintsText}
 
 CRITICAL RULES:
 1. EXACT AUDIO MATCH: Transcribe ONLY the actual words spoken in this audio. Never invent or substitute quotes.
-2. CLAUSE-LEVEL TIMESTAMPS WITH PAUSE GAPS: Break the speech into short spoken clauses matching the detected hardware voice intervals above. Whenever the speaker pauses (even between clauses or commas), END the current segment when the speaker stops talking and START the next segment only when the speaker resumes talking. Never include silence inside a segment's [start, end] range.
-3. BILINGUAL OUTPUT: For every clause segment, provide:
-   - "textHindi": Verbatim Hindi (in Devanagari script) matching the exact words spoken.
-   - "textEnglish": Accurate, natural English translation of that exact clause.
-4. Return a valid JSON object in this exact structure:
+2. CLAUSE-LEVEL TIMESTAMPS WITH PAUSE GAPS: Break speech into short spoken clauses matching the detected hardware voice intervals above. Whenever speaker pauses, end current segment and start next when speaker resumes.
+3. BILINGUAL OUTPUT:
+   - "textHindi": Verbatim Hindi (in Devanagari script) matching exact words spoken.
+   - "textEnglish": Accurate natural English translation.
+4. VOCAL INTENSITY & MULTI-SPEAKER:
+   - "intensity": detect vocal delivery for each segment: "normal" | "punch" (emphasized / louder) | "climax" (high energy / intense) | "whisper" (soft / low).
+   - "speakerId": if multiple speakers converse, label "Speaker 1" or "Speaker 2", otherwise "Speaker 1".
+5. AI SOUND EFFECTS CUES (sfxCues):
+   - Identify 2 to 5 high-impact sound design moments in the audio:
+     * "whoosh": hook start or energetic clause transition
+     * "ding": key takeaway, tip, or lightbulb insight
+     * "kaching": money, wealth, business, profit, or career terms
+     * "pop": witty point or word pop
+     * "impact": dramatic or serious climax
+6. AUDIO ANALYSIS (audioAnalysis):
+   - "mood": "motivational" | "chill" | "energetic" | "dramatic" | "philosophical" | "conversational"
+   - "energyLevel": "high" | "medium" | "low"
+   - "speechPaceWpm": integer words per minute (e.g. 140)
+   - "recommendedBgmId": "upbeat-energy" (if energetic/motivational) | "lofi-chill" (if relaxed/educational) | "cinematic-ambient" (if dramatic/reflective)
+   - "suggestedBgmVolume": 0.15 to 0.25
+   - "summary": 1 short punchy sentence describing the audio vibe
+   - "speakersDetected": 1 or 2
+7. FILLER & SILENCE TRIMMING (fillerSegments):
+   - Detect awkward filler sounds ("umm", "uhh", "matlab", stutter, or unnatural silence gaps > 1.2s):
+     [{ "start": 1.2, "end": 1.8, "text": "umm", "type": "filler" }]
+
+Return a valid JSON object in this exact structure:
 {
   "titleHindi": "Short catchy title in Hindi Devanagari",
   "titleEnglish": "Short catchy title in English",
+  "audioAnalysis": {
+    "mood": "motivational",
+    "energyLevel": "high",
+    "speechPaceWpm": 145,
+    "recommendedBgmId": "upbeat-energy",
+    "suggestedBgmVolume": 0.20,
+    "summary": "Energetic speech on focus and dreams",
+    "speakersDetected": 1
+  },
+  "sfxCues": [
+    { "time": 0.5, "type": "whoosh", "reason": "Opening hook" }
+  ],
+  "fillerSegments": [],
   "segments": [
     {
       "start": 0.23,
       "end": 2.03,
       "textHindi": "Exact Hindi clause spoken",
-      "textEnglish": "Exact English translation of clause"
+      "textEnglish": "Exact English translation of clause",
+      "intensity": "normal",
+      "speakerId": "Speaker 1"
     }
   ]
 }
@@ -422,11 +474,7 @@ Output ONLY the raw JSON object.
       }
     }
 
-    let parsed: {
-      titleHindi?: string;
-      titleEnglish?: string;
-      segments?: Array<{ start: number; end: number; textHindi?: string; textEnglish?: string; text?: string }>;
-    } = {};
+    let parsed: any = {};
 
     try {
       parsed = JSON.parse(responseText);
@@ -439,13 +487,15 @@ Output ONLY the raw JSON object.
 
     const rawSegments = Array.isArray(parsed.segments) ? parsed.segments : [];
     let segments: SyncedPhraseSegment[] = rawSegments
-      .map((s) => ({
+      .map((s: any) => ({
         start: Math.max(0, Number(s.start) || 0),
         end: Math.max(Number(s.start || 0) + 0.15, Number(s.end) || Number(s.start || 0) + 1.5),
-        textHindi: String(s.textHindi || (s as any).textHi || s.text || '').trim(),
-        textEnglish: String(s.textEnglish || (s as any).textEn || s.text || '').trim(),
+        textHindi: String(s.textHindi || s.textHi || s.text || '').trim(),
+        textEnglish: String(s.textEnglish || s.textEn || s.text || '').trim(),
+        speakerId: s.speakerId || 'Speaker 1',
+        intensity: (['normal', 'punch', 'climax', 'whisper'].includes(s.intensity) ? s.intensity : 'normal') as any,
       }))
-      .filter((s) => s.textHindi.length > 0 || s.textEnglish.length > 0);
+      .filter((s: SyncedPhraseSegment) => s.textHindi.length > 0 || s.textEnglish.length > 0);
 
     if (segments.length === 0) {
       throw new Error('Gemini returned empty transcription segments');
@@ -455,6 +505,38 @@ Output ONLY the raw JSON object.
     if (speechIntervals.length > 0) {
       segments = alignSegmentsToAcousticIntervals(segments, speechIntervals);
     }
+
+    // Parse AI Audio Enhancements
+    const sfxCues = Array.isArray(parsed.sfxCues)
+      ? parsed.sfxCues.map((c: any, idx: number) => ({
+          id: `sfx_${idx}_${Date.now()}`,
+          time: Math.max(0, Number(c.time) || 0),
+          type: (['whoosh', 'ding', 'kaching', 'pop', 'impact'].includes(c.type) ? c.type : 'pop') as any,
+          volume: typeof c.volume === 'number' ? c.volume : 0.35,
+          reason: String(c.reason || ''),
+        }))
+      : [];
+
+    const audioAnalysis = parsed.audioAnalysis
+      ? {
+          mood: parsed.audioAnalysis.mood,
+          energyLevel: parsed.audioAnalysis.energyLevel,
+          speechPaceWpm: Number(parsed.audioAnalysis.speechPaceWpm) || undefined,
+          recommendedBgmId: parsed.audioAnalysis.recommendedBgmId,
+          suggestedBgmVolume: Number(parsed.audioAnalysis.suggestedBgmVolume) || undefined,
+          summary: parsed.audioAnalysis.summary,
+          speakersDetected: Number(parsed.audioAnalysis.speakersDetected) || 1,
+        }
+      : undefined;
+
+    const fillerSegments = Array.isArray(parsed.fillerSegments)
+      ? parsed.fillerSegments.map((f: any) => ({
+          start: Math.max(0, Number(f.start) || 0),
+          end: Math.max(0.1, Number(f.end) || 0),
+          text: String(f.text || ''),
+          type: (['filler', 'silence', 'stutter'].includes(f.type) ? f.type : 'filler') as any,
+        }))
+      : [];
 
     // 4. Save to disk cache with acousticLocked=true for instant reuse
     try {
@@ -466,8 +548,11 @@ Output ONLY the raw JSON object.
             titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish || '',
             acousticLocked: true,
             syncVersion: 4,
-             totalDuration,
+            totalDuration,
             segments,
+            sfxCues,
+            audioAnalysis,
+            fillerSegments,
             updatedAt: new Date().toISOString(),
           },
           null,
@@ -493,6 +578,9 @@ Output ONLY the raw JSON object.
       titleHindi: parsed.titleHindi || fallbackHint?.titleHindi,
       titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish,
       syncedSegments: segments,
+      sfxCues,
+      audioAnalysis,
+      fillerSegments,
       language: preferredLanguage,
     };
   }

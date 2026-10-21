@@ -2,8 +2,15 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { useCurrentFrame, useVideoConfig } from 'remotion';
 import gsap from 'gsap';
 import { CaptionGroup, CaptionStyle, TranscriptWord } from '../lib/caption-maker/types';
-import { hexToRgba } from '../lib/caption-maker/sample-data';
+import { hexToRgba, getContrastingTextColor } from '../lib/caption-maker/sample-data';
 import { getGoogleFontUrl } from '../lib/caption-maker/google-fonts';
+import { getKeywordEmoji } from '../lib/caption-maker/hinglish-and-emoji';
+import {
+  getNinePositionCoordinates,
+  applyWordTransform,
+  splitGraphemes,
+  isDevanagari,
+} from '../lib/caption-maker/text-transform';
 
 interface GsapAnimatedCaptionsProps {
   words: TranscriptWord[];
@@ -11,6 +18,8 @@ interface GsapAnimatedCaptionsProps {
   style: CaptionStyle;
   width: number;
   height: number;
+  speaker1Color?: string;
+  speaker2Color?: string;
 }
 
 export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
@@ -18,6 +27,9 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   captionGroups,
   style,
   width,
+  height,
+  speaker1Color,
+  speaker2Color,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -34,8 +46,10 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   const paddingX = Math.round((style.backgroundPadding ?? 14) * scaleFactor);
   const paddingY = Math.round(paddingX * 0.5);
 
-  // Container width constraint matching preview (88% of canvas width)
-  const containerWidth = Math.round(width * 0.88);
+  // Container width constraint matching platform safe areas: 78% for 9:16 vertical reels (avoiding 15% right action bar)
+  // and 88% for landscape/square/portrait feeds without vertical action bars.
+  const isVertical916 = height > width;
+  const containerWidth = Math.round(width * (isVertical916 ? 0.78 : 0.88));
   const textAlign = style.textAlign === 'custom' ? 'center' : (style.textAlign || 'center');
   const justifyAlign =
     textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
@@ -45,7 +59,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   }, [style.fontFamily]);
 
   const cleanFontFamily = useMemo(() => {
-    return `"${primaryFontName}", "Nirmala UI", "Segoe UI", sans-serif`;
+    return `"${primaryFontName}", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Segoe UI", sans-serif`;
   }, [primaryFontName]);
 
   const googleFontUrl = useMemo(() => {
@@ -148,37 +162,38 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
   };
 
   // Vertical & Horizontal position styling matching ASS/Preview anchors 1:1
-  const getContainerPositionStyles = (): React.CSSProperties => {
-    const isCustomX = style.textAlign === 'custom' || style.position === 'custom';
-    const posX = isCustomX ? `${style.customX ?? 50}%` : '50%';
+  const coords = getNinePositionCoordinates(
+    style.position,
+    style.customX,
+    style.customY,
+    style.textAlign
+  );
 
-    if (style.position === 'top') {
-      return { top: '18%', left: posX, transform: 'translateX(-50%)' };
-    }
-    if (style.position === 'center') {
-      return { top: '50%', left: posX, transform: 'translate(-50%, -50%)' };
-    }
-    if (style.position === 'bottom') {
-      return { top: '82%', left: posX, transform: 'translateX(-50%)' };
-    }
+  const getContainerPositionStyles = (): React.CSSProperties => {
     return {
-      top: `${style.customY ?? 20}%`,
-      left: posX,
-      transform: 'translate(-50%, -50%)',
+      top: coords.top,
+      left: coords.left,
+      transform: coords.transform,
     };
   };
 
   const getGroupVerticalAnchor = (): React.CSSProperties => {
-    if (style.position === 'bottom') {
+    if (coords.ninePos.startsWith('bottom')) {
       return { bottom: 0 };
     }
-    if (style.position === 'top') {
+    if (coords.ninePos.startsWith('top')) {
       return { top: 0 };
     }
     return { top: '50%', transform: 'translateY(-50%)' };
   };
 
-  const letterSpacing = `${Math.round((style.letterSpacing ?? 0) * scaleFactor)}px`;
+  const hasDevanagari = useMemo(() => {
+    return isDevanagari(words.map((w) => w.text).join(' '));
+  }, [words]);
+
+  const letterSpacing = hasDevanagari
+    ? '0px'
+    : `${Math.round((style.letterSpacing ?? 0) * scaleFactor)}px`;
   const lineHeight = style.lineHeight ?? 1.3;
 
   // Build paused GSAP master timeline deterministically
@@ -323,14 +338,28 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
             const wordSelector = `.w-span-${w.id}`;
             const nextWord = group.words[wIdx + 1];
             const activeEndTime = nextWord ? nextWord.start : Math.max(w.end, group.end);
-            const activeColor = style.importantColor;
-            const baseColor = w.isImportant ? style.importantColor : style.textColor;
+
+            const isSpeaker2 =
+              w.speakerId === 'Speaker 2' ||
+              w.speakerId?.toLowerCase().includes('speaker 2') ||
+              (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');
+            const spk2Col = speaker2Color || style.speaker2Color || '#06B6D4';
+            const spk1Col = speaker1Color || style.speaker1Color || style.textColor;
+            const speakerColor = isSpeaker2 ? spk2Col : spk1Col;
+            const baseColor = w.isImportant ? style.importantColor : speakerColor;
+
+            let activeColor = style.importantColor;
+            if (w.intensity === 'climax') {
+              activeColor = '#FF3366';
+            } else if (isSpeaker2) {
+              activeColor = spk2Col;
+            }
 
             const highlightAnim = style.highlightAnimation || 'pop';
             const isWordBadge = highlightAnim === 'background' || Boolean(style.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none');
             const wordBadgeColor = style.activeWordBgColor || style.importantColor;
 
-            // Target zoom scale: Only zoom when highlightAction is 'pop'!
+            // Target zoom scale: Base scale + AI Vocal Intensity punch
             let targetScale = 1.0;
             if (highlightAnim === 'pop') {
               targetScale = style.zoomScale ?? 1.15;
@@ -338,6 +367,15 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
               targetScale = 1.04;
             } else {
               targetScale = 1.0; // Flat text for color-change, none, underline!
+            }
+
+            // AI Kinetic Vocal Intensity punch
+            if (w.intensity === 'punch') {
+              targetScale *= 1.22;
+            } else if (w.intensity === 'climax') {
+              targetScale *= 1.35;
+            } else if (w.intensity === 'whisper') {
+              targetScale *= 0.90;
             }
 
             const extraMargin = targetScale > 1.0
@@ -367,7 +405,7 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
             }
 
             // At w.start: Pop/Punch/Glow to active state
-            const targetColor = isWordBadge ? '#000000' : activeColor;
+            const targetColor = isWordBadge ? getContrastingTextColor(wordBadgeColor || '#FCD905') : activeColor;
             const targetBg = isWordBadge ? wordBadgeColor : 'transparent';
 
             tl.to(wordSelector, {
@@ -461,8 +499,9 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
           }}
         >
           {words.map((w) => {
-            const text = style.uppercase ? w.text.toUpperCase() : w.text;
+            const text = applyWordTransform(w.text, style.textTransform, style.uppercase, true);
             const isLetterPreset = style.animationPreset?.startsWith('letters-');
+            const soloEmoji = w.emoji || getKeywordEmoji(w.text);
             return (
               <div
                 key={w.id}
@@ -484,8 +523,24 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                   ...getBackgroundStyles(),
                 }}
               >
+                {style.showEmojis !== false && soloEmoji && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: `-${Math.round(fontSize * 1.15)}px`,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      fontSize: `${Math.round(fontSize * 0.95)}px`,
+                      filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))',
+                      lineHeight: 1,
+                      userSelect: 'none',
+                    }}
+                  >
+                    {soloEmoji}
+                  </span>
+                )}
                 {isLetterPreset ? (
-                  text.split('').map((char, cIdx) => (
+                  splitGraphemes(text).map((char, cIdx) => (
                     <span
                       key={cIdx}
                       className="char-item"
@@ -542,27 +597,58 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
                     textAlign,
                   }}
                 >
-                  {group.words.map((w) => {
-                    const text = style.uppercase ? w.text.toUpperCase() : w.text;
-                    const isWordBadge = style.highlightAnimation === 'background' || Boolean(style.activeWordBgColor);
+                  {group.words.map((w, wIndex) => {
+                    const isSentenceStart = wIndex === 0 || /[.!?]$/.test(group.words[wIndex - 1]?.text || '');
+                    const text = applyWordTransform(w.text, style.textTransform, style.uppercase, isSentenceStart);
+                    const isWordBadge =
+                      style.highlightAnimation === 'background' ||
+                      Boolean(
+                        style.activeWordBgColor &&
+                          style.highlightAnimation !== 'color-change' &&
+                          style.highlightAnimation !== 'none'
+                      );
                     const isLetterPreset = style.animationPreset?.startsWith('letters-');
+                    const wordEmoji = w.emoji || getKeywordEmoji(w.text);
+                    const isCurrent = currentTime >= w.start && currentTime <= w.end;
                     return (
                       <span
                         key={w.id}
                         className={`w-span-${w.id}`}
                         style={{
                           ...baseTextStyle,
+                          position: 'relative',
                           display: 'inline-block',
                           whiteSpace: 'nowrap',
                           transformOrigin: 'center center',
                           overflow: isLetterPreset || style.animationPreset === 'words-slide-up' ? 'hidden' : 'visible',
+                          paddingTop: isLetterPreset || style.animationPreset === 'words-slide-up' ? `${Math.round(fontSize * 0.12)}px` : undefined,
+                          paddingBottom: isLetterPreset || style.animationPreset === 'words-slide-up' ? `${Math.round(fontSize * 0.12)}px` : undefined,
+                          marginTop: isLetterPreset || style.animationPreset === 'words-slide-up' ? `-${Math.round(fontSize * 0.12)}px` : undefined,
+                          marginBottom: isLetterPreset || style.animationPreset === 'words-slide-up' ? `-${Math.round(fontSize * 0.12)}px` : undefined,
                           borderRadius: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
-                          padding: isWordBadge ? `${Math.round(2 * scaleFactor)}px ${Math.round(8 * scaleFactor)}px` : undefined,
+                          paddingLeft: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
+                          paddingRight: isWordBadge ? `${Math.round(8 * scaleFactor)}px` : undefined,
                           willChange: 'transform, color, opacity, background-color',
                         }}
                       >
+                        {style.showEmojis !== false && wordEmoji && isCurrent && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: `-${Math.round(fontSize * 1.05)}px`,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: `${Math.round(fontSize * 0.9)}px`,
+                              filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.6))',
+                              lineHeight: 1,
+                              userSelect: 'none',
+                            }}
+                          >
+                            {wordEmoji}
+                          </span>
+                        )}
                         {isLetterPreset ? (
-                          text.split('').map((char, cIdx) => (
+                          splitGraphemes(text).map((char, cIdx) => (
                             <span
                               key={cIdx}
                               className="char-item"

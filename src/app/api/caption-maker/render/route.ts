@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
-import { assertSafePath, loadProject, sanitizeFilename } from '@/lib/storage';
+import { assertSafePath, assertStorageFile, loadProject, resolveStoragePath, sanitizeFilename } from '@/lib/storage';
 import { extractClipAudio } from '@/lib/ffmpeg';
-import { renderReelVideo } from '@/lib/caption-maker/ffmpeg-renderer';
+import { renderReelVideo, cleanupTempStorage } from '@/lib/caption-maker/ffmpeg-renderer';
 import { generatePhraseLevelSrt, generateWordLevelSrt } from '@/lib/caption-maker/srt-generator';
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, TranscriptWord } from '@/lib/caption-maker/types';
+import { DEFAULT_OUTPUT_SETTINGS } from '@/lib/caption-maker/sample-data';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
+import { validateCaptionRenderRequest } from '@/lib/media-validation';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const validationError = validateCaptionRenderRequest(body);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const {
       projectId = `reel_${Date.now()}`,
       imagePath: rawImagePath,
@@ -51,15 +55,12 @@ export async function POST(req: NextRequest) {
     // 1. Resolve image file path
     const imageUrl = rawImageUrl || body.image?.fileUrl;
     let imagePath = rawImagePath || body.image?.storagePath;
-
-    if (imagePath && !path.isAbsolute(imagePath)) {
-      imagePath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), imagePath);
-    }
+    if (imagePath) imagePath = assertStorageFile(imagePath);
 
     if ((!imagePath || !fs.existsSync(/*turbopackIgnore: true*/ imagePath)) && imageUrl) {
       if (imageUrl.includes('/api/files/')) {
         const rel = imageUrl.replace(/.*\/api\/files\//, '');
-        imagePath = path.join(APP_CONFIG.storageRoot, rel);
+        imagePath = resolveStoragePath(rel);
       } else if (imageUrl.includes('sample-image.jpg')) {
         imagePath = path.join(process.cwd(), 'public', 'sample-image.jpg');
       }
@@ -68,15 +69,12 @@ export async function POST(req: NextRequest) {
     // 2. Resolve audio file path
     const audioUrl = rawAudioUrl || body.audio?.fileUrl;
     let audioPath = rawAudioPath || body.audio?.storagePath;
-
-    if (audioPath && !path.isAbsolute(audioPath)) {
-      audioPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), audioPath);
-    }
+    if (audioPath) audioPath = assertStorageFile(audioPath);
 
     if ((!audioPath || !fs.existsSync(/*turbopackIgnore: true*/ audioPath)) && audioUrl) {
       if (audioUrl.includes('/api/files/')) {
         const rel = audioUrl.replace(/.*\/api\/files\//, '');
-        audioPath = path.join(APP_CONFIG.storageRoot, rel);
+        audioPath = resolveStoragePath(rel);
       } else if (audioUrl.includes('/clip-audio')) {
         // Extract project ID and clipId from /api/projects/:id/clip-audio?clipId=:clipId
         const match = audioUrl.match(/\/api\/projects\/([^/?#]+)\/clip-audio/);
@@ -152,8 +150,8 @@ export async function POST(req: NextRequest) {
       body.transcript ||
       (resolvedGroups.length > 0 ? resolvedGroups.flatMap((g) => g.words) : []);
 
-    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'contain';
-    const imagePosition = rawImagePosition || body.image?.position || 'bottom-left';
+    const imageFitMode = rawImageFitMode || body.image?.fitMode || 'cover';
+    const imagePosition = rawImagePosition || body.image?.position || 'center';
     const imageScale = body.image?.scale ?? body.imageScale ?? 100;
     const mediaType: 'image' | 'video' = body.image?.mediaType || body.mediaType || 'image';
 
@@ -176,7 +174,34 @@ export async function POST(req: NextRequest) {
         : generatePhraseLevelSrt(resolvedGroups);
     await fs.promises.writeFile(outputSrtPath, srtContent, 'utf8');
 
-    // 6. Render MP4 via FFmpeg with word-level ASS styling
+    // 5b. Resolve optional Audio Mixer & Background Music (BGM)
+    const voiceVolume: number = typeof body.voiceVolume === 'number' ? body.voiceVolume : (body.audio?.volume ?? 1.0);
+    const voiceMuted: boolean = Boolean(body.voiceMuted || body.audio?.muted);
+    const studioDenoise: boolean = Boolean(body.studioDenoise || body.audio?.denoise);
+
+    const bgMusic = body.bgMusic;
+    let bgMusicPath: string | undefined = undefined;
+    const bgMusicVolume: number = typeof bgMusic?.volume === 'number' ? bgMusic.volume : 0.20;
+    const bgMusicMuted: boolean = Boolean(bgMusic?.muted);
+    const bgMusicFadeIn: number = typeof bgMusic?.fadeInDuration === 'number' ? bgMusic.fadeInDuration : 0.8;
+    const bgMusicFadeOut: number = typeof bgMusic?.fadeOutDuration === 'number' ? bgMusic.fadeOutDuration : 1.2;
+    const bgMusicAutoDucking: boolean = bgMusic?.autoDucking !== false;
+    const bgMusicOffset: number = typeof bgMusic?.startOffset === 'number' ? bgMusic.startOffset : 0;
+
+    if (bgMusic?.fileUrl) {
+      if (bgMusic.fileUrl.startsWith('/audio/bgm/')) {
+        bgMusicPath = path.join(process.cwd(), 'public', bgMusic.fileUrl.replace(/^\//, ''));
+      } else if (bgMusic.fileUrl.includes('/api/files/')) {
+        const rel = bgMusic.fileUrl.replace(/.*\/api\/files\//, '');
+        bgMusicPath = resolveStoragePath(rel);
+      } else if (bgMusic.storagePath && fs.existsSync(bgMusic.storagePath)) {
+        bgMusicPath = assertStorageFile(bgMusic.storagePath);
+      }
+    }
+
+    const resolvedOutputSettings: OutputSettings = outputSettings || DEFAULT_OUTPUT_SETTINGS;
+
+    // 6. Render MP4 via FFmpeg with word-level ASS styling, hardware acceleration & dual audio mixing
     const renderRes = await renderReelVideo({
       imagePath,
       audioPath,
@@ -184,12 +209,27 @@ export async function POST(req: NextRequest) {
       groups: resolvedGroups,
       words: resolvedTranscript,
       style: captionStyle,
-      outputSettings,
+      outputSettings: resolvedOutputSettings,
       imageFitMode,
       imagePosition,
       imageScale,
       mediaType,
+      voiceVolume,
+      voiceMuted,
+      studioDenoise,
+      bgMusicPath,
+      bgMusicVolume,
+      bgMusicMuted,
+      bgMusicFadeIn,
+      bgMusicFadeOut,
+      bgMusicAutoDucking,
+      bgMusicOffset,
+      sfxCues: body.sfxCues,
+      autoSfxEnabled: body.autoSfxEnabled,
     });
+
+    // Asynchronously prune expired temporary files
+    cleanupTempStorage().catch(() => {});
 
     // 7. Automatically merge thumbnail cover into video
     let thumbnailMerged = false;

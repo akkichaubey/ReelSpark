@@ -5,6 +5,9 @@ export interface TranscriptWord {
   end: number;   // in seconds (e.g. 0.68)
   confidence?: number;
   isImportant?: boolean;
+  emoji?: string;
+  intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
+  speakerId?: string;
 }
 
 export interface CaptionGroup {
@@ -37,7 +40,7 @@ export type HighlightAnimation =
   | 'underline'
   | 'color-change';
 
-export type ImageFitMode = 'cover' | 'contain';
+export type ImageFitMode = 'cover' | 'contain' | 'blur';
 
 export type ImagePosition =
   | 'top-left'
@@ -52,22 +55,60 @@ export type ImagePosition =
 
 export type PlatformPreset =
   | 'instagram-reel'
+  | 'facebook-reel'
   | 'youtube-short'
+  | 'threads-video'
   | 'instagram-portrait'
   | 'instagram-square'
   | 'youtube-landscape'
   | 'custom';
+
+export type ResolutionTier = '720p' | '1080p' | '1440p' | '4k';
+export type VideoFps = 24 | 25 | 30 | 60;
+export type VideoQuality = 'draft' | 'standard' | 'high' | 'pro';
+export type VideoCodec = 'h264' | 'hevc' | 'auto';
+export type AspectRatio = '9:16' | '4:5' | '1:1' | '16:9';
 
 export interface OutputSettings {
   preset: PlatformPreset;
   width: number;
   height: number;
   aspectRatio: string;
-  quality: 'draft' | 'standard' | 'high';
-  fps: number;
+  quality: VideoQuality;
+  fps: number; // 24 | 25 | 30 | 60 or custom
+  resolution?: ResolutionTier;
+  bitrate?: string; // e.g. 'auto', '4M', '8M', '16M', '28M'
+  audioBitrate?: string; // e.g. '128k', '192k', '256k', '320k'
+  codec?: VideoCodec;
+  burnSubtitles?: boolean;
 }
 
-export type CaptionPosition = 'top' | 'center' | 'bottom' | 'custom';
+export type TextTransformMode = 'uppercase' | 'lowercase' | 'sentence' | 'title' | 'none';
+
+export type Caption9Position =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
+export type CaptionPosition =
+  | 'top'
+  | 'center'
+  | 'bottom'
+  | 'custom'
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
 export type TextAlignment = 'left' | 'center' | 'right' | 'custom';
 export type FontWeight = 'normal' | 'medium' | 'semibold' | 'bold' | 'black';
 
@@ -86,11 +127,13 @@ export type TextEffectType =
   | 'soft-ambient';
 
 export interface CaptionStyle {
+  presetId?: string;
   fontFamily: string;
   fontSize: number; // in pixels relative to 1080p width (default 64)
   fontWeight: FontWeight;
   textAlign: TextAlignment;
   position: CaptionPosition;
+  ninePosition?: Caption9Position;
   customX?: number; // 0 - 100% horizontal center
   customY?: number; // 0 - 100% vertical center
   textColor: string; // e.g. '#FFFFFF'
@@ -105,7 +148,21 @@ export interface CaptionStyle {
   animationPreset: AnimationPreset;
   highlightAnimation: HighlightAnimation;
   uppercase: boolean;
+  textTransform?: TextTransformMode; // 'uppercase' | 'lowercase' | 'sentence' | 'title' | 'none'
   showSafeArea: boolean;
+  safeZoneOverrides?: {
+    platform?: PlatformPreset;
+    topDangerPercent?: number;
+    bottomDangerPercent?: number;
+    rightMarginPercent?: number;
+    leftMarginPercent?: number;
+    showFaceGuide?: boolean;
+    showCropGuides?: boolean;
+    showActionRail?: boolean;
+    showDangerZones?: boolean;
+    showSafeActionBox?: boolean;
+    showHeadlineBox?: boolean;
+  };
   // Modern VN / Instagram & CapCut Extensions
   backgroundStyle?: BackgroundStyle;
   backgroundOpacity?: number; // 0 to 1
@@ -120,6 +177,9 @@ export interface CaptionStyle {
   shadowOffsetX?: number;
   shadowOffsetY?: number;
   activeWordBgColor?: string;
+  showEmojis?: boolean;
+  speaker1Color?: string;
+  speaker2Color?: string;
 }
 
 export interface ImageAsset {
@@ -146,6 +206,11 @@ export interface AudioAsset {
   fileSize: number;
   duration: number; // in seconds
   format: string;
+  sourceType?: 'audio' | 'video';
+  originalVideoFileName?: string;
+  volume?: number; // 0.0 to 2.0 (default 1.0, >1.0 = Boost ⚡)
+  muted?: boolean; // default false
+  denoise?: boolean; // default false (AI Studio Denoise)
 }
 
 export type ThumbnailLayoutPosition = 'top' | 'center' | 'bottom' | 'custom';
@@ -202,13 +267,79 @@ export interface ThumbnailSettings {
   gradientPreset?: string;
   customBgUrl?: string;
   showSafeArea?: boolean;
+  safeZoneOverrides?: {
+    platform?: PlatformPreset;
+    topDangerPercent?: number;
+    bottomDangerPercent?: number;
+    rightMarginPercent?: number;
+    leftMarginPercent?: number;
+    showFaceGuide?: boolean;
+    showCropGuides?: boolean;
+    showActionRail?: boolean;
+    showDangerZones?: boolean;
+    showSafeActionBox?: boolean;
+    showHeadlineBox?: boolean;
+  };
+}
+
+export interface BgMusicTrack {
+  id: string;
+  title: string;
+  fileUrl: string;
+  volume: number; // 0.0 to 1.0 (default 0.20)
+  custom?: boolean;
+  storagePath?: string;
+  muted?: boolean;
+  fadeInDuration?: number; // 0.0 to 3.0s (default 0.8s)
+  fadeOutDuration?: number; // 0.0 to 3.0s (default 1.2s)
+  autoDucking?: boolean; // dips BGM during speech
+  duckingAmount?: number; // 0.1 to 0.9 (default 0.7 = 70% dip)
+  startOffset?: number; // start BGM at offset seconds (default 0)
+}
+
+export type SfxType = 'whoosh' | 'ding' | 'kaching' | 'pop' | 'impact';
+
+export interface SfxCue {
+  id: string;
+  time: number; // in seconds
+  type: SfxType;
+  volume?: number; // 0.0 to 1.0 (default 0.35)
+  reason?: string;
+  audioSrc?: string;
+}
+
+export interface AudioAnalysisResult {
+  mood?: 'motivational' | 'chill' | 'energetic' | 'dramatic' | 'philosophical' | 'conversational';
+  energyLevel?: 'high' | 'medium' | 'low';
+  speechPaceWpm?: number;
+  recommendedBgmId?: string;
+  suggestedBgmVolume?: number;
+  summary?: string;
+  speakersDetected?: number;
+}
+
+export interface FillerSegment {
+  start: number;
+  end: number;
+  text: string;
+  type?: 'filler' | 'silence' | 'stutter';
 }
 
 export interface SyncedPhraseSegment {
+  id?: string;
   start: number;
   end: number;
   textHindi: string;
   textEnglish: string;
+  textHinglish?: string;
+  speechIntervalIndex?: number;
+  speakerId?: string; // 'Speaker 1' | 'Speaker 2'
+  intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
+}
+
+export interface TrimRange {
+  start: number; // in seconds (e.g. 0.0)
+  end: number;   // in seconds (e.g. 28.5)
 }
 
 export interface CaptionProject {
@@ -227,11 +358,23 @@ export interface CaptionProject {
   renderedSrtPath?: string;
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
-  preferredLanguage?: 'en' | 'hi';
+  rawTranscriptHinglish?: string;
+  preferredLanguage?: 'en' | 'hi' | 'hinglish';
+  bgMusic?: BgMusicTrack;
+  voiceVolume?: number; // 0.0 to 2.0 (default 1.0)
+  voiceMuted?: boolean;
+  studioDenoise?: boolean;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
+  audioAnalysis?: AudioAnalysisResult;
+  fillerSegments?: FillerSegment[];
+  speaker1Color?: string; // e.g. '#FFFFFF'
+  speaker2Color?: string; // e.g. '#06B6D4'
   sourceClipId?: string;
   syncedSegments?: SyncedPhraseSegment[];
   isAudioSynced?: boolean;
   syncVersion?: number;
+  trimRange?: TrimRange;
   createdAt: string;
   updatedAt: string;
 }
@@ -240,11 +383,17 @@ export interface TranscriptionResult {
   transcript: TranscriptWord[];
   wordsHindi?: TranscriptWord[];
   wordsEnglish?: TranscriptWord[];
+  wordsHinglish?: TranscriptWord[];
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
+  rawTranscriptHinglish?: string;
   titleHindi?: string;
   titleEnglish?: string;
+  titleHinglish?: string;
   syncedSegments?: SyncedPhraseSegment[];
+  sfxCues?: SfxCue[];
+  audioAnalysis?: AudioAnalysisResult;
+  fillerSegments?: FillerSegment[];
   language?: string;
   duration?: number;
 }

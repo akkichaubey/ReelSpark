@@ -3,12 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22 <25",
+    "pnpm": ">=12"
+  },
   "scripts": {
     "dev": "next dev",
+    "media-service": "tsx services/media-service/server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "tsx tests/test_suite.ts",
+    "test:safe-zone": "tsx tests/safe_zone_measurement_system.test.ts",
+    "test:safe-sync": "tsx tests/safe_zone_caption_and_thumbnail_sync.test.ts",
+    "test:presets": "tsx tests/presets_comprehensive_analysis.test.ts",
+    "test:qa": "tsx tests/qa_full_audit.ts",
     "test:e2e": "node scripts/test_api.js",
     "postinstall": "node scripts/patch-remotion.js"
   },
@@ -16,13 +26,16 @@
     "@google/genai": "^2.28.0",
     "@remotion/bundler": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
+    "@supabase/supabase-js": "^2.118.0",
     "archiver": "^8.0.0",
     "gsap": "^3.15.0",
     "lucide-react": "^1.54.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remotion": "^4.0.534"
+    "remotion": "^4.0.534",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

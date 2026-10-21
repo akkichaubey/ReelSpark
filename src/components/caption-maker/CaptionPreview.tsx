@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Play, Pause, Sparkles } from 'lucide-react';
 import {
   CaptionGroup,
@@ -8,10 +8,20 @@ import {
   ImageAsset,
   ImagePosition,
   OutputSettings,
+  SfxCue,
   TranscriptWord,
 } from '@/lib/caption-maker/types';
-import { hexToRgba } from '@/lib/caption-maker/sample-data';
+import { hexToRgba, getContrastingTextColor } from '@/lib/caption-maker/sample-data';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
+import { getKeywordEmoji } from '@/lib/caption-maker/hinglish-and-emoji';
+import {
+  getNinePositionCoordinates,
+  applyWordTransform,
+  resolveNinePosition,
+  splitGraphemes,
+  isDevanagari,
+} from '@/lib/caption-maker/text-transform';
+import { SafeAreaOverlay } from './SafeAreaOverlay';
 
 
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -38,6 +48,11 @@ interface CaptionPreviewProps {
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
   totalDuration: number;
+  speaker1Color?: string;
+  speaker2Color?: string;
+  sfxCues?: SfxCue[];
+  autoSfxEnabled?: boolean;
+  onUpdateStyle?: (updates: Partial<CaptionStyle>) => void;
 }
 
 export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
@@ -51,6 +66,11 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   isPlaying,
   onTogglePlay,
   totalDuration,
+  speaker1Color,
+  speaker2Color,
+  sfxCues,
+  autoSfxEnabled = true,
+  onUpdateStyle,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -122,11 +142,30 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     }
   }, [captionStyle.fontFamily]);
 
+  // Live preview AI SFX cues playback
+  const lastPlayedSfxRef = useRef<Record<number, boolean>>({});
+  useEffect(() => {
+    if (!isPlaying || autoSfxEnabled === false || !sfxCues || sfxCues.length === 0) {
+      lastPlayedSfxRef.current = {};
+      return;
+    }
+    sfxCues.forEach((cue, idx) => {
+      if (Math.abs(currentTime - cue.time) < 0.15 && !lastPlayedSfxRef.current[idx]) {
+        lastPlayedSfxRef.current[idx] = true;
+        try {
+          const sfx = new Audio(`/audio/sfx/${cue.type}.mp3`);
+          sfx.volume = Math.max(0, Math.min(1.0, cue.volume ?? 0.7));
+          sfx.play().catch(() => {});
+        } catch {}
+      }
+    });
+  }, [currentTime, isPlaying, autoSfxEnabled, sfxCues]);
+
   // Clean primary font chosen by user (MUST be first in font stack so it always updates & applies!)
   // Nirmala UI and Segoe UI act as graceful secondary fallbacks if a glyph is missing.
   const cleanPrimaryFont =
     captionStyle.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Inter';
-  const effectiveFontFamily = `"${cleanPrimaryFont}", "Nirmala UI", "Segoe UI", sans-serif`;
+  const effectiveFontFamily = `"${cleanPrimaryFont}", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Segoe UI", sans-serif`;
 
   // Active word and active caption group identification locked to exact acoustic speech intervals
   const activeGroup = captionGroups.find(
@@ -174,7 +213,9 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
   const getAspectRatioClasses = () => {
     switch (outputSettings.preset) {
       case 'instagram-reel':
+      case 'facebook-reel':
       case 'youtube-short':
+      case 'threads-video':
         return 'aspect-[9/16] max-h-[580px]';
       case 'instagram-portrait':
         return 'aspect-[4/5] max-h-[500px]';
@@ -187,30 +228,24 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     }
   };
 
-  // Vertical & Horizontal position styling matching ASS anchor coordinates 1:1
-  const getPositionStyles = (): React.CSSProperties => {
-    const isCustomX = captionStyle.textAlign === 'custom' || captionStyle.position === 'custom';
-    const posX = isCustomX ? `${captionStyle.customX ?? 50}%` : '50%';
+  // Unified 9-position anchor and coordinates
+  const coords = getNinePositionCoordinates(
+    captionStyle.position,
+    captionStyle.customX,
+    captionStyle.customY,
+    captionStyle.textAlign
+  );
 
-    if (captionStyle.position === 'top') {
-      return { top: '18%', left: posX, transform: 'translate(-50%, 0)' };
-    }
-    if (captionStyle.position === 'center') {
-      return { top: '50%', left: posX, transform: 'translate(-50%, -50%)' };
-    }
-    if (captionStyle.position === 'bottom') {
-      return { top: '82%', left: posX, transform: 'translate(-50%, -100%)' };
-    }
+  const getPositionStyles = (): React.CSSProperties => {
     return {
-      top: `${captionStyle.customY ?? 20}%`,
-      left: posX,
-      transform: 'translate(-50%, -50%)',
+      top: coords.top,
+      left: coords.left,
+      transform: coords.transform,
     };
   };
 
-  const textAlign = captionStyle.textAlign === 'custom' ? 'center' : (captionStyle.textAlign || 'center');
-  const justifyAlign =
-    textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
+  const textAlign = coords.textAlign;
+  const justifyAlign = coords.alignItems;
 
   // Compute text shadow / neon glow based on textEffect
   const getTextShadow = (): string => {
@@ -295,7 +330,17 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     return {};
   };
 
-  const previewLetterSpacing = `${Math.round((captionStyle.letterSpacing ?? 0) * previewScale)}px`;
+  const hasDevanagari = useMemo(() => {
+    const sampleText =
+      (displayGroup?.words || []).map((w) => w.text).join(' ') +
+      ' ' +
+      (displayWord?.text || '');
+    return isDevanagari(sampleText);
+  }, [displayGroup, displayWord]);
+
+  const previewLetterSpacing = hasDevanagari
+    ? '0px'
+    : `${Math.round((captionStyle.letterSpacing ?? 0) * previewScale)}px`;
   const previewLineHeight = captionStyle.lineHeight ?? 1.3;
 
   return (
@@ -306,7 +351,22 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       >
         {/* 1. Background Media Layer (Video or Image) */}
         {image ? (
-          (image.fitMode || 'contain') === 'contain' ? (
+          (image.fitMode || 'cover') === 'blur' ? (
+            <>
+              {isVideo ? (
+                <video src={image.fileUrl} muted playsInline className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image.fileUrl} alt="" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
+              )}
+              {isVideo ? (
+                <video src={image.fileUrl} muted playsInline className="absolute inset-0 w-full h-full object-contain" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image.fileUrl} alt={image.fileName} className="absolute inset-0 w-full h-full object-contain" />
+              )}
+            </>
+          ) : (image.fitMode || 'cover') === 'contain' ? (
             <div
               className="absolute inset-0 flex p-3 overflow-hidden"
               style={{
@@ -373,32 +433,50 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
           </div>
         )}
 
-        {/* 2. Safe Area Guides Overlay */}
-        {captionStyle.showSafeArea && (
-          <div className="absolute inset-x-6 inset-y-12 border-2 border-dashed border-sky-400/35 rounded-xl pointer-events-none z-10 flex flex-col justify-between p-2">
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-start">
-              SAFE AREA TOP
-            </span>
-            <span className="text-[9px] font-mono text-sky-400/80 bg-sky-950/70 px-1.5 py-0.5 rounded self-end">
-              REEL UI SAFE ZONE
-            </span>
-          </div>
-        )}
+        {/* 2. Professional Dynamic Social Safe Area & Guides Overlay */}
+        <SafeAreaOverlay
+          aspectRatio={outputSettings.aspectRatio}
+          preset={captionStyle.safeZoneOverrides?.platform || outputSettings.preset}
+          mode="reel"
+          showGuides={captionStyle.showSafeArea}
+          activeNinePos={coords.ninePos}
+          customOverrides={captionStyle.safeZoneOverrides}
+          onSelectPlatform={(p) => {
+            if (onUpdateStyle) {
+              onUpdateStyle({
+                safeZoneOverrides: {
+                  ...captionStyle.safeZoneOverrides,
+                  platform: p,
+                },
+              });
+            }
+          }}
+        />
 
         {/* 3. Real-Time Animated Caption Layer */}
-        <div
-          style={{
-            ...getPositionStyles(),
-            width: '88%',
-            maxWidth: '88%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: justifyAlign,
-            justifyContent: 'center',
-            textAlign,
-          }}
-          className="absolute z-20 pointer-events-none transition-all"
-        >
+        {(() => {
+          const isVertical916 =
+            outputSettings.preset === 'instagram-reel' ||
+            outputSettings.preset === 'facebook-reel' ||
+            outputSettings.preset === 'youtube-short' ||
+            outputSettings.preset === 'threads-video' ||
+            outputSettings.aspectRatio === '9:16';
+          const captionWidth = isVertical916 ? '78%' : '88%';
+
+          return (
+            <div
+              style={{
+                ...getPositionStyles(),
+                width: captionWidth,
+                maxWidth: captionWidth,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: justifyAlign,
+                justifyContent: 'center',
+                textAlign,
+              }}
+              className="absolute z-20 pointer-events-none transition-all"
+            >
           {/* Rohaid Ali CodePen GSAP Text Animation Keyframes */}
           <style
             dangerouslySetInnerHTML={{
@@ -428,7 +506,12 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             displayWord && (() => {
               const animPreset = captionStyle.animationPreset;
               const isLetterPreset = animPreset?.startsWith('letters-');
-              const soloWordText = captionStyle.uppercase ? displayWord.text.toUpperCase() : displayWord.text;
+              const soloWordText = applyWordTransform(
+                displayWord.text,
+                captionStyle.textTransform,
+                captionStyle.uppercase,
+                true
+              );
 
               let soloAnimStyle: React.CSSProperties = {};
               if (animPreset === 'words-slide-up') {
@@ -441,6 +524,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   animation: 'gsapWordsRotateIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both',
                 };
               }
+
+              const soloEmoji = displayWord.emoji || getKeywordEmoji(displayWord.text);
 
               return (
                 <div
@@ -460,7 +545,9 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         : 400,
                     color: displayWord.isImportant
                       ? captionStyle.importantColor
-                      : captionStyle.textColor,
+                      : (displayWord.speakerId === 'Speaker 2' || displayWord.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(displayWord.speakerId) && displayWord.speakerId !== 'Speaker 1'))
+                      ? (speaker2Color || captionStyle.speaker2Color || '#06B6D4')
+                      : (speaker1Color || captionStyle.speaker1Color || captionStyle.textColor),
                     WebkitTextStroke: previewStrokeWidth > 0 ? `${previewStrokeWidth}px ${captionStyle.strokeColor}` : 'none',
                     paintOrder: 'stroke fill',
                     textShadow: getTextShadow(),
@@ -471,14 +558,25 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     transform:
                       captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
                         ? 'none'
-                        : `scale(${Math.min(1.2, captionStyle.zoomScale ?? 1.15)})`,
+                        : `scale(${Math.min(1.4, (captionStyle.zoomScale ?? 1.15) * (displayWord.intensity === 'climax' ? 1.35 : displayWord.intensity === 'punch' ? 1.22 : displayWord.intensity === 'whisper' ? 0.90 : 1.0))})`,
                     ...getBackgroundStyles(),
                     ...soloAnimStyle,
                   }}
-                  className="inline-block transition-transform duration-75"
+                  className="relative inline-block transition-transform duration-75"
                 >
+                  {captionStyle.showEmojis !== false && soloEmoji && (
+                    <span
+                      className="absolute -top-10 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                      style={{
+                        fontSize: `${Math.max(24, Math.round(previewFontSize * 1.05))}px`,
+                        filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))',
+                      }}
+                    >
+                      {soloEmoji}
+                    </span>
+                  )}
                   {isLetterPreset ? (
-                    soloWordText.split('').map((char, cIdx) => (
+                    splitGraphemes(soloWordText).map((char, cIdx) => (
                       <span
                         key={cIdx}
                         style={{
@@ -538,7 +636,15 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
               >
                 {displayGroup.words.map((w, idx) => {
                   const isCurrent = displayWord?.id === w.id;
-                  const wordText = captionStyle.uppercase ? w.text.toUpperCase() : w.text;
+                  const isSentenceStart = idx === 0 || /[.!?]$/.test(displayGroup.words[idx - 1]?.text || '');
+                  const wordText = applyWordTransform(
+                    w.text,
+                    captionStyle.textTransform,
+                    captionStyle.uppercase,
+                    isSentenceStart
+                  );
+                  const matchedEmoji = w.emoji || getKeywordEmoji(w.text);
+                  const showWordEmoji = captionStyle.showEmojis !== false && matchedEmoji && isCurrent;
 
                   const highlightAnim = captionStyle.highlightAnimation || 'pop';
                   const isWordPillActive = isCurrent && (highlightAnim === 'background' || Boolean(captionStyle.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none'));
@@ -555,6 +661,15 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     } else {
                       effectiveScale = 1.0;
                     }
+
+                    // AI Vocal Intensity dynamic scaling
+                    if (w.intensity === 'punch') {
+                      effectiveScale *= 1.22;
+                    } else if (w.intensity === 'climax') {
+                      effectiveScale *= 1.35;
+                    } else if (w.intensity === 'whisper') {
+                      effectiveScale *= 0.90;
+                    }
                   }
 
                   // Active word horizontal margin buffer to prevent ANY text overlap:
@@ -562,15 +677,30 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     ? Math.round((effectiveScale - 1) * 0.45 * previewFontSize)
                     : 0;
 
+                  const isSpeaker2 =
+                    w.speakerId === 'Speaker 2' ||
+                    w.speakerId?.toLowerCase().includes('speaker 2') ||
+                    (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');
+                  const spk2Col = speaker2Color || captionStyle.speaker2Color || '#06B6D4';
+                  const spk1Col = speaker1Color || captionStyle.speaker1Color || captionStyle.textColor;
+                  const speakerColor = isSpeaker2 ? spk2Col : spk1Col;
+
                   const wordBg = isWordPillActive
                     ? (captionStyle.activeWordBgColor || captionStyle.importantColor)
                     : undefined;
 
+                  let activeColor = captionStyle.importantColor;
+                  if (w.intensity === 'climax') {
+                    activeColor = '#FF3366';
+                  } else if (isSpeaker2) {
+                    activeColor = spk2Col;
+                  }
+
                   const wordColor = isWordPillActive
-                    ? '#000000'
+                    ? getContrastingTextColor(wordBg || '#FCD905')
                     : isCurrent
-                    ? captionStyle.importantColor
-                    : (w.isImportant ? captionStyle.importantColor : captionStyle.textColor);
+                    ? activeColor
+                    : (w.isImportant ? captionStyle.importantColor : speakerColor);
 
                   let activeTextShadow = getTextShadow();
                   if (isGlowFlash) {
@@ -615,12 +745,27 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         textUnderlineOffset: isUnderline ? '4px' : undefined,
                         textShadow: activeTextShadow,
                         overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
+                        paddingTop: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
+                        paddingBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
+                        marginTop: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
+                        marginBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
                         ...wordAnimStyle,
                       }}
-                      className="transition-all duration-75"
+                      className="relative transition-all duration-75"
                     >
+                      {showWordEmoji && (
+                        <span
+                          className="absolute -top-9 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                          style={{
+                            fontSize: `${Math.max(22, Math.round(previewFontSize * 0.95))}px`,
+                            filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.6))',
+                          }}
+                        >
+                          {matchedEmoji}
+                        </span>
+                      )}
                       {isLetterPreset ? (
-                        wordText.split('').map((char, cIdx) => (
+                        splitGraphemes(wordText).map((char, cIdx) => (
                           <span
                             key={cIdx}
                             style={{
@@ -645,6 +790,8 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             )
           )}
         </div>
+          );
+        })()}
 
         {/* 4. Center Play/Pause Clickable Overlay */}
         <button
@@ -663,11 +810,28 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
       </div>
 
       {/* Preset & Time Badge underneath preview */}
-      <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
+      <div className="h-7 flex items-center justify-between w-full max-w-sm sm:max-w-md pt-2 px-1 text-xs text-zinc-400 font-mono">
         <span className="capitalize">{outputSettings.preset.replace('-', ' ')}</span>
-        <span className="text-zinc-200">
-          {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
-        </span>
+        <div className="flex items-center gap-2">
+          {onUpdateStyle && (
+            <button
+              type="button"
+              onClick={() => onUpdateStyle({ showSafeArea: !captionStyle.showSafeArea })}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
+                captionStyle.showSafeArea
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-400/50 shadow-sm'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+              title="Toggle 9:16 Social Safe Area & 9-Position Guides"
+            >
+              <span>🛡️</span>
+              <span>Safe Area: {captionStyle.showSafeArea ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+          <span className="text-zinc-200 font-bold">
+            {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
+          </span>
+        </div>
       </div>
     </div>
   );

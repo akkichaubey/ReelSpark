@@ -2,8 +2,14 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { CaptionProject } from '@/lib/caption-maker/types';
+import { CaptionProject, OutputSettings, ResolutionTier, VideoFps, VideoQuality } from '@/lib/caption-maker/types';
 import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
+import {
+  getDimensionsForAspectAndTier,
+  detectResolutionTier,
+  estimateExportFileSize,
+  QUALITY_PROFILES,
+} from '@/lib/caption-maker/export-settings';
 import {
   X,
   Download,
@@ -15,6 +21,9 @@ import {
   Sparkles,
   Zap,
   ShieldCheck,
+  Gauge,
+  Sliders,
+  HardDrive,
 } from 'lucide-react';
 
 interface ExportModalProps {
@@ -29,6 +38,7 @@ interface ExportModalProps {
       thumbnailIntroDuration?: number;
     }
   ) => Promise<void>;
+  onUpdateOutputSettings?: (settings: OutputSettings) => void;
   isRendering: boolean;
   renderProgress: number; // 0 to 100
   renderStatusText: string;
@@ -40,6 +50,7 @@ interface ExportModalProps {
     thumbnailUrl?: string;
   } | null;
   onOpenThumbnailCreator?: () => void;
+  onOpenSocialPost?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -47,13 +58,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
   project,
   onStartRender,
+  onUpdateOutputSettings,
   isRendering,
   renderProgress,
   renderStatusText,
   renderResult,
   onOpenThumbnailCreator,
+  onOpenSocialPost,
 }) => {
-  const [srtMode, setSrtMode] = useState<'phrase' | 'word'>('phrase');
+  const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'vtt' | 'txt'>('srt');
+  const [subtitleGranularity, setSubtitleGranularity] = useState<'phrase' | 'word'>('phrase');
   const [engine, setEngine] = useState<'remotion' | 'ffmpeg'>('remotion');
   const [mergeThumbnail, setMergeThumbnail] = useState<boolean>(true);
   const [thumbnailMergeMode, setThumbnailMergeMode] = useState<
@@ -63,34 +77,73 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const preFlight = useMemo(() => validateAndHealReelProject(project), [project]);
 
+  const currentTier: ResolutionTier =
+    project.outputSettings.resolution ||
+    detectResolutionTier(project.outputSettings.width, project.outputSettings.height);
+
+  const estimatedSize = estimateExportFileSize(
+    project.audio?.duration || 15,
+    project.outputSettings.quality,
+    currentTier,
+    project.outputSettings.fps
+  );
+
+  const handleQuickResolution = (tier: ResolutionTier) => {
+    if (!onUpdateOutputSettings) return;
+    const aspect = project.outputSettings.aspectRatio || '9:16';
+    const dims = getDimensionsForAspectAndTier(aspect, tier);
+    onUpdateOutputSettings({
+      ...project.outputSettings,
+      resolution: tier,
+      width: dims.width,
+      height: dims.height,
+    });
+  };
+
+  const handleQuickFps = (fps: VideoFps) => {
+    if (!onUpdateOutputSettings) return;
+    onUpdateOutputSettings({
+      ...project.outputSettings,
+      fps,
+    });
+  };
+
+  const handleQuickQuality = (quality: VideoQuality) => {
+    if (!onUpdateOutputSettings) return;
+    const profile = QUALITY_PROFILES[quality];
+    onUpdateOutputSettings({
+      ...project.outputSettings,
+      quality,
+      bitrate: profile.targetBitrate,
+      audioBitrate: profile.audioBitrate,
+    });
+  };
+
   if (!isOpen) return null;
 
-  const handleDownloadSrt = () => {
-    // We can also trigger direct download from client side via blob
-    if (renderResult?.srtUrl && srtMode === 'phrase') {
-      window.open(renderResult.srtUrl, '_blank');
-      return;
-    }
+  const handleDownloadSubtitles = () => {
+    // Dynamic multi-format subtitle export (.srt, .vtt, .txt)
+    import('@/lib/caption-maker/srt-generator').then(({ generateSubtitleExport }) => {
+      const { content, filename, mimeType } = generateSubtitleExport(
+        subtitleFormat,
+        subtitleGranularity,
+        {
+          words: project.transcript || [],
+          groups: project.captionGroups || [],
+        },
+        project.title || 'caption_reel'
+      );
 
-    // Dynamic SRT generation from project transcript in client
-    import('@/lib/caption-maker/srt-generator').then(
-      ({ generatePhraseSRT, generateWordLevelSRT }) => {
-        const srtContent =
-          srtMode === 'word'
-            ? generateWordLevelSRT(project.transcript)
-            : generatePhraseSRT(project.captionGroups);
-
-        const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${project.title || 'caption_reel'}_${srtMode}.srt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-    );
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
   };
 
   const handleDownloadVideo = () => {
@@ -207,34 +260,82 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="space-y-3 pt-2">
                 <button
                   onClick={handleDownloadVideo}
-                  className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98]"
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   <Download className="w-4 h-4 stroke-[2.5]" />
-                  Download Final MP4
+                  Download Final MP4 Video
                 </button>
 
-                <div className="flex items-center gap-2">
-                  <select
-                    value={srtMode}
-                    onChange={(e) => setSrtMode(e.target.value as 'phrase' | 'word')}
-                    className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-2 py-3 text-xs focus:outline-none"
-                  >
-                    <option value="phrase">Phrase SRT</option>
-                    <option value="word">Word SRT</option>
-                  </select>
+                {/* Subtitle / Transcript Multi-Format Export Card */}
+                <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+                      <FileText className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Export Captions & Transcript</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      {subtitleGranularity === 'phrase' ? 'Phrase / Line Timed' : 'Word-by-Word Timed'}
+                    </span>
+                  </div>
 
-                  <button
-                    onClick={handleDownloadSrt}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold rounded-xl text-sm border border-zinc-700 transition-colors"
-                  >
-                    <FileText className="w-4 h-4" />
-                    Download SRT
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    {/* Format Selector: .SRT | .VTT | .TXT */}
+                    <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs w-full sm:w-auto">
+                      {(['srt', 'vtt', 'txt'] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => setSubtitleFormat(fmt)}
+                          className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-md font-bold uppercase transition-colors cursor-pointer text-[11px] ${
+                            subtitleFormat === fmt
+                              ? 'bg-amber-400 text-black shadow-sm'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          .{fmt}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Granularity Selector */}
+                    <select
+                      value={subtitleGranularity}
+                      onChange={(e) => setSubtitleGranularity(e.target.value as 'phrase' | 'word')}
+                      className="bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none w-full sm:w-auto cursor-pointer"
+                    >
+                      <option value="phrase">Phrase / Lines</option>
+                      <option value="word">Word-by-Word</option>
+                    </select>
+
+                    {/* Download Button */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadSubtitles}
+                      className="flex-1 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold rounded-lg text-xs border border-zinc-700 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Download .{subtitleFormat.toUpperCase()}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {onOpenSocialPost && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSocialPost();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500/15 to-amber-600/15 hover:from-amber-500/25 hover:to-amber-600/25 text-amber-300 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-md"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Generate Social Media Post & Hashtags</span>
+                </button>
+              )}
 
               {onOpenThumbnailCreator && (
                 <button
@@ -243,9 +344,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     onClose();
                     onOpenThumbnailCreator();
                   }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold rounded-xl text-xs border border-amber-500/30 transition-all cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 hover:text-white font-semibold rounded-xl text-xs border border-zinc-700/80 transition-all cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Create Reel Cover Thumbnail</span>
                 </button>
               )}
@@ -356,36 +457,104 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
               </div>
 
-              <div className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-3">
-                <h4 className="text-zinc-200 font-semibold text-sm">
-                  Video Specifications
-                </h4>
-                <div className="grid grid-cols-2 gap-y-2 text-xs text-zinc-400">
-                  <div>
-                    <span className="text-zinc-500 block">Preset:</span>
-                    <span className="text-zinc-200 font-medium capitalize">
-                      {project.outputSettings.preset.replace('-', ' ')}
+              <div className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Film className="w-4 h-4 text-amber-400" />
+                    <h4 className="text-zinc-200 font-semibold text-xs tracking-wide uppercase">
+                      Studio Video Specifications & Quality
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-lg text-amber-400 font-mono text-xs font-bold">
+                    <HardDrive className="w-3.5 h-3.5" />
+                    <span>{estimatedSize}</span>
+                  </div>
+                </div>
+
+                {/* Resolution Tier Quick Pills */}
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
+                    <span>Resolution Canvas</span>
+                    <span className="font-mono text-[10px] text-zinc-500">
+                      {project.outputSettings.width} × {project.outputSettings.height} ({project.outputSettings.aspectRatio})
                     </span>
                   </div>
-                  <div>
-                    <span className="text-zinc-500 block">Resolution:</span>
-                    <span className="text-zinc-200 font-mono">
-                      {project.outputSettings.width} × {project.outputSettings.height} (
-                      {project.outputSettings.aspectRatio})
-                    </span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(['720p', '1080p', '1440p', '4k'] as const).map((tier) => {
+                      const isSelected = currentTier === tier;
+                      return (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => handleQuickResolution(tier)}
+                          className={`py-1.5 px-1 rounded-lg border text-center font-mono text-xs transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold ring-1 ring-amber-500/30'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                          }`}
+                        >
+                          {tier === '1440p' ? '2K QHD' : tier.toUpperCase()}
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+
+                {/* FPS & Quality Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* FPS */}
                   <div>
-                    <span className="text-zinc-500 block">Quality / FPS:</span>
-                    <span className="text-zinc-200 font-medium capitalize">
-                      {project.outputSettings.quality} @ {project.outputSettings.fps} fps
-                    </span>
+                    <div className="text-[11px] text-zinc-400 mb-1.5">Frame Rate (FPS)</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {([24, 25, 30, 60] as const).map((fps) => {
+                        const isSelected = project.outputSettings.fps === fps;
+                        return (
+                          <button
+                            key={fps}
+                            type="button"
+                            onClick={() => handleQuickFps(fps)}
+                            className={`py-1 rounded border text-center font-mono text-[11px] transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            {fps}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
+
+                  {/* Quality */}
                   <div>
-                    <span className="text-zinc-500 block">Audio Duration:</span>
-                    <span className="text-zinc-200 font-mono">
-                      {project.audio ? `${project.audio.duration.toFixed(2)}s` : 'N/A'}
-                    </span>
+                    <div className="text-[11px] text-zinc-400 mb-1.5">Quality Profile</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(['draft', 'standard', 'high', 'pro'] as const).map((q) => {
+                        const isSelected = project.outputSettings.quality === q;
+                        return (
+                          <button
+                            key={q}
+                            type="button"
+                            onClick={() => handleQuickQuality(q)}
+                            className={`py-1 rounded border text-center font-mono text-[11px] uppercase transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/80 font-bold'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            {q === 'draft' ? 'Draft' : q === 'standard' ? 'Std' : q === 'high' ? 'High' : 'Pro'}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
+                </div>
+
+                {/* Audio Duration & Format Metadata */}
+                <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
+                  <span>Clip Duration: {project.audio ? `${project.audio.duration.toFixed(2)}s` : 'N/A'}</span>
+                  <span className="capitalize">Format: MP4 (H.264 + AAC)</span>
                 </div>
               </div>
 
@@ -476,6 +645,59 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               {!project.audio && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
                   ⚠️ Audio file missing. Please upload an audio track before rendering.
+                </div>
+              )}
+
+              {/* Quick Subtitle / Transcript Exporter before rendering */}
+              {project.captionGroups && project.captionGroups.length > 0 && (
+                <div className="p-3 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-zinc-300 font-semibold">
+                      <FileText className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Export Subtitles Only (No Render Needed)</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      {project.captionGroups.length} lines
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    {/* Format Selector: .SRT | .VTT | .TXT */}
+                    <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs w-full sm:w-auto">
+                      {(['srt', 'vtt', 'txt'] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => setSubtitleFormat(fmt)}
+                          className={`flex-1 sm:flex-none px-2.5 py-1 rounded-md font-bold uppercase transition-colors cursor-pointer text-[10px] ${
+                            subtitleFormat === fmt
+                              ? 'bg-amber-400 text-black shadow-sm'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          .{fmt}
+                        </button>
+                      ))}
+                    </div>
+
+                    <select
+                      value={subtitleGranularity}
+                      onChange={(e) => setSubtitleGranularity(e.target.value as 'phrase' | 'word')}
+                      className="bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none w-full sm:w-auto cursor-pointer"
+                    >
+                      <option value="phrase">Phrase / Lines</option>
+                      <option value="word">Word-by-Word</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadSubtitles}
+                      className="flex-1 w-full flex items-center justify-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-lg text-xs border border-zinc-700 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Download .{subtitleFormat.toUpperCase()}</span>
+                    </button>
+                  </div>
                 </div>
               )}
 

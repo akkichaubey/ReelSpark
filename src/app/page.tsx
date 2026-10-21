@@ -25,6 +25,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
+import { StudioShell } from '@/components/clipping-studio/StudioShell';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -470,6 +471,18 @@ export default function DashboardPage() {
           const remaining = projects.filter((p) => p.id !== projectId);
           setActiveProject(remaining.length > 0 ? remaining[0] : null);
         }
+        // Clear history from AI Reels Maker if it belongs to this deleted project
+        try {
+          const cached = localStorage.getItem('reel_caption_project_v2');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.sourceProjectId === projectId || parsed?.id === projectId) {
+              localStorage.removeItem('reel_caption_project_v2');
+              localStorage.removeItem('reel_caption_project_v1');
+              window.dispatchEvent(new CustomEvent('reel_project_updated'));
+            }
+          }
+        } catch {}
       }
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -523,8 +536,9 @@ export default function DashboardPage() {
     displayCandidates.length > 0 && displayCandidates.every((c) => c.selected);
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-white selection:text-zinc-950">
-      {/* Navbar */}
+    <StudioShell>
+      <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-white selection:text-zinc-950">
+        {/* Navbar */}
       <Navbar
         systemStatus={systemStatus}
         onNewProject={() => setShowCreatorModal(true)}
@@ -872,5 +886,6 @@ export default function DashboardPage() {
         }}
       />
     </div>
+    </StudioShell>
   );
 }

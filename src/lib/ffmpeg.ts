@@ -96,6 +96,66 @@ export function escapeFilterPath(filePath: string): string {
   return normalized.replace(/^([a-zA-Z]):/, '$1\\:');
 }
 
+let cachedVideoEncoder: string | null = null;
+
+/**
+ * Auto-detect the fastest available hardware video encoder with safe CPU fallback.
+ * Probes NVENC (NVIDIA), QSV (Intel), AMF (AMD), MF (Windows Media Foundation), then libx264.
+ */
+export async function detectBestVideoEncoder(): Promise<string> {
+  if (cachedVideoEncoder) return cachedVideoEncoder;
+  const ffmpeg = getFfmpegPath();
+
+  const candidateEncoders = ['h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_mf'];
+  for (const enc of candidateEncoders) {
+    try {
+      await execFileAsync(ffmpeg, [
+        '-v', 'error',
+        '-f', 'lavfi',
+        '-i', 'nullsrc=s=64x64:d=0.04',
+        '-c:v', enc,
+        '-f', 'null', '-',
+      ]);
+      cachedVideoEncoder = enc;
+      return enc;
+    } catch {
+      // Hardware encoder not initialized or supported on this system
+    }
+  }
+
+  cachedVideoEncoder = 'libx264';
+  return 'libx264';
+}
+
+/**
+ * Automatically clean up temporary rendering and transcode files in storage/temp older than maxAgeMs.
+ * Defaults to files older than 2 hours.
+ */
+export async function cleanupTempStorage(
+  tempDir = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'storage/temp'),
+  maxAgeMs = 2 * 60 * 60 * 1000
+): Promise<number> {
+  if (!fs.existsSync(tempDir)) return 0;
+  let deletedCount = 0;
+  try {
+    const files = await fs.promises.readdir(tempDir);
+    const now = Date.now();
+    for (const file of files) {
+      const fullPath = path.join(tempDir, file);
+      try {
+        const stats = await fs.promises.stat(fullPath);
+        if (stats.isFile() && now - stats.mtimeMs > maxAgeMs) {
+          await fs.promises.unlink(fullPath);
+          deletedCount++;
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('Storage temp cleanup warning:', err);
+  }
+  return deletedCount;
+}
+
 /**
  * Render a cut clip using FFmpeg with high precision, aspect ratio handling, audio normalization, and optional burned-in subtitles.
  */
@@ -198,11 +258,20 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     args.push('-af', audioFilters.join(','));
   }
 
+  const encoder = await detectBestVideoEncoder();
+  const encoderArgs: string[] = ['-c:v', encoder];
+  if (encoder === 'libx264') {
+    encoderArgs.push('-preset', 'fast', '-crf', '22', '-pix_fmt', 'yuv420p');
+  } else if (encoder === 'h264_nvenc') {
+    encoderArgs.push('-preset', 'p4', '-pix_fmt', 'yuv420p');
+  } else if (encoder === 'h264_qsv') {
+    encoderArgs.push('-global_quality', '23', '-pix_fmt', 'nv12');
+  } else {
+    encoderArgs.push('-pix_fmt', 'yuv420p');
+  }
+
   args.push(
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-crf', '22',
-    '-pix_fmt', 'yuv420p',
+    ...encoderArgs,
     '-c:a', 'aac',
     '-b:a', '192k',
     '-shortest',

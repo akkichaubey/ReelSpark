@@ -23,6 +23,21 @@ body {
   background-attachment: fixed;
 }
 
+/* Keyboard users retain a high-contrast, consistent focus indicator. */
+:focus-visible {
+  outline: 2px solid #facc15;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Glassmorphism utilities */
 .glass-panel {
   background: rgba(24, 24, 27, 0.72);

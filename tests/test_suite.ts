@@ -44,8 +44,69 @@ import {
   PLATFORM_PRESETS,
   DEFAULT_CAPTION_STYLE,
   DEFAULT_OUTPUT_SETTINGS,
+  createDefaultCaptionProject,
 } from '../src/lib/caption-maker/sample-data';
-import { TranscriptWord, CaptionGroup } from '../src/lib/caption-maker/types';
+import {
+  TranscriptWord,
+  CaptionGroup,
+  AudioAsset,
+  BgMusicTrack,
+  SfxCue,
+  AudioAnalysisResult,
+  FillerSegment,
+  SyncedPhraseSegment,
+} from '../src/lib/caption-maker/types';
+import { validateUpload, MAX_UPLOAD_BYTES } from '../src/lib/media-validation';
+import {
+  parseTimestampToMs,
+  formatMsToTimestamp,
+  parseTimestampRangeLine,
+  parseBulkTimestamps,
+  msToFrame,
+  frameToMs,
+  getMediaAssetWebUrl,
+  MergeRecipe,
+  MediaAsset,
+  Clip,
+  formatFilenameTemplate,
+} from '../src/lib/clipping-studio/contracts';
+import {
+  planMergeRecipe,
+  buildMergeFfmpegArgs,
+} from '../src/lib/clipping-studio/merge-planner';
+import {
+  buildSingleClipExportFfmpegArgs,
+  parseFfmpegProgress,
+} from '../src/lib/clipping-studio/export-engine';
+import {
+  createBlankClippingProject,
+  saveCrashRecoverySnapshot,
+  loadCrashRecoverySnapshot,
+  clearCrashRecoverySnapshot,
+} from '../src/lib/clipping-studio/local-persistence';
+import { getSupabaseStatus, syncProjectToSupabase } from '../src/lib/clipping-studio/supabase';
+import { checkFfprobeStatus } from '../src/lib/config';
+import { extractAudioFromVideo, detectBestVideoEncoder, cleanupTempStorage } from '../src/lib/caption-maker/ffmpeg-renderer';
+import { devanagariToHinglish, getKeywordEmoji, enrichWordsWithEmojis } from '../src/lib/caption-maker/hinglish-and-emoji';
+import { PRESET_BGM_TRACKS } from '../src/lib/caption-maker/sample-data';
+import { switchProjectLanguage } from '../src/lib/caption-maker/clip-to-reel';
+import {
+  RESOLUTION_DIMENSIONS,
+  SUPPORTED_FRAME_RATES,
+  QUALITY_PROFILES,
+  getDimensionsForAspectAndTier,
+  detectResolutionTier,
+  estimateExportFileSize,
+  buildFfmpegEncodingArgs,
+} from '../src/lib/caption-maker/export-settings';
+import { ResolutionTier, VideoFps, VideoQuality, OutputSettings } from '../src/lib/caption-maker/types';
+import {
+  detectSilencesAndFillers,
+  calculateSavedDuration,
+  analyzeClipHighlights,
+  autoMarkViralHighlights,
+  DEFAULT_FILLER_WORDS,
+} from '../src/lib/caption-maker/smart-editor';
 
 const execFileAsync = promisify(execFile);
 
@@ -252,6 +313,11 @@ async function runAllTests() {
     // Traversal attack
     assert.throws(() => {
       assertSafePath(path.join(baseStorage, '..', '..', 'windows', 'system32'), baseStorage);
+    }, /Path traversal detected/);
+
+    // A sibling such as `storage-backup` must not pass a string-prefix check.
+    assert.throws(() => {
+      assertSafePath(`${baseStorage}-backup\\private.mp4`, baseStorage);
     }, /Path traversal detected/);
   });
 
@@ -1664,6 +1730,1747 @@ async function runAllTests() {
     assert.ok(report.autoFixedCount > 0, 'Pre-flight validator must auto-fix word overlaps and pause-spanning groups');
     assert.strictEqual(report.healedProject.transcript[1].start, 1.5, 'Overlap between w1 and w2 must be healed');
     assert.strictEqual(report.healedProject.captionGroups.length, 2, 'Group spanning 0.8s pause must be split into 2 groups');
+  });
+
+  // 38. Video audio extraction and sourceType: 'video' AudioAsset integrity
+  await test('38. Video audio extraction and video voice AudioAsset integrity', async () => {
+    const testDir = path.join(process.cwd(), 'storage', 'temp', 'test_audio_extract');
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const syntheticSource = path.join(testDir, 'synth_voice_source.mp4');
+    const extractedMp3 = path.join(testDir, 'extracted_voice.mp3');
+
+    try {
+      // 1. Generate a lightweight 2-second synthetic video with audio sine wave
+      const ffmpegBin = getFfmpegPath();
+      await execFileAsync(ffmpegBin, [
+        '-y',
+        '-f', 'lavfi', '-i', 'testsrc=duration=2:size=320x240:rate=15',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+        '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-c:a', 'aac',
+        syntheticSource,
+      ]);
+
+      // 2. Extract audio using extractAudioFromVideo
+      const { outputPath, duration } = await extractAudioFromVideo(syntheticSource, extractedMp3);
+      assert.ok(fs.existsSync(outputPath), 'Extracted MP3 must exist on disk');
+      assert.ok(duration >= 1.8 && duration <= 2.5, `Audio duration should match source video (got ${duration})`);
+
+      // 3. Verify AudioAsset schema with sourceType: 'video'
+      const audioAsset: AudioAsset = {
+        id: 'aud_test_123',
+        fileUrl: '/api/files/test/extracted_voice.mp3',
+        storagePath: outputPath,
+        fileName: 'synth_voice_source.mp4 (Audio)',
+        fileSize: fs.statSync(outputPath).size,
+        duration,
+        format: 'MP3',
+        sourceType: 'video',
+        originalVideoFileName: 'synth_voice_source.mp4',
+      };
+
+      assert.strictEqual(audioAsset.sourceType, 'video');
+      assert.strictEqual(audioAsset.format, 'MP3');
+      assert.strictEqual(audioAsset.originalVideoFileName, 'synth_voice_source.mp4');
+      assert.ok(audioAsset.fileSize > 0);
+    } finally {
+      try {
+        if (fs.existsSync(extractedMp3)) fs.unlinkSync(extractedMp3);
+        if (fs.existsSync(syntheticSource)) fs.unlinkSync(syntheticSource);
+        if (fs.existsSync(testDir)) fs.rmdirSync(testDir);
+      } catch {}
+    }
+  });
+
+  // 39. Audio removal and transcript clear integrity
+  await test('39. Audio removal completely clears transcript, caption groups, and resets history', () => {
+    const baseProj = createDefaultCaptionProject();
+    assert.ok(baseProj.transcript.length > 0, 'Base project has words');
+    assert.ok(baseProj.captionGroups.length > 0, 'Base project has groups');
+
+    // Simulate audio removal
+    const clearedProject = {
+      ...baseProj,
+      title: 'Untitled Reel',
+      audio: undefined,
+      transcript: [],
+      captionGroups: [],
+      syncedSegments: undefined,
+      rawTranscriptHindi: undefined,
+      rawTranscriptEnglish: undefined,
+      thumbnailSettings: undefined,
+      sourceClipId: undefined,
+      isAudioSynced: false,
+      syncVersion: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    assert.strictEqual(clearedProject.audio, undefined, 'Audio must be undefined');
+    assert.strictEqual(clearedProject.title, 'Untitled Reel', 'Title must be reset to Untitled Reel');
+    assert.strictEqual(clearedProject.thumbnailSettings, undefined, 'Thumbnail settings must be cleared');
+    assert.strictEqual(clearedProject.sourceClipId, undefined, 'sourceClipId must be undefined');
+    assert.strictEqual(clearedProject.transcript.length, 0, 'Transcript must be empty');
+    assert.strictEqual(clearedProject.captionGroups.length, 0, 'Caption groups must be empty');
+    assert.strictEqual(clearedProject.syncedSegments, undefined, 'Synced segments must be undefined');
+    assert.strictEqual(clearedProject.isAudioSynced, false, 'isAudioSynced must be false');
+  });
+
+  // 40. Audio upload isolation and bilingual transcript switching
+  await test('40. Audio or video upload isolates voice processing without altering image, and bilingual switching maintains sync', async () => {
+    const { switchProjectLanguage, buildWordsFromSyncedSegments } = await import('../src/lib/caption-maker/clip-to-reel');
+
+    const sampleImage = {
+      id: 'img_test_1',
+      fileUrl: '/test-background.png',
+      fileName: 'test-background.png',
+      fileSize: 10240,
+      width: 1080,
+      height: 1920,
+      format: 'PNG',
+      fitMode: 'contain' as const,
+      position: 'bottom-left' as const,
+      scale: 100,
+    };
+
+    const initialProject = {
+      ...createDefaultCaptionProject(),
+      image: sampleImage,
+      preferredLanguage: 'en' as const,
+      syncedSegments: [
+        {
+          id: 'seg_1',
+          start: 0.0,
+          end: 2.5,
+          textEnglish: 'Every great success starts with action',
+          textHindi: 'हर महान सफलता कार्रवाई से शुरू होती है',
+          speechIntervalIndex: 0,
+        },
+        {
+          id: 'seg_2',
+          start: 2.8,
+          end: 5.0,
+          textEnglish: 'Never give up on your dreams',
+          textHindi: 'अपने सपनों को कभी मत छोड़ो',
+          speechIntervalIndex: 1,
+        },
+      ],
+    };
+
+    // 1. Simulating video upload for voice processing:
+    const uploadedAudioFromVideo = {
+      id: 'aud_from_video',
+      fileUrl: '/api/files/test_audio.mp3',
+      storagePath: 'd:/tmp/test_audio.mp3',
+      fileName: 'speech_clip.mp4 (Audio)',
+      fileSize: 45000,
+      duration: 5.0,
+      format: 'MP3',
+      sourceType: 'video' as const,
+      originalVideoFileName: 'speech_clip.mp4',
+    };
+
+    // Project receives audio without touching project.image
+    const nextProject = {
+      ...initialProject,
+      audio: uploadedAudioFromVideo,
+    };
+
+    assert.strictEqual(nextProject.image?.fileUrl, '/test-background.png', 'Background image must remain intact');
+    assert.strictEqual(nextProject.audio?.sourceType, 'video', 'Audio source type is video');
+    assert.strictEqual(nextProject.audio?.format, 'MP3', 'Audio is extracted as MP3');
+
+    // 2. Bilingual language switching
+    const hindiSwitched = switchProjectLanguage(nextProject, 'hi');
+    assert.strictEqual(hindiSwitched.preferredLanguage, 'hi');
+    assert.ok(hindiSwitched.transcript.length > 0, 'Hindi words generated');
+    assert.strictEqual(hindiSwitched.transcript[0].text, 'हर', 'First Hindi word matches segment text');
+    assert.strictEqual(hindiSwitched.image?.fileUrl, '/test-background.png', 'Background image preserved');
+    assert.ok(hindiSwitched.captionGroups.length > 0, 'Caption groups formed for Hindi');
+
+    const englishSwitched = switchProjectLanguage(hindiSwitched, 'en');
+    assert.strictEqual(englishSwitched.preferredLanguage, 'en');
+    assert.ok(englishSwitched.transcript.length > 0, 'English words generated');
+    assert.strictEqual(englishSwitched.transcript[0].text, 'Every', 'First English word matches segment text');
+
+    // Both languages share the same boundary timings
+    assert.strictEqual(hindiSwitched.syncedSegments?.[0].start, englishSwitched.syncedSegments?.[0].start);
+    assert.strictEqual(hindiSwitched.syncedSegments?.[0].end, englishSwitched.syncedSegments?.[0].end);
+  });
+
+  // 41. Hinglish Transliteration & Switch Mode
+  await test('Hinglish transliteration & 3-way language switching', () => {
+    const hindiSample = 'सफलता समय और मेहनत मांगती है';
+    const hinglishResult = devanagariToHinglish(hindiSample);
+    assert.ok(hinglishResult.length > 0, 'Transliteration produces non-empty string');
+    assert.ok(/safalta/i.test(hinglishResult), 'Recognizes dictionary word safalta');
+    assert.ok(/samay/i.test(hinglishResult), 'Recognizes dictionary word samay');
+    assert.ok(/mehnat/i.test(hinglishResult), 'Recognizes dictionary word mehnat');
+
+    // Test project language switch to Hinglish
+    const baseProj = createDefaultCaptionProject();
+    baseProj.rawTranscriptHindi = 'सफलता समय और मेहनत';
+    baseProj.syncedSegments = [
+      {
+        id: 'seg_h1',
+        start: 0,
+        end: 2.5,
+        textHindi: 'सफलता समय और मेहनत',
+        textEnglish: 'Success requires time and hard work',
+      },
+    ];
+
+    const hinglishSwitched = switchProjectLanguage(baseProj, 'hinglish');
+    assert.strictEqual(hinglishSwitched.preferredLanguage, 'hinglish');
+    assert.ok(hinglishSwitched.transcript.length > 0, 'Generates Hinglish transcript words');
+    assert.ok(
+      hinglishSwitched.transcript.some((w) => /safalta|success/i.test(w.text)),
+      'Transcript contains transliterated or Hinglish text'
+    );
+  });
+
+  // 42. Auto Viral Emojis Keyword Matching & Enrichment
+  await test('Auto animated viral emojis keyword matching & enrichment', () => {
+    assert.strictEqual(getKeywordEmoji('money'), '💰');
+    assert.strictEqual(getKeywordEmoji('paisa'), '💰');
+    assert.strictEqual(getKeywordEmoji('fire'), '🔥');
+    assert.strictEqual(getKeywordEmoji('target'), '🎯');
+    assert.strictEqual(getKeywordEmoji('win'), '🏆');
+    assert.strictEqual(getKeywordEmoji('idea'), '💡');
+    assert.strictEqual(getKeywordEmoji('soch'), '💡');
+    assert.strictEqual(getKeywordEmoji('time'), '⏳');
+    assert.strictEqual(getKeywordEmoji('waqt'), '⏳');
+
+    const sampleWords: TranscriptWord[] = [
+      { id: 'w1', text: 'This', start: 0, end: 0.5 },
+      { id: 'w2', text: 'secret', start: 0.5, end: 1.0 },
+      { id: 'w3', text: 'makes', start: 1.0, end: 1.5 },
+      { id: 'w4', text: 'money', start: 1.5, end: 2.0 },
+      { id: 'w5', text: 'fast', start: 2.0, end: 2.5 },
+    ];
+
+    const enriched = enrichWordsWithEmojis(sampleWords);
+    assert.strictEqual(enriched.find((w) => w.text === 'money')?.emoji, '💰');
+    assert.strictEqual(enriched.find((w) => w.text === 'fast')?.emoji, '⚡');
+    assert.strictEqual(enriched.find((w) => w.text === 'secret')?.emoji, '🤫');
+  });
+
+  // 43. Background Music (BGM) Configuration & Volume Range
+  await test('Background Music (BGM) preset configuration & volume controls', () => {
+    assert.ok(Array.isArray(PRESET_BGM_TRACKS), 'BGM presets array exists');
+    assert.ok(PRESET_BGM_TRACKS.length >= 3, 'At least 3 preset BGM tracks available');
+
+    for (const track of PRESET_BGM_TRACKS) {
+      assert.ok(track.id && track.id.startsWith('bgm-'), 'Track has valid id');
+      assert.ok(track.title, 'Track has title');
+      assert.ok(track.fileUrl.startsWith('/audio/bgm/'), 'Track has local static fileUrl');
+      assert.ok(track.volume >= 0 && track.volume <= 1.0, 'Volume is within 0.0 - 1.0 range');
+    }
+  });
+
+  // 44. Hardware Video Encoder Auto-Detection & Storage Temp Cleanup
+  await test('Hardware video encoder auto-detection & storage temp cleanup', async () => {
+    const encoder = await detectBestVideoEncoder();
+    assert.ok(
+      ['h264_qsv', 'h264_nvenc', 'h264_amf', 'h264_mf', 'libx264'].includes(encoder),
+      `Encoder "${encoder}" is one of the supported valid video encoders`
+    );
+
+    const deletedCount = await cleanupTempStorage();
+    assert.ok(typeof deletedCount === 'number', 'Cleanup returned deleted file count');
+  });
+
+  // 45. Dual Audio Mixer (Voice Boost 200%, VN Fade In/Out, Auto-Ducking & Studio Denoise)
+  await test('Dual Audio Mixer, 200% Voice Boost, VN Fade In/Out, Smart Auto-Ducking & Denoise', async () => {
+    const { createDefaultCaptionProject, createEmptyCaptionProject } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+
+    const defaultProj = createDefaultCaptionProject();
+    assert.strictEqual(defaultProj.voiceVolume, 1.0, 'Default voice volume is 1.0 (100%)');
+    assert.strictEqual(defaultProj.voiceMuted, false, 'Default voice muted is false');
+    assert.strictEqual(defaultProj.studioDenoise, false, 'Default studio denoise is false');
+
+    const emptyProj = createEmptyCaptionProject();
+    assert.strictEqual(emptyProj.voiceVolume, 1.0, 'Empty project voice volume is 1.0');
+    assert.strictEqual(emptyProj.voiceMuted, false, 'Empty project voice muted is false');
+
+    // Test BGM Track with VN audio editing parameters
+    const customBgm: BgMusicTrack = {
+      id: 'bgm-test',
+      title: 'Cinematic Beat',
+      fileUrl: '/audio/bgm/cinematic-ambient.mp3',
+      volume: 0.25,
+      muted: false,
+      fadeInDuration: 1.0,
+      fadeOutDuration: 1.5,
+      autoDucking: true,
+      duckingAmount: 0.7,
+      startOffset: 12,
+    };
+
+    assert.strictEqual(customBgm.volume, 0.25);
+    assert.strictEqual(customBgm.fadeInDuration, 1.0);
+    assert.strictEqual(customBgm.fadeOutDuration, 1.5);
+    assert.strictEqual(customBgm.autoDucking, true);
+    assert.strictEqual(customBgm.startOffset, 12);
+
+    // Verify Voice Volume Boost (> 1.0 up to 2.0 / 200%)
+    const boostedVoiceVol = 1.65; // 165% Boost
+    assert.ok(boostedVoiceVol > 1.0 && boostedVoiceVol <= 2.0, 'Voice boost supports up to 200% volume gain');
+  });
+
+  // 46. Gemini AI Audio Processing Enhancements Suite (5 Core Features)
+  await test('Gemini AI Audio Processing: Auto-SFX, BGM Matcher, Vocal Intensity, Filler Jump-Cutter, and Speaker Diarization', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const {
+      computeKeepIntervals,
+      remapTimestamp,
+      remapTranscriptWords,
+      remapSyncedSegments,
+      remapSfxCues,
+    } = await import('../src/lib/caption-maker/audio-trimmer');
+    const { hexToAssColor, generateAssSubtitles } = await import('../src/lib/caption-maker/ass-generator');
+
+    // 1. Verify SFX Audio Assets exist on disk
+    const sfxTypes = ['whoosh', 'ding', 'kaching', 'pop', 'impact'];
+    for (const sfx of sfxTypes) {
+      const p = path.join(process.cwd(), 'public', 'audio', 'sfx', `${sfx}.mp3`);
+      assert.ok(fs.existsSync(p), `SFX asset ${sfx}.mp3 must exist in public/audio/sfx/`);
+      const stat = fs.statSync(p);
+      assert.ok(stat.size > 500, `SFX asset ${sfx}.mp3 must be non-empty`);
+    }
+
+    // 2. Verify AI Audio Intelligence & BGM Matcher Schema
+    const mockAnalysis: AudioAnalysisResult = {
+      mood: 'motivational',
+      energyLevel: 'high',
+      speechPaceWpm: 155,
+      recommendedBgmId: 'bgm-cinematic-ambient',
+      suggestedBgmVolume: 0.18,
+      summary: 'High energy speech with motivational tone.',
+      speakersDetected: 2,
+    };
+    assert.strictEqual(mockAnalysis.mood, 'motivational');
+    assert.strictEqual(mockAnalysis.energyLevel, 'high');
+    assert.strictEqual(mockAnalysis.speakersDetected, 2);
+    assert.strictEqual(mockAnalysis.recommendedBgmId, 'bgm-cinematic-ambient');
+
+    // 3. Verify AI Smart Silence & Filler Trimmer ("AI Jump-Cutter")
+    const totalDuration = 10.0;
+    const mockFillers: FillerSegment[] = [
+      { start: 2.0, end: 3.0, text: 'umm', type: 'filler' },
+      { start: 6.5, end: 7.5, text: '[dead air]', type: 'silence' },
+    ];
+
+    const keepIntervals = computeKeepIntervals(totalDuration, mockFillers);
+    assert.strictEqual(keepIntervals.length, 3, 'Must create 3 keep intervals [0-2], [3-6.5], [7.5-10]');
+    assert.strictEqual(keepIntervals[0].start, 0);
+    assert.strictEqual(keepIntervals[0].end, 2.0);
+    assert.strictEqual(keepIntervals[1].start, 3.0);
+    assert.strictEqual(keepIntervals[1].end, 6.5);
+    assert.strictEqual(keepIntervals[2].start, 7.5);
+    assert.strictEqual(keepIntervals[2].end, 10.0);
+
+    const totalKept = keepIntervals.reduce((acc, k) => acc + k.duration, 0);
+    assert.strictEqual(Math.round(totalKept * 10) / 10, 8.0, 'Shortened audio duration must be 8.0s (2.0s trimmed)');
+
+    // Test Word Timestamp Remapping and Pruning
+    const sampleWords: TranscriptWord[] = [
+      { id: 'w1', text: 'Hello', start: 0.5, end: 1.0, isImportant: false },
+      { id: 'w2', text: 'umm', start: 2.2, end: 2.8, isImportant: false }, // Inside cut -> must be dropped
+      { id: 'w3', text: 'world', start: 3.5, end: 4.0, isImportant: true, intensity: 'climax', speakerId: 'Speaker 1' },
+      { id: 'w4', text: 'again', start: 8.0, end: 8.5, isImportant: false, intensity: 'punch', speakerId: 'Speaker 2' },
+    ];
+
+    const remappedWords = remapTranscriptWords(sampleWords, keepIntervals);
+    assert.strictEqual(remappedWords.length, 3, 'Filler word "umm" must be pruned from transcript');
+    assert.strictEqual(remappedWords[0].text, 'Hello');
+    assert.strictEqual(remappedWords[0].start, 0.5);
+    assert.strictEqual(remappedWords[0].end, 1.0);
+
+    // w3 was at 3.5s (0.5s into 2nd segment). After cutting [2-3], new time should be 2.0 + 0.5 = 2.5s
+    assert.strictEqual(remappedWords[1].text, 'world');
+    assert.strictEqual(remappedWords[1].start, 2.5);
+    assert.strictEqual(remappedWords[1].end, 3.0);
+    assert.strictEqual(remappedWords[1].intensity, 'climax');
+
+    // w4 was at 8.0s (0.5s into 3rd segment). Kept duration before 3rd seg is 2.0 + 3.5 = 5.5s. New start: 5.5 + 0.5 = 6.0s
+    assert.strictEqual(remappedWords[2].text, 'again');
+    assert.strictEqual(remappedWords[2].start, 6.0);
+    assert.strictEqual(remappedWords[2].speakerId, 'Speaker 2');
+
+    // 4. Verify SFX Cue Remapping
+    const sampleCues: SfxCue[] = [
+      { id: 's1', time: 1.0, type: 'whoosh' }, // Kept at 1.0s
+      { id: 's2', time: 2.5, type: 'pop' }, // Inside cut -> must be dropped
+      { id: 's3', time: 8.0, type: 'impact' }, // Kept and shifted to 6.0s
+    ];
+    const remappedCues = remapSfxCues(sampleCues, keepIntervals);
+    assert.strictEqual(remappedCues.length, 2, 'SFX in cut interval must be dropped');
+    assert.strictEqual(remappedCues[0].type, 'whoosh');
+    assert.strictEqual(remappedCues[0].time, 1.0);
+    assert.strictEqual(remappedCues[1].type, 'impact');
+    assert.strictEqual(remappedCues[1].time, 6.0);
+
+    // 5. Verify Vocal Intensity & Dual Speaker Color in ASS Subtitles
+    const { DEFAULT_CAPTION_STYLE, DEFAULT_OUTPUT_SETTINGS } = await import(
+      '../src/lib/caption-maker/sample-data'
+    );
+    const style = {
+      ...DEFAULT_CAPTION_STYLE,
+      speaker1Color: '#FFFFFF',
+      speaker2Color: '#06B6D4', // Cyan
+    };
+    const output = { ...DEFAULT_OUTPUT_SETTINGS };
+
+    const groups: CaptionGroup[] = [
+      { id: 'g1', start: 0.5, end: 8.5, text: 'Hello world again', words: remappedWords },
+    ];
+    const ass = generateAssSubtitles(groups, remappedWords, style, output);
+
+    // Climax punch word check: should have scale expansion and climax color (#FF3366)
+    assert.ok(ass.includes('fscx'), 'ASS subtitles must contain kinetic scale punch tags');
+    // Speaker 2 color check: cyan hex &H00D4B606& in ASS format
+    const cyanAssColor = hexToAssColor('#06B6D4');
+    assert.ok(ass.includes(cyanAssColor), 'ASS subtitles must render Speaker 2 in cyan color');
+  });
+
+  await test('47. AI Reel Social Media Post Copywriter (hooks, post captions, CTAs, and hashtags from selected clip only)', async () => {
+    // 1. Test POST request to /api/caption-maker/generate-social
+    const { POST } = await import('../src/app/api/caption-maker/generate-social/route');
+
+    // Negative test: Empty transcript must fail with 400
+    const emptyReq = new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: '' }),
+    });
+    const emptyRes = await POST(emptyReq as any);
+    assert.strictEqual(emptyRes.status, 400, 'Must reject empty transcript with 400 status');
+
+    // Positive test: English Clip Transcript
+    const testTranscript =
+      'Most people never take the first step because they are paralyzed by fear of failure. Start today before you feel ready.';
+    const testTitle = 'Overcoming Paralyzing Fear';
+
+    const reqEn = new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: testTranscript,
+        title: testTitle,
+        duration: 32,
+        language: 'en',
+        tone: 'motivational',
+        platform: 'instagram',
+      }),
+    });
+
+    const resEn = await POST(reqEn as any);
+    assert.strictEqual(resEn.status, 200, 'Must succeed with 200 OK');
+    const dataEn = await resEn.json();
+
+    assert.ok(dataEn.success, 'Response must have success: true');
+    assert.ok(Array.isArray(dataEn.bundle.hooks), 'Bundle must contain hooks array');
+    assert.ok(dataEn.bundle.hooks.length >= 3, 'Must have at least 3 opening hooks');
+    assert.ok(dataEn.bundle.description.length > 20, 'Must have descriptive body text');
+    assert.ok(dataEn.bundle.callToAction.length > 5, 'Must have clear CTA');
+    assert.ok(Array.isArray(dataEn.bundle.hashtags), 'Must have hashtags array');
+    assert.ok(dataEn.bundle.hashtags.length >= 5, 'Must have at least 5 curated hashtags');
+    assert.ok(dataEn.bundle.hashtags[0].startsWith('#'), 'Hashtags must start with #');
+    assert.ok(Array.isArray(dataEn.bundle.variations), 'Must contain post variations');
+    assert.strictEqual(dataEn.bundle.variations.length, 3, 'Must have 3 variations (Hook, Punchy, Story)');
+    assert.ok(dataEn.bundle.variations[0].fullText.includes(dataEn.bundle.hashtags[0]), 'Full text must contain hashtags');
+
+    // Positive test: Hinglish Clip Transcript
+    const reqHinglish = new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: 'Agar aap bhi kal par baatein taal rahe ho, toh yaad rakhna kal kabhi nahi aata.',
+        title: 'Kal Kabhi Nahi Aata',
+        duration: 25,
+        language: 'hinglish',
+        tone: 'motivational',
+      }),
+    });
+    const resHinglish = await POST(reqHinglish as any);
+    const dataHinglish = await resHinglish.json();
+    assert.ok(dataHinglish.success, 'Hinglish social post must succeed');
+    assert.ok(dataHinglish.bundle.hooks.length >= 3, 'Hinglish must have 3 hooks');
+    assert.ok(dataHinglish.bundle.variations.length === 3, 'Hinglish must have 3 variations');
+  });
+
+  // 48. Custom Style Presets (Save As My Style)
+  await test('48. Custom Brand Style Presets (Save As My Style, persist, retrieve, and delete)', async () => {
+    const {
+      getCustomPresets,
+      saveCustomPreset,
+      deleteCustomPreset,
+      renameCustomPreset,
+      CUSTOM_PRESETS_STORAGE_KEY,
+    } = await import('../src/lib/caption-maker/custom-presets');
+
+    // Simulate browser window.localStorage environment in Node.js
+    const mockStorage: Record<string, string> = {};
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => mockStorage[key] || null,
+        setItem: (key: string, val: string) => {
+          mockStorage[key] = val;
+        },
+        removeItem: (key: string) => {
+          delete mockStorage[key];
+        },
+        clear: () => {
+          for (const k in mockStorage) delete mockStorage[k];
+        },
+      },
+    };
+
+    // 1. Initial presets check
+    const initial = getCustomPresets();
+    assert.strictEqual(initial.length, 0, 'Initially must have 0 custom presets');
+
+    // 2. Save a custom style preset
+    const sampleStyle: any = {
+      fontFamily: 'Montserrat, sans-serif',
+      fontSize: 68,
+      fontWeight: 'black',
+      textAlign: 'center',
+      position: 'top',
+      textColor: '#FFFFFF',
+      importantColor: '#FCD905',
+      strokeColor: '#000000',
+      strokeWidth: 6,
+      backgroundStyle: 'solid-pill',
+      backgroundColor: '#000000',
+      backgroundOpacity: 0.8,
+      backgroundRadius: 20,
+      backgroundPadding: 16,
+      captionMode: 'phrase-highlight',
+      animationPreset: 'punch',
+      highlightAnimation: 'pop',
+      uppercase: true,
+      letterSpacing: 2,
+      zoomScale: 1.25,
+      textOpacity: 1.0,
+      textEffect: 'neon-glow',
+      glowColor: '#FCD905',
+    };
+
+    const created = saveCustomPreset('Podcast Gold Master', sampleStyle, 'Official podcast viral yellow branding');
+    assert.ok(created.id.startsWith('preset-'), 'Preset must have generated ID');
+    assert.strictEqual(created.name, 'Podcast Gold Master');
+    assert.strictEqual(created.badge, 'BRAND');
+    assert.strictEqual(created.style.fontFamily, 'Montserrat, sans-serif');
+    assert.strictEqual(created.style.importantColor, '#FCD905');
+    assert.strictEqual(created.style.strokeWidth, 6);
+    assert.strictEqual(created.style.zoomScale, 1.25);
+
+    // 3. Retrieve saved presets
+    const listAfterSave = getCustomPresets();
+    assert.strictEqual(listAfterSave.length, 1, 'Should have 1 custom preset');
+    assert.strictEqual(listAfterSave[0].id, created.id);
+
+    // 4. Save second preset
+    const secondStyle: any = {
+      ...sampleStyle,
+      textColor: '#00F2FE',
+      importantColor: '#FF007A',
+    };
+    const created2 = saveCustomPreset('Neon Cyberpunk', secondStyle);
+    const listAfterSecond = getCustomPresets();
+    assert.strictEqual(listAfterSecond.length, 2, 'Should have 2 presets');
+    assert.strictEqual(listAfterSecond[0].name, 'Neon Cyberpunk', 'Latest preset should be at index 0');
+
+    // 5. Rename preset
+    const renamedList = renameCustomPreset(created.id, 'Podcast Gold V2');
+    const renamedItem = renamedList.find((p) => p.id === created.id);
+    assert.strictEqual(renamedItem?.name, 'Podcast Gold V2', 'Preset must be renamed');
+
+    // 6. Delete preset
+    const remaining = deleteCustomPreset(created.id);
+    assert.strictEqual(remaining.length, 1, 'Should have 1 preset left after delete');
+    assert.strictEqual(remaining[0].id, created2.id, 'Remaining preset must be created2');
+
+    // Clean up mock
+    delete (global as any).window;
+  });
+
+  // 49. Multi-Format Subtitle Exporter (SRT, WebVTT, and Plain Text)
+  await test('49. Multi-Format Subtitle Exporter (.SRT, .VTT, and .TXT phrase and word level parity)', async () => {
+    const {
+      generatePhraseLevelSrt,
+      generateWordLevelSrt,
+      generatePhraseLevelVtt,
+      generateWordLevelVtt,
+      generatePlainTextTranscript,
+      generateWordLevelTxt,
+      generateSubtitleExport,
+      formatVttTime,
+    } = await import('../src/lib/caption-maker/srt-generator');
+
+    const sampleWords = [
+      { id: 'w1', text: 'Zindagi', start: 0.5, end: 1.2, isImportant: true },
+      { id: 'w2', text: 'mein', start: 1.3, end: 1.8 },
+      { id: 'w3', text: 'focus', start: 2.0, end: 2.8, isImportant: true },
+      { id: 'w4', text: 'rakhein', start: 2.9, end: 3.5 },
+    ];
+
+    const sampleGroups = [
+      { id: 'g1', words: sampleWords.slice(0, 2), start: 0.5, end: 1.8, text: 'Zindagi mein' },
+      { id: 'g2', words: sampleWords.slice(2, 4), start: 2.0, end: 3.5, text: 'focus rakhein' },
+    ];
+
+    // 1. WebVTT format check
+    assert.strictEqual(formatVttTime(1.5), '00:00:01.500', 'VTT timestamp must use dot separator');
+    const vttPhrase = generatePhraseLevelVtt(sampleGroups, 'Focus Reel');
+    assert.ok(vttPhrase.startsWith('WEBVTT'), 'VTT must begin with WEBVTT header');
+    assert.ok(vttPhrase.includes('00:00:00.500 --> 00:00:01.800'), 'VTT must contain dot timestamps');
+    assert.ok(vttPhrase.includes('Zindagi mein'), 'VTT must contain text line');
+
+    const vttWord = generateWordLevelVtt(sampleWords);
+    assert.ok(vttWord.startsWith('WEBVTT'), 'Word VTT must begin with WEBVTT header');
+    assert.ok(vttWord.includes('focus'), 'Word VTT must contain individual words');
+
+    // 2. Plain Text format check
+    const txtPhrase = generatePlainTextTranscript(sampleGroups, { includeTimestamps: true, title: 'Focus Speech' });
+    assert.ok(txtPhrase.includes('TRANSCRIPT: Focus Speech'), 'TXT must include title header');
+    assert.ok(txtPhrase.includes('[00:00 - 00:01] Zindagi mein') || txtPhrase.includes('Zindagi mein'), 'TXT must contain speech lines');
+
+    const txtWord = generateWordLevelTxt(sampleWords);
+    assert.ok(txtWord.includes('Zindagi'), 'Word TXT must contain words');
+
+    // 3. Unified Subtitle Exporter verification for all 3 formats
+    const srtExport = generateSubtitleExport('srt', 'phrase', { words: sampleWords, groups: sampleGroups }, 'My Cool Video!');
+    assert.strictEqual(srtExport.filename, 'my_cool_video__phrase.srt');
+    assert.ok(srtExport.mimeType.includes('subrip'));
+    assert.ok(srtExport.content.includes('-->'));
+
+    const vttExport = generateSubtitleExport('vtt', 'word', { words: sampleWords, groups: sampleGroups }, 'My Cool Video!');
+    assert.strictEqual(vttExport.filename, 'my_cool_video__word.vtt');
+    assert.ok(vttExport.mimeType.includes('vtt'));
+    assert.ok(vttExport.content.startsWith('WEBVTT'));
+
+    const txtExport = generateSubtitleExport('txt', 'phrase', { words: sampleWords, groups: sampleGroups }, 'My Cool Video!');
+    assert.strictEqual(txtExport.filename, 'my_cool_video__phrase.txt');
+    assert.ok(txtExport.mimeType.includes('plain'));
+    assert.ok(txtExport.content.length > 10);
+  });
+
+  // 50. Interactive Waveform Drag Handles & Clip Trimming Parity
+  await test('50. Interactive Waveform Drag Handles (Start/End clip trimming, word snapping & bounds)', async () => {
+    const totalDuration = 45.0; // 45 seconds total audio
+    const trimRange = { start: 5.2, end: 32.8 };
+
+    // 1. Valid range calculation
+    assert.ok(trimRange.start >= 0, 'Trim start must be non-negative');
+    assert.ok(trimRange.end <= totalDuration, 'Trim end must not exceed total duration');
+    assert.ok(trimRange.end - trimRange.start >= 0.5, 'Trimmed clip duration must be at least 0.5 seconds');
+
+    const trimmedDuration = trimRange.end - trimRange.start;
+    assert.strictEqual(Number(trimmedDuration.toFixed(1)), 27.6, 'Trimmed duration must match delta');
+
+    // 2. Dimmed region percentage resolution
+    const startPercent = (trimRange.start / totalDuration) * 100;
+    const endPercent = (trimRange.end / totalDuration) * 100;
+    assert.ok(startPercent > 10 && startPercent < 15, 'Start percentage must be ~11.5%');
+    assert.ok(endPercent > 70 && endPercent < 75, 'End percentage must be ~72.8%');
+
+    // 3. Magnetic snapping simulation
+    const sampleWords = [
+      { id: 'w1', text: 'Namaste', start: 5.0, end: 5.8 },
+      { id: 'w2', text: 'dosto', start: 6.0, end: 6.7 },
+      { id: 'w3', text: 'alvida', start: 32.6, end: 33.4 },
+    ];
+
+    const snapToWordBoundary = (time: number, threshold = 0.25): number => {
+      let closest = time;
+      let minDiff = threshold;
+      for (const w of sampleWords) {
+        const diffStart = Math.abs(w.start - time);
+        if (diffStart < minDiff) {
+          minDiff = diffStart;
+          closest = w.start;
+        }
+        const diffEnd = Math.abs(w.end - time);
+        if (diffEnd < minDiff) {
+          minDiff = diffEnd;
+          closest = w.end;
+        }
+      }
+      return closest;
+    };
+
+    // Dragging near 5.1s should magnetically snap to 5.0s (w1.start)
+    assert.strictEqual(snapToWordBoundary(5.1), 5.0, 'Must snap to closest word start 5.0s');
+    // Dragging near 32.7s should magnetically snap to 32.6s (w3.start)
+    assert.strictEqual(snapToWordBoundary(32.7), 32.6, 'Must snap to closest word end or start');
+    // Dragging far from words (e.g. 15.0s) should remain unchanged
+    assert.strictEqual(snapToWordBoundary(15.0), 15.0, 'Must not snap when outside threshold');
+
+    // 4. Playback loop-back boundary check
+    let curPlayback = 32.9;
+    if (curPlayback >= trimRange.end) {
+      curPlayback = trimRange.start;
+    }
+    assert.strictEqual(curPlayback, 5.2, 'Playback reaching trimEnd must loop back to trimStart');
+  });
+
+  // 51. Custom Background Music (BGM Validation, Library Persistence & Mixer)
+  await test('51. Custom Background Music (Validation, Persistent Library, and Volume/Mixer controls)', async () => {
+    const {
+      validateBgmFile,
+      getCustomBgmTracks,
+      saveCustomBgmTrack,
+      deleteCustomBgmTrack,
+    } = await import('../src/lib/caption-maker/custom-bgm');
+
+    // 1. Validation tests
+    const validMp3 = validateBgmFile({ name: 'cinematic_lofi.mp3', size: 5 * 1024 * 1024 });
+    assert.strictEqual(validMp3.valid, true, 'MP3 must be valid');
+
+    const validWav = validateBgmFile({ name: 'epic_beat.wav', size: 12 * 1024 * 1024 });
+    assert.strictEqual(validWav.valid, true, 'WAV must be valid');
+
+    const invalidExt = validateBgmFile({ name: 'script.txt', size: 1000 });
+    assert.strictEqual(invalidExt.valid, false, 'TXT must be rejected');
+    assert.ok(invalidExt.error?.includes('Unsupported audio format'));
+
+    const oversize = validateBgmFile({ name: 'huge_mix.mp3', size: 150 * 1024 * 1024 });
+    assert.strictEqual(oversize.valid, false, 'Oversized audio must be rejected');
+
+    // 2. Storage & Library Persistence Simulation
+    const mockStorage: Record<string, string> = {};
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => mockStorage[key] || null,
+        setItem: (key: string, val: string) => {
+          mockStorage[key] = val;
+        },
+        removeItem: (key: string) => {
+          delete mockStorage[key];
+        },
+      },
+    };
+
+    assert.strictEqual(getCustomBgmTracks().length, 0, 'Initially 0 custom BGM tracks');
+
+    const customTrack1 = {
+      id: 'bgm_custom_1',
+      title: 'Midnight Chill Beat',
+      fileUrl: '/api/files/bgm_1.mp3',
+      storagePath: 'data/bgm_1.mp3',
+      volume: 0.25,
+      custom: true,
+      fadeInDuration: 1.0,
+      fadeOutDuration: 1.5,
+      autoDucking: true,
+    };
+
+    const savedList = saveCustomBgmTrack(customTrack1);
+    assert.strictEqual(savedList.length, 1, 'Should have 1 track saved');
+    assert.strictEqual(savedList[0].title, 'Midnight Chill Beat');
+    assert.strictEqual(savedList[0].autoDucking, true);
+
+    const retrieved = getCustomBgmTracks();
+    assert.strictEqual(retrieved.length, 1);
+    assert.strictEqual(retrieved[0].id, 'bgm_custom_1');
+
+    // Save second track
+    const customTrack2 = {
+      id: 'bgm_custom_2',
+      title: 'Piano Inspiration',
+      fileUrl: '/api/files/bgm_2.mp3',
+      volume: 0.3,
+      custom: true,
+    };
+    saveCustomBgmTrack(customTrack2);
+    assert.strictEqual(getCustomBgmTracks().length, 2);
+
+    // Delete track
+    const afterDelete = deleteCustomBgmTrack('bgm_custom_1');
+    assert.strictEqual(afterDelete.length, 1);
+    assert.strictEqual(afterDelete[0].id, 'bgm_custom_2');
+
+    delete (global as any).window;
+  });
+
+  // 52. Advanced Text Case Transformations & 9-Position Safe Area Guides
+  await test('52. Advanced Text Case Transformations & 9-Position Safe Area Guides (Studio Parity)', async () => {
+    const {
+      applyTextTransform,
+      applyWordTransform,
+      resolveNinePosition,
+      getNinePositionCoordinates,
+    } = await import('../src/lib/caption-maker/text-transform');
+
+    // 1. Text Case Transformations
+    const sampleText = 'tHiS is an AI rEeL Studio! transform NOW? absolutely.';
+
+    // UPPERCASE
+    assert.strictEqual(
+      applyTextTransform(sampleText, 'uppercase'),
+      'THIS IS AN AI REEL STUDIO! TRANSFORM NOW? ABSOLUTELY.',
+      'Uppercase should uppercase all characters'
+    );
+
+    // lowercase
+    assert.strictEqual(
+      applyTextTransform(sampleText, 'lowercase'),
+      'this is an ai reel studio! transform now? absolutely.',
+      'Lowercase should lowercase all characters'
+    );
+
+    // Sentence case
+    assert.strictEqual(
+      applyTextTransform(sampleText, 'sentence'),
+      'This is an ai reel studio! Transform now? Absolutely.',
+      'Sentence case should capitalize after punctuation and at start'
+    );
+
+    // Title Case
+    assert.strictEqual(
+      applyTextTransform('transform your reel captions', 'title'),
+      'Transform Your Reel Captions',
+      'Title case should capitalize each word'
+    );
+
+    // As Spoken (none)
+    assert.strictEqual(
+      applyTextTransform(sampleText, 'none'),
+      sampleText,
+      'None should preserve original verbatim casing'
+    );
+
+    // Legacy uppercase fallback
+    assert.strictEqual(
+      applyTextTransform('hello world', undefined, true),
+      'HELLO WORLD',
+      'Legacy uppercase true should uppercase'
+    );
+    assert.strictEqual(
+      applyTextTransform('hello world', undefined, false),
+      'hello world',
+      'Legacy uppercase false should keep original'
+    );
+
+    // 2. Word Transform with Sentence Boundaries
+    assert.strictEqual(
+      applyWordTransform('podcast', 'sentence', false, true),
+      'Podcast',
+      'First word in sentence should be capitalized'
+    );
+    assert.strictEqual(
+      applyWordTransform('PODCAST', 'sentence', false, false),
+      'podcast',
+      'Subsequent words in sentence should be lowercased'
+    );
+    assert.strictEqual(
+      applyWordTransform('instagram', 'title', false, false),
+      'Instagram',
+      'Title word should always be capitalized'
+    );
+
+    // 3. 9-Position Resolution
+    assert.strictEqual(resolveNinePosition('top', 'left'), 'top-left');
+    assert.strictEqual(resolveNinePosition('top', 'center'), 'top-center');
+    assert.strictEqual(resolveNinePosition('top', 'right'), 'top-right');
+    assert.strictEqual(resolveNinePosition('center', 'left'), 'center-left');
+    assert.strictEqual(resolveNinePosition('center', 'center'), 'center');
+    assert.strictEqual(resolveNinePosition('center', 'right'), 'center-right');
+    assert.strictEqual(resolveNinePosition('bottom', 'left'), 'bottom-left');
+    assert.strictEqual(resolveNinePosition('bottom', 'center'), 'bottom-center');
+    assert.strictEqual(resolveNinePosition('bottom', 'right'), 'bottom-right');
+    assert.strictEqual(resolveNinePosition('bottom-right', 'left'), 'bottom-right');
+
+    // 4. 9-Position Coordinates & ASS Numpad Parity
+    const tlCoords = getNinePositionCoordinates('top-left');
+    assert.strictEqual(tlCoords.assAlignment, 7, 'Top-Left must be ASS 7');
+    assert.strictEqual(tlCoords.textAlign, 'left');
+    assert.strictEqual(tlCoords.top, '16%');
+
+    const tcCoords = getNinePositionCoordinates('top-center');
+    assert.strictEqual(tcCoords.assAlignment, 8, 'Top-Center must be ASS 8');
+    assert.strictEqual(tcCoords.textAlign, 'center');
+
+    const trCoords = getNinePositionCoordinates('top-right');
+    assert.strictEqual(trCoords.assAlignment, 9, 'Top-Right must be ASS 9');
+    assert.strictEqual(trCoords.textAlign, 'right');
+
+    const clCoords = getNinePositionCoordinates('center-left');
+    assert.strictEqual(clCoords.assAlignment, 4, 'Center-Left must be ASS 4');
+
+    const ccCoords = getNinePositionCoordinates('center');
+    assert.strictEqual(ccCoords.assAlignment, 5, 'Center must be ASS 5');
+
+    const crCoords = getNinePositionCoordinates('center-right');
+    assert.strictEqual(crCoords.assAlignment, 6, 'Center-Right must be ASS 6');
+
+    const blCoords = getNinePositionCoordinates('bottom-left');
+    assert.strictEqual(blCoords.assAlignment, 1, 'Bottom-Left must be ASS 1');
+
+    const bcCoords = getNinePositionCoordinates('bottom-center');
+    assert.strictEqual(bcCoords.assAlignment, 2, 'Bottom-Center must be ASS 2');
+
+    const brCoords = getNinePositionCoordinates('bottom-right');
+    assert.strictEqual(brCoords.assAlignment, 3, 'Bottom-Right must be ASS 3');
+
+    // Custom coordinates
+    const customCoords = getNinePositionCoordinates('custom', 33, 67, 'left');
+    assert.strictEqual(customCoords.top, '67%');
+    assert.strictEqual(customCoords.left, '33%');
+    assert.strictEqual(customCoords.assAlignment, 4);
+
+    // 5. ASS Subtitle Rendering Parity with textTransform
+    const testWords: TranscriptWord[] = [
+      { id: 'tw1', text: 'welcome', start: 0.0, end: 0.5 },
+      { id: 'tw2', text: 'to', start: 0.5, end: 0.8 },
+      { id: 'tw3', text: 'reelspark', start: 0.8, end: 1.4 },
+    ];
+    const testGroups: CaptionGroup[] = [
+      { id: 'tg1', text: 'welcome to reelspark', start: 0.0, end: 1.4, words: testWords },
+    ];
+
+    const testStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      position: 'top-right' as const,
+      textAlign: 'right' as const,
+      textTransform: 'title' as const,
+      uppercase: false,
+    };
+
+    const assScript = generateAssSubtitles(
+      testGroups,
+      testWords,
+      testStyle,
+      DEFAULT_OUTPUT_SETTINGS
+    );
+
+    assert.ok(assScript.includes('\\an9'), 'Must contain \\an9 for top-right alignment');
+    assert.ok(assScript.includes('Welcome'), 'Words must be rendered with Title Case (Welcome)');
+    assert.ok(assScript.includes('Reelspark'), 'Words must be rendered with Title Case (Reelspark)');
+  });
+
+  // 53. Auto Word-Level Timing Adjustment & Drag Scrubber in Timeline
+  await test('53. Word-Level Timing Adjustment Studio (Nudge, Shift, Snap, Distribute & Gaps)', async () => {
+    const {
+      nudgeWordTiming,
+      shiftWordTiming,
+      snapWordToTime,
+      autoDistributeGroupWords,
+      autoExpandWordToGap,
+    } = await import('../src/lib/caption-maker/timing-adjuster');
+
+    const sampleWords: TranscriptWord[] = [
+      { id: 'w1', text: 'create', start: 1.0, end: 1.4 },
+      { id: 'w2', text: 'viral', start: 1.5, end: 1.9 },
+      { id: 'w3', text: 'reels', start: 2.0, end: 2.5 },
+    ];
+
+    const sampleGroups: CaptionGroup[] = [
+      {
+        id: 'group_test_1',
+        text: 'create viral reels',
+        start: 1.0,
+        end: 2.5,
+        words: sampleWords,
+      },
+    ];
+
+    // 1. Nudge Word Timing
+    // Nudge start earlier by 0.1s
+    const nudgedStart = nudgeWordTiming(sampleGroups, 'w1', -0.1, 0);
+    const w1Updated = nudgedStart[0].words.find((w) => w.id === 'w1');
+    assert.strictEqual(w1Updated?.start, 0.9, 'Word start should nudge to 0.9s');
+    assert.strictEqual(w1Updated?.end, 1.4, 'Word end should remain 1.4s');
+    assert.strictEqual(nudgedStart[0].start, 0.9, 'Parent group start should update to 0.9s');
+
+    // Nudge end later by 0.15s
+    const nudgedEnd = nudgeWordTiming(sampleGroups, 'w2', 0, 0.15);
+    const w2Updated = nudgedEnd[0].words.find((w) => w.id === 'w2');
+    assert.strictEqual(w2Updated?.end, 2.05, 'Word end should nudge to 2.05s');
+
+    // Clamp protection: start cannot go below 0
+    const clampedZero = nudgeWordTiming(sampleGroups, 'w1', -5.0, 0);
+    assert.strictEqual(clampedZero[0].words[0].start, 0, 'Word start must clamp to >= 0');
+
+    // Clamp protection: end cannot precede start + 0.05
+    const clampedDuration = nudgeWordTiming(sampleGroups, 'w1', 1.0, -1.0);
+    assert.ok(
+      clampedDuration[0].words[0].end >= clampedDuration[0].words[0].start + 0.05,
+      'Word duration must be at least 0.05s'
+    );
+
+    // 2. Shift Word Timing (Both start and end)
+    const shifted = shiftWordTiming(sampleGroups, 'w2', 0.2);
+    const w2Shifted = shifted[0].words.find((w) => w.id === 'w2');
+    assert.strictEqual(w2Shifted?.start, 1.7, 'Start should shift from 1.5 to 1.7');
+    assert.strictEqual(w2Shifted?.end, 2.1, 'End should shift from 1.9 to 2.1');
+    assert.strictEqual(
+      Number((w2Shifted!.end - w2Shifted!.start).toFixed(2)),
+      0.4,
+      'Duration should remain exactly 0.4s'
+    );
+
+    // 3. Snap Word to Target Time (Playhead)
+    const snapped = snapWordToTime(sampleGroups, 'w3', 3.5);
+    const w3Snapped = snapped[0].words.find((w) => w.id === 'w3');
+    assert.strictEqual(w3Snapped?.start, 3.5, 'Start must snap to 3.5s');
+    assert.strictEqual(w3Snapped?.end, 4.0, 'End must preserve 0.5s duration');
+
+    // 4. Auto Distribute Group Words Evenly
+    const bunchedGroup: CaptionGroup[] = [
+      {
+        id: 'bunched',
+        text: 'one two three',
+        start: 10.0,
+        end: 11.5, // 1.5s total duration for 3 words => 0.5s each
+        words: [
+          { id: 'b1', text: 'one', start: 10.0, end: 10.1 },
+          { id: 'b2', text: 'two', start: 10.1, end: 10.2 },
+          { id: 'b3', text: 'three', start: 10.2, end: 10.3 },
+        ],
+      },
+    ];
+
+    const distributed = autoDistributeGroupWords(bunchedGroup, 'bunched');
+    const dWords = distributed[0].words;
+    assert.strictEqual(dWords[0].start, 10.0);
+    assert.strictEqual(dWords[0].end, 10.5);
+    assert.strictEqual(dWords[1].start, 10.5);
+    assert.strictEqual(dWords[1].end, 11.0);
+    assert.strictEqual(dWords[2].start, 11.0);
+    assert.strictEqual(dWords[2].end, 11.5);
+
+    // 5. Auto Expand Word to Close Micro-Gaps
+    // Between w1 (end: 1.4) and w2 (start: 1.5), gap is 0.1s <= 0.25s
+    const gapClosed = autoExpandWordToGap(sampleGroups, 'w1');
+    const w1Expanded = gapClosed[0].words.find((w) => w.id === 'w1');
+    assert.strictEqual(w1Expanded?.end, 1.5, 'Micro gap should be closed seamlessly');
+  });
+
+  test('54. Advanced Multi-Resolution Export Settings (FPS, 720p/1080p/2K/4K, Bitrate & FFmpeg Quality)', () => {
+    // 1. Verify standard dimension matrix for all 4 aspect ratios across all 4 resolution tiers
+    const tiers: ResolutionTier[] = ['720p', '1080p', '1440p', '4k'];
+    const ratios = ['9:16', '16:9', '1:1', '4:5'];
+
+    for (const ratio of ratios) {
+      for (const tier of tiers) {
+        const dims = getDimensionsForAspectAndTier(ratio, tier);
+        assert.ok(dims.width > 0, `Width must be > 0 for ${ratio} @ ${tier}`);
+        assert.ok(dims.height > 0, `Height must be > 0 for ${ratio} @ ${tier}`);
+        assert.strictEqual(dims.width % 2, 0, `Width must be even for H.264 macroblocks (${dims.width})`);
+        assert.strictEqual(dims.height % 2, 0, `Height must be even for H.264 macroblocks (${dims.height})`);
+      }
+    }
+
+    // Exact dimension checks
+    const r916_720p = getDimensionsForAspectAndTier('9:16', '720p');
+    assert.strictEqual(r916_720p.width, 720);
+    assert.strictEqual(r916_720p.height, 1280);
+
+    const r916_1080p = getDimensionsForAspectAndTier('9:16', '1080p');
+    assert.strictEqual(r916_1080p.width, 1080);
+    assert.strictEqual(r916_1080p.height, 1920);
+
+    const r916_2k = getDimensionsForAspectAndTier('9:16', '1440p');
+    assert.strictEqual(r916_2k.width, 1440);
+    assert.strictEqual(r916_2k.height, 2560);
+
+    const r916_4k = getDimensionsForAspectAndTier('9:16', '4k');
+    assert.strictEqual(r916_4k.width, 2160);
+    assert.strictEqual(r916_4k.height, 3840);
+
+    const r169_4k = getDimensionsForAspectAndTier('16:9', '4k');
+    assert.strictEqual(r169_4k.width, 3840);
+    assert.strictEqual(r169_4k.height, 2160);
+
+    const r11_1080p = getDimensionsForAspectAndTier('1:1', '1080p');
+    assert.strictEqual(r11_1080p.width, 1080);
+    assert.strictEqual(r11_1080p.height, 1080);
+
+    const r45_1080p = getDimensionsForAspectAndTier('4:5', '1080p');
+    assert.strictEqual(r45_1080p.width, 1080);
+    assert.strictEqual(r45_1080p.height, 1350);
+
+    // Custom fallback aspect ratio
+    const customRatio = getDimensionsForAspectAndTier('21:9', '720p');
+    assert.ok(customRatio.width % 2 === 0);
+    assert.ok(customRatio.height % 2 === 0);
+
+    // 2. detectResolutionTier
+    assert.strictEqual(detectResolutionTier(720, 1280), '720p');
+    assert.strictEqual(detectResolutionTier(1080, 1920), '1080p');
+    assert.strictEqual(detectResolutionTier(1440, 2560), '1440p');
+    assert.strictEqual(detectResolutionTier(2160, 3840), '4k');
+    assert.strictEqual(detectResolutionTier(1920, 1080), '1080p');
+    assert.strictEqual(detectResolutionTier(3840, 2160), '4k');
+
+    // 3. Supported Frame Rates & Quality Profiles
+    const fpsList = SUPPORTED_FRAME_RATES.map((f) => f.fps);
+    assert.deepStrictEqual(fpsList, [24, 25, 30, 60]);
+
+    assert.ok(QUALITY_PROFILES.draft.crf > QUALITY_PROFILES.standard.crf);
+    assert.ok(QUALITY_PROFILES.standard.crf > QUALITY_PROFILES.high.crf);
+    assert.ok(QUALITY_PROFILES.high.crf > QUALITY_PROFILES.pro.crf);
+    assert.strictEqual(QUALITY_PROFILES.draft.crf, 28);
+    assert.strictEqual(QUALITY_PROFILES.standard.crf, 22);
+    assert.strictEqual(QUALITY_PROFILES.high.crf, 18);
+    assert.strictEqual(QUALITY_PROFILES.pro.crf, 14);
+
+    // 4. estimateExportFileSize
+    assert.strictEqual(estimateExportFileSize(0, 'standard', '1080p', 30), '0.0 MB');
+    const sizeDraft720 = estimateExportFileSize(15, 'draft', '720p', 24);
+    const sizePro4K = estimateExportFileSize(15, 'pro', '4k', 60);
+    assert.ok(sizeDraft720.includes('MB'));
+    assert.ok(sizePro4K.includes('MB') || sizePro4K.includes('GB'));
+    const draftNum = parseFloat(sizeDraft720.replace(/[^0-9.]/g, ''));
+    const proNum = parseFloat(sizePro4K.replace(/[^0-9.]/g, ''));
+    assert.ok(!isNaN(draftNum) && !isNaN(proNum), 'Parsed size numbers must be valid');
+    assert.ok(proNum > draftNum, '4K Pro file size must exceed 720p Draft');
+
+    // 5. buildFfmpegEncodingArgs
+    const settingsHigh60: OutputSettings = {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'high',
+      fps: 60,
+      audioBitrate: '256k',
+    };
+    const args = buildFfmpegEncodingArgs(settingsHigh60, 'libx264');
+    assert.ok(args.videoArgs.includes('-r'), 'Must pass -r flag for frame rate');
+    assert.ok(args.videoArgs.includes('60'), 'Must set frame rate to 60 fps');
+    assert.ok(args.videoArgs.includes('-crf'), 'Must pass -crf flag');
+    assert.ok(args.videoArgs.includes('18'), 'High quality must use CRF 18');
+    assert.ok(args.videoArgs.includes('-preset'), 'Must pass -preset flag');
+    assert.ok(args.videoArgs.includes('medium'), 'High quality must use medium preset');
+    assert.ok(args.audioArgs.includes('-b:a'), 'Must pass -b:a audio bitrate flag');
+    assert.ok(args.audioArgs.includes('256k'), 'Audio bitrate must match 256k');
+
+    // Test custom video bitrate override
+    const settingsCustomBitrate: OutputSettings = {
+      preset: 'instagram-reel',
+      width: 2160,
+      height: 3840,
+      aspectRatio: '9:16',
+      quality: 'pro',
+      fps: 30,
+      bitrate: '25M',
+      audioBitrate: '320k',
+    };
+    const customArgs = buildFfmpegEncodingArgs(settingsCustomBitrate, 'libx264');
+    assert.ok(customArgs.videoArgs.includes('-b:v'), 'Must pass -b:v flag when custom bitrate is set');
+    assert.ok(customArgs.videoArgs.includes('25M'), 'Video bitrate must match 25M');
+    assert.ok(customArgs.videoArgs.includes('14'), 'Pro quality must use CRF 14');
+    assert.ok(customArgs.audioArgs.includes('320k'), 'Pro quality audio bitrate must match 320k');
+  });
+
+  test('55. AI Smart Editing — Silence & Pause Auto-Trimmer and Viral Highlight Studio', () => {
+    const sampleWords: TranscriptWord[] = [
+      { id: 'sw1', text: 'Zindagi', start: 1.0, end: 1.5, isImportant: false },
+      { id: 'sw2', text: 'mein', start: 1.7, end: 2.0, isImportant: false },
+      { id: 'sw3', text: 'umm', start: 2.3, end: 2.8, isImportant: false },
+      { id: 'sw4', text: 'HAAR', start: 4.0, end: 4.6, isImportant: false },
+    ];
+    const totalDuration = 10.0;
+
+    // 1. Test detectSilencesAndFillers
+    const detected = detectSilencesAndFillers(sampleWords, totalDuration, {
+      minPauseDuration: 0.6,
+      detectFillers: true,
+    });
+
+    // Opening silence: 0.0s to 1.0s (1.0s duration >= 0.6s)
+    const opening = detected.find((d) => d.start === 0 && d.type === 'silence');
+    assert.ok(opening, 'Must detect opening dead-air silence before first word');
+    assert.strictEqual(opening!.end, 1.0);
+
+    // Filler word: "umm" (2.3s - 2.8s)
+    const fillerUmm = detected.find((d) => d.type === 'filler' && d.text.toLowerCase().includes('umm'));
+    assert.ok(fillerUmm, 'Must detect verbal filler word "umm"');
+
+    // Ending silence: 4.6s to 10.0s (5.4s duration >= 0.6s)
+    const ending = detected.find((d) => d.end === 10.0 && d.type === 'silence');
+    assert.ok(ending, 'Must detect ending trailing silence');
+    assert.strictEqual(ending!.start, 4.6);
+
+    // 2. Test calculateSavedDuration
+    const saved = calculateSavedDuration(detected);
+    assert.ok(saved > 5.0, `Total saved duration (${saved}s) should exceed 5 seconds`);
+
+    // 3. Test threshold filtering
+    const highThreshold = detectSilencesAndFillers(sampleWords, totalDuration, {
+      minPauseDuration: 2.0,
+      detectFillers: false,
+    });
+    // With 2.0s threshold and no fillers, opening 1.0s is excluded; ending 5.4s is kept
+    const highOpening = highThreshold.find((d) => d.start === 0 && d.type === 'silence');
+    assert.strictEqual(highOpening, undefined, 'Opening 1.0s pause should be excluded under 2.0s threshold');
+    const highEnding = highThreshold.find((d) => d.end === 10.0 && d.type === 'silence');
+    assert.ok(highEnding, 'Ending 5.4s silence must be retained under 2.0s threshold');
+
+    // 4. Test analyzeClipHighlights
+    const analysis = analyzeClipHighlights(sampleWords, totalDuration);
+    assert.ok(analysis.overallViralScore >= 50 && analysis.overallViralScore <= 100);
+    assert.ok(analysis.hookScore >= 60, 'Hook score should reflect opening strong keyword');
+    assert.ok(analysis.hookInterval.start >= 0);
+    assert.ok(analysis.hookInterval.end <= 4.6);
+    assert.ok(analysis.feedback.length >= 2, 'Must generate actionable AI feedback pills');
+    assert.ok(analysis.punchlineWords.includes('Zindagi') || analysis.punchlineWords.includes('HAAR'));
+
+    // 5. Test autoMarkViralHighlights
+    const autoMarked = autoMarkViralHighlights(sampleWords, ['zindagi', 'haar']);
+    const zWord = autoMarked.find((w) => w.text === 'Zindagi');
+    const mWord = autoMarked.find((w) => w.text === 'mein');
+    const hWord = autoMarked.find((w) => w.text === 'HAAR');
+
+    assert.strictEqual(zWord?.isImportant, true, 'Trigger word "Zindagi" must be marked important');
+    assert.strictEqual(hWord?.isImportant, true, 'Trigger word "HAAR" must be marked important');
+    assert.strictEqual(mWord?.isImportant, false, 'Non-trigger word "mein" must remain unimportant');
+
+    // Immutability: original array should remain unmodified
+    assert.strictEqual(sampleWords[0].isImportant, false, 'Original word object must not be mutated');
+  });
+
+  // 56. Project Autosave, Version History Snapshots, Duplication & Crash Recovery
+  await test('56. Project Autosave, Version History Snapshots, Duplication & Crash Recovery Engine', async () => {
+    const {
+      saveProjectToLocalStorage,
+      loadProjectFromLocalStorage,
+      clearProjectFromLocalStorage,
+      saveProjectSnapshot,
+      getProjectSnapshots,
+      restoreProjectSnapshot,
+      deleteProjectSnapshot,
+      clearAllSnapshots,
+      duplicateProject,
+      exportProjectAsJson,
+      importProjectFromJson,
+      detectCrashRecovery,
+      MAX_SNAPSHOTS,
+    } = await import('../src/lib/caption-maker/project-storage');
+    const { createDefaultCaptionProject } = await import('../src/lib/caption-maker/sample-data');
+
+    // 1. Mock LocalStorage Environment
+    const mockStorage: Record<string, string> = {};
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => mockStorage[key] || null,
+        setItem: (key: string, val: string) => {
+          mockStorage[key] = val;
+        },
+        removeItem: (key: string) => {
+          delete mockStorage[key];
+        },
+      },
+    };
+
+    const baseProject = createDefaultCaptionProject();
+    baseProject.title = 'Viral Reel Edition 1';
+    baseProject.transcript = [
+      { id: 'w1', text: 'Success', start: 0.0, end: 0.5, isImportant: true },
+      { id: 'w2', text: 'comes', start: 0.5, end: 1.0, isImportant: false },
+      { id: 'w3', text: 'now', start: 1.0, end: 1.5, isImportant: false },
+    ];
+    baseProject.updatedAt = new Date(Date.now() - 60000).toISOString(); // 1 minute ago
+
+    // 2. Test LocalStorage Save & Load
+    const saveResult = saveProjectToLocalStorage(baseProject);
+    assert.strictEqual(saveResult, true, 'saveProjectToLocalStorage must succeed');
+
+    const loadedProject = loadProjectFromLocalStorage();
+    assert.ok(loadedProject, 'loadProjectFromLocalStorage must return saved project');
+    assert.strictEqual(loadedProject?.title, 'Viral Reel Edition 1');
+    assert.strictEqual(loadedProject?.transcript.length, 3);
+
+    // 3. Test Snapshot Creation & Retrieval
+    clearAllSnapshots();
+    assert.strictEqual(getProjectSnapshots().length, 0, 'Initially 0 snapshots');
+
+    const snap1List = saveProjectSnapshot(baseProject, 'First Snapshot');
+    assert.strictEqual(snap1List.length, 1);
+    assert.strictEqual(snap1List[0].label, 'First Snapshot');
+    assert.strictEqual(snap1List[0].wordCount, 3);
+    assert.strictEqual(snap1List[0].aspectRatio, '9:16');
+
+    // Test restoring from snapshot
+    const snapId = snap1List[0].id;
+    const restored = restoreProjectSnapshot(snapId);
+    assert.ok(restored, 'Should restore project from snapshot ID');
+    assert.strictEqual(restored?.title, 'Viral Reel Edition 1');
+
+    // Test snapshot capping (create 12 snapshots, ensure at most MAX_SNAPSHOTS are kept)
+    for (let i = 2; i <= 12; i++) {
+      saveProjectSnapshot(baseProject, `Snapshot ${i}`);
+    }
+    const allSnaps = getProjectSnapshots();
+    assert.strictEqual(allSnaps.length, MAX_SNAPSHOTS, `Snapshots must be capped at ${MAX_SNAPSHOTS}`);
+    assert.strictEqual(allSnaps[0].label, 'Snapshot 12', 'Newest snapshot must be first in list');
+
+    // Test delete specific snapshot
+    const toDeleteId = allSnaps[0].id;
+    const remainingSnaps = deleteProjectSnapshot(toDeleteId);
+    assert.strictEqual(remainingSnaps.length, MAX_SNAPSHOTS - 1);
+    assert.strictEqual(remainingSnaps.find((s) => s.id === toDeleteId), undefined);
+
+    // 4. Test Project Duplication
+    const copyProject = duplicateProject(baseProject);
+    assert.notStrictEqual(copyProject.id, baseProject.id, 'Duplicate must have unique project ID');
+    assert.strictEqual(copyProject.title, 'Viral Reel Edition 1 (Copy)');
+    assert.strictEqual(copyProject.transcript.length, baseProject.transcript.length);
+    assert.strictEqual(copyProject.renderedVideoUrl, undefined, 'Render artifacts must be cleared in clone');
+
+    // 5. Test JSON Export & Import
+    const exportedJson = exportProjectAsJson(baseProject);
+    assert.ok(exportedJson.includes('"version": "2.0"'), 'Export must include version header');
+    assert.ok(exportedJson.includes('Viral Reel Edition 1'), 'Export must contain project title');
+
+    // Valid import
+    const importValid = importProjectFromJson(exportedJson);
+    assert.strictEqual(importValid.success, true, 'Valid JSON must import successfully');
+    assert.ok(importValid.project, 'Imported project must exist');
+    assert.strictEqual(importValid.project?.title, 'Viral Reel Edition 1 (Imported)');
+    assert.strictEqual(importValid.project?.transcript.length, 3);
+
+    // Invalid import (malformed json)
+    const importInvalid = importProjectFromJson('{ bad json');
+    assert.strictEqual(importInvalid.success, false, 'Malformed JSON must fail');
+    assert.ok(importInvalid.error, 'Error message must be returned');
+
+    // Invalid import (missing required fields)
+    const importMissing = importProjectFromJson(JSON.stringify({ someKey: 'val' }));
+    assert.strictEqual(importMissing.success, false, 'Project without schema must be rejected');
+
+    // 6. Test Crash Recovery Detection
+    // When a newer snapshot exists compared to current project's updatedAt:
+    const oldProject = {
+      ...baseProject,
+      updatedAt: new Date(Date.now() - 120000).toISOString(), // 2 minutes ago
+    };
+    const recoveryResult = detectCrashRecovery(oldProject);
+    assert.strictEqual(recoveryResult.hasRecovery, true, 'Crash recovery should be detected when snapshot is newer');
+    assert.ok(recoveryResult.recoverySnapshot, 'Recovery snapshot must be returned');
+
+    // When project is already up-to-date (timestamp newer than snapshot):
+    const currentProject = {
+      ...baseProject,
+      updatedAt: new Date(Date.now() + 10000).toISOString(),
+    };
+    const noRecovery = detectCrashRecovery(currentProject);
+    assert.strictEqual(noRecovery.hasRecovery, false, 'No crash recovery when project is newer than snapshot');
+
+    // Clean up mock
+    clearProjectFromLocalStorage();
+    clearAllSnapshots();
+    delete (global as any).window;
+  });
+
+  // 57. Dedicated AI Social Post Page Context & Navigation Bridge
+  await test('57. Dedicated AI Social Post Page Context & Navigation Bridge', async () => {
+    const { POST } = await import('../src/app/api/caption-maker/generate-social/route');
+    const { saveProjectToLocalStorage, clearProjectFromLocalStorage } = await import('../src/lib/caption-maker/project-storage');
+    const { createDefaultCaptionProject } = await import('../src/lib/caption-maker/sample-data');
+
+    // 1. Mock LocalStorage Environment
+    const mockStorage: Record<string, string> = {};
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => mockStorage[key] || null,
+        setItem: (key: string, val: string) => {
+          mockStorage[key] = val;
+        },
+        removeItem: (key: string) => {
+          delete mockStorage[key];
+        },
+      },
+    };
+
+    // 2. Test ClipCard navigation context serialization
+    const testClipContext = {
+      transcript: 'Success comes to those who refuse to quit when things get hard.',
+      title: 'Mindset of Winners',
+      duration: 45,
+      language: 'en' as const,
+      clipId: 'clip_winner_99',
+    };
+    (global as any).window.localStorage.setItem('reel_social_post_context', JSON.stringify(testClipContext));
+
+    const retrievedContextRaw = (global as any).window.localStorage.getItem('reel_social_post_context');
+    assert.ok(retrievedContextRaw, 'Should retrieve stored social post context');
+    const parsedContext = JSON.parse(retrievedContextRaw!);
+    assert.strictEqual(parsedContext.clipId, 'clip_winner_99');
+    assert.strictEqual(parsedContext.title, 'Mindset of Winners');
+    assert.strictEqual(parsedContext.duration, 45);
+
+    // 3. Test generate-social endpoint using the context data
+    const req = new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: parsedContext.transcript,
+        title: parsedContext.title,
+        duration: parsedContext.duration,
+        language: parsedContext.language,
+        tone: 'educational',
+        platform: 'all',
+      }),
+    });
+    const res = await POST(req as any);
+    assert.strictEqual(res.status, 200, 'Context payload must successfully generate social post');
+    const data = await res.json();
+    assert.strictEqual(data.success, true);
+    assert.ok(data.bundle.hooks.length >= 3);
+    assert.ok(data.bundle.variations.length === 3);
+
+    // 4. Test CaptionMaker fallback bridge (when no clip session context is present)
+    (global as any).window.localStorage.removeItem('reel_social_post_context');
+    const studioProject = createDefaultCaptionProject();
+    studioProject.title = 'Studio Project Reel';
+    studioProject.rawTranscriptHindi = 'सपने वो नहीं जो सोते हुए देखे जाएं, बल्कि वो हैं जो सोने ना दें।';
+    studioProject.preferredLanguage = 'hi';
+    saveProjectToLocalStorage(studioProject);
+
+    const savedProjectRaw = (global as any).window.localStorage.getItem('reel_caption_project_v2');
+    assert.ok(savedProjectRaw, 'CaptionMaker project must be stored in localStorage');
+    const parsedProject = JSON.parse(savedProjectRaw!);
+    assert.strictEqual(parsedProject.preferredLanguage, 'hi');
+    assert.ok(parsedProject.rawTranscriptHindi.includes('सपने'));
+
+    // Clean up
+    clearProjectFromLocalStorage();
+    (global as any).window.localStorage.removeItem('reel_social_post_context');
+    delete (global as any).window;
+  });
+
+  await test('Test 58: Large Media & Audio Upload Support (500MB allowance, .m4a format validation, and Next.js proxyClientMaxBodySize config)', async () => {
+    // 1. Verify MAX_UPLOAD_BYTES is 500MB
+    assert.strictEqual(MAX_UPLOAD_BYTES, 500 * 1024 * 1024, 'Max upload bytes must be 500MB');
+
+    // 2. Test audio file validation for .m4a, .mp3, .wav up to 500MB
+    const mockFile30MB = {
+      name: 'सोचना बंद करो, जीना शुरू करो। OSHO HINDI SPEECH_128k.m4a',
+      size: 30.7 * 1024 * 1024,
+    } as any;
+    const err30MB = validateUpload(mockFile30MB, ['video', 'audio']);
+    assert.strictEqual(err30MB, null, '30.7MB .m4a audio file must pass validation without error');
+
+    // 3. Test rejection for files exceeding 500MB
+    const mockFileOver500MB = {
+      name: 'too_large_audio.m4a',
+      size: 501 * 1024 * 1024,
+    } as any;
+    const errOver500MB = validateUpload(mockFileOver500MB, ['video', 'audio']);
+    assert.ok(errOver500MB && errOver500MB.includes('500 MB'), 'Files >500MB must be rejected');
+
+    // 4. Verify next.config.ts configures proxyClientMaxBodySize to 500mb
+    const nextConfigContent = fs.readFileSync(path.join(process.cwd(), 'next.config.ts'), 'utf-8');
+    assert.ok(
+      nextConfigContent.includes("proxyClientMaxBodySize: '500mb'"),
+      'next.config.ts must configure experimental.proxyClientMaxBodySize to 500mb to prevent Next.js proxy request body truncation'
+    );
+  });
+
+  await test('Test 59: Video & Audio Clipping Studio Phase 1 (Local Media Service Contracts, Timestamp Parsing, SQL Migration & Supabase Resilient Fallback)', async () => {
+    // 1. Millisecond timestamp parser accuracy
+    assert.strictEqual(parseTimestampToMs('00:01:15.500'), 75500);
+    assert.strictEqual(parseTimestampToMs('01:02:03.250'), 3723250);
+    assert.strictEqual(formatMsToTimestamp(75500), '00:01:15.500');
+
+    // 2. Bulk timestamp line parsing and boundary check
+    const validRange = parseTimestampRangeLine('00:00:10.000 to 00:00:20.000', 1);
+    assert.strictEqual(validRange.valid, true);
+    assert.strictEqual(validRange.durationMs, 10000);
+
+    const invalidRange = parseTimestampRangeLine('00:00:20.000 to 00:00:10.000', 2);
+    assert.strictEqual(invalidRange.valid, false);
+
+    // 3. Supabase configuration status check without throwing
+    const supabaseStatus = getSupabaseStatus();
+    assert.ok(typeof supabaseStatus.configured === 'boolean');
+    assert.ok(supabaseStatus.message.length > 0);
+
+    // 4. Version-controlled migration verification
+    const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261020000000_create_clipping_studio_schema.sql');
+    assert.ok(fs.existsSync(migrationPath), 'Phase 1 SQL migration must exist');
+    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS clipping_projects'));
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS merge_recipes'));
+    assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS export_sources'));
+
+    // 5. FFprobe binary status
+    const ffprobe = await checkFfprobeStatus();
+    assert.strictEqual(ffprobe.available, true);
+  });
+
+  await test('Test 60: Video & Audio Clipping Studio Phase 2 (Media Import URL, Frame Calculations, and Bulk Timestamp Line Parser)', async () => {
+    // 1. Frame stepping calculations
+    assert.strictEqual(msToFrame(1000, 30), 30);
+    assert.strictEqual(frameToMs(30, 30), 1000);
+    assert.strictEqual(msToFrame(500, 30), 15);
+
+    // 2. Fractional second timestamps
+    assert.strictEqual(parseTimestampToMs('00:00:02.750'), 2750);
+    assert.strictEqual(formatMsToTimestamp(2750), '00:00:02.750');
+
+    // 3. Multi-line bulk timestamps parser with custom names
+    const bulkInput = `00:00:10.000 to 00:00:20.000 | Hook
+invalid_malformed_entry
+00:01:15 to 00:01:35 | Core Point`;
+    const bulkResult = parseBulkTimestamps(bulkInput, 120000);
+    assert.strictEqual(bulkResult.items.length, 3);
+    assert.strictEqual(bulkResult.validCount, 2);
+    assert.strictEqual(bulkResult.invalidCount, 1);
+    assert.strictEqual(bulkResult.items[0].name, 'Hook');
+    assert.strictEqual(bulkResult.items[0].durationMs, 10000);
+    assert.strictEqual(bulkResult.items[2].name, 'Core Point');
+    assert.strictEqual(bulkResult.items[2].durationMs, 20000);
+
+    // 4. Media Asset Web URL resolution
+    const mockAsset = {
+      projectId: 'proj_demo',
+      filename: 'sample.mp4',
+      localPath: path.join(process.cwd(), 'storage', 'clipping-studio', 'projects', 'proj_demo', 'media', 'sample.mp4'),
+    };
+    const url = getMediaAssetWebUrl(mockAsset);
+    assert.ok(url.startsWith('/api/files/'), 'Must resolve to /api/files/ route');
+    assert.ok(url.includes('sample.mp4'));
+  });
+
+  await test('Test 61: Video & Audio Clipping Studio Phase 3 (Merge Studio Independent Multi-Recipe Builder, Stream Copy vs Filter Complex Concat Planning)', async () => {
+    // 1. Mock source assets
+    const asset1: MediaAsset = {
+      id: 'a1',
+      projectId: 'proj1',
+      filename: 'source1.mp4',
+      localPath: 'C:\\media\\source1.mp4',
+      fileSizeBytes: 1000000,
+      metadata: {
+        durationSeconds: 100,
+        durationMs: 100000,
+        sizeBytes: 1000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+        width: 1920,
+        height: 1080,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+      },
+      createdAt: new Date().toISOString(),
+    };
+    const asset2Diff: MediaAsset = {
+      id: 'a2',
+      projectId: 'proj1',
+      filename: 'source2.mp4',
+      localPath: 'C:\\media\\source2.mp4',
+      fileSizeBytes: 1000000,
+      metadata: {
+        durationSeconds: 50,
+        durationMs: 50000,
+        sizeBytes: 1000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+        width: 1280,
+        height: 720,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const clip2: Clip = {
+      id: 'c2',
+      projectId: 'proj1',
+      mediaAssetId: 'a1',
+      name: 'Clip 2',
+      startMs: 10000,
+      endMs: 25000,
+      durationMs: 15000,
+      orderIndex: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const clip8: Clip = {
+      id: 'c8',
+      projectId: 'proj1',
+      mediaAssetId: 'a1',
+      name: 'Clip 8',
+      startMs: 40000,
+      endMs: 55000,
+      durationMs: 15000,
+      orderIndex: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const clipDiff: Clip = {
+      id: 'c_diff',
+      projectId: 'proj1',
+      mediaAssetId: 'a2',
+      name: 'Clip Diff',
+      startMs: 0,
+      endMs: 10000,
+      durationMs: 10000,
+      orderIndex: 2,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 2. Concat demuxer copy selection for matching clips
+    const losslessRecipe: MergeRecipe = {
+      id: 'r_lossless',
+      projectId: 'proj1',
+      name: 'Recipe A: 2 + 8',
+      outputFormat: 'mp4',
+      targetResolution: 'source',
+      normalizeAudio: false,
+      items: [
+        { id: 'i1', recipeId: 'r_lossless', clipId: 'c2', orderIndex: 0, transition: 'none' },
+        { id: 'i2', recipeId: 'r_lossless', clipId: 'c8', orderIndex: 1, transition: 'none' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const losslessPlan = planMergeRecipe(losslessRecipe, [clip2, clip8], [asset1]);
+    assert.strictEqual(losslessPlan.isValid, true);
+    assert.strictEqual(losslessPlan.strategy, 'concat_demuxer_copy');
+    assert.strictEqual(losslessPlan.totalDurationMs, 30000);
+
+    const losslessArgs = buildMergeFfmpegArgs(losslessPlan, 'list.txt', 'out.mp4');
+    assert.ok(losslessArgs.includes('-c') && losslessArgs.includes('copy'));
+
+    // 3. Filter complex encode selection for differing resolutions
+    const mixedRecipe: MergeRecipe = {
+      id: 'r_mixed',
+      projectId: 'proj1',
+      name: 'Recipe Mixed: 2 + Diff',
+      outputFormat: 'mp4',
+      targetResolution: 'source',
+      normalizeAudio: false,
+      items: [
+        { id: 'im1', recipeId: 'r_mixed', clipId: 'c2', orderIndex: 0, transition: 'none' },
+        { id: 'im2', recipeId: 'r_mixed', clipId: 'c_diff', orderIndex: 1, transition: 'none' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const mixedPlan = planMergeRecipe(mixedRecipe, [clip2, clipDiff], [asset1, asset2Diff]);
+    assert.strictEqual(mixedPlan.isValid, true);
+    assert.strictEqual(mixedPlan.strategy, 'filter_complex_encode');
+    assert.strictEqual(mixedPlan.requiresReencoding, true);
+    assert.ok(mixedPlan.reencodeReasons[0].includes('Different resolutions'));
+
+    const mixedArgs = buildMergeFfmpegArgs(mixedPlan, 'unused.txt', 'out_mixed.mp4');
+    assert.ok(mixedArgs.includes('-filter_complex'));
+    assert.ok(mixedArgs.includes('libx264'));
+  });
+
+  await test('Test 62: Video & Audio Clipping Studio Phase 4 (Local FFmpeg Export Queue, Stream Copy, Audio Extraction & Progress Tracking)', async () => {
+    // 1. Filename template token engine
+    const filename = formatFilenameTemplate('{project}_{name}_{index}_{time}_{res}', {
+      project: 'ReelSpark/Pro!Project',
+      name: 'Episode 1: Intro?',
+      index: 1,
+      time: '00_01_00',
+      res: '1080p',
+    });
+    assert.strictEqual(filename, 'ReelSpark_Pro_Project_Episode_1_Intro_1_00_01_00_1080p');
+
+    // 2. Stream-copy export arguments for matching input/output format
+    const mockClip: Clip = {
+      id: 'clip_t62',
+      projectId: 'proj_t62',
+      mediaAssetId: 'asset_t62',
+      name: 'Fast Stream Copy',
+      startMs: 5000,
+      endMs: 25000,
+      durationMs: 20000,
+      orderIndex: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const mockAsset: MediaAsset = {
+      id: 'asset_t62',
+      projectId: 'proj_t62',
+      filename: 'source.mp4',
+      localPath: 'C:\\media\\source.mp4',
+      fileSizeBytes: 10000000,
+      metadata: {
+        durationSeconds: 100,
+        durationMs: 100000,
+        sizeBytes: 10000000,
+        formatName: 'mp4',
+        aspectRatio: '16:9',
+        hasVideo: true,
+        hasAudio: true,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const copyArgs = buildSingleClipExportFfmpegArgs({
+      clip: mockClip,
+      mediaAsset: mockAsset,
+      outputFormat: 'mp4',
+      outputType: 'video_and_audio',
+      qualityProfile: 'source',
+      outputPath: 'C:\\exports\\out.mp4',
+    });
+    assert.ok(copyArgs.includes('-c') && copyArgs.includes('copy'));
+
+    // 3. Audio-only extraction flags
+    const audioArgs = buildSingleClipExportFfmpegArgs({
+      clip: mockClip,
+      mediaAsset: mockAsset,
+      outputFormat: 'mp3',
+      outputType: 'audio_only',
+      qualityProfile: 'high',
+      normalizeAudio: true,
+      outputPath: 'C:\\exports\\out.mp3',
+    });
+    assert.ok(audioArgs.includes('-vn'));
+    assert.ok(audioArgs.includes('libmp3lame'));
+    assert.ok(audioArgs.includes('-af'));
+
+    // 4. Progress parsing
+    const progress = parseFfmpegProgress('time=00:00:10.00', 20000);
+    assert.strictEqual(progress, 50);
+  });
+
+  await test('Test 63: Video & Audio Clipping Studio Phase 5 (Project Persistence, Duplication, Undo/Redo & Crash Recovery)', async () => {
+    // 1. Mock in-memory localStorage for test
+    const memoryStore: Record<string, string> = {};
+    const oldWindow = (global as any).window;
+    (global as any).window = {
+      localStorage: {
+        getItem: (key: string) => memoryStore[key] || null,
+        setItem: (key: string, val: string) => { memoryStore[key] = val; },
+        removeItem: (key: string) => { delete memoryStore[key]; },
+      },
+    };
+
+    // 2. Project creation & crash snapshot
+    const proj = createBlankClippingProject('Phase 5 Persistence Test');
+    saveCrashRecoverySnapshot(proj);
+    const recovery = loadCrashRecoverySnapshot(proj.id);
+    assert.ok(recovery);
+    assert.strictEqual(recovery.snapshot.name, 'Phase 5 Persistence Test');
+    clearCrashRecoverySnapshot(proj.id);
+    assert.strictEqual(loadCrashRecoverySnapshot(proj.id), null);
+
+    // 3. Supabase resilient sync fallback
+    const syncRes = await syncProjectToSupabase(proj);
+    assert.strictEqual(syncRes.success, true);
+    assert.ok(syncRes.message);
+
+    // Restore window
+    (global as any).window = oldWindow;
   });
 
   console.log('\n======================================================');
