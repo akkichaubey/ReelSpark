@@ -1,4 +1,3 @@
-'use strict';
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -21,6 +20,10 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  LayoutDashboard,
+  Scissors,
+  User,
+  LogOut,
 } from 'lucide-react';
 import {
   SocialPostBundle,
@@ -28,9 +31,19 @@ import {
   SocialPlatform,
 } from '@/app/api/caption-maker/generate-social/route';
 import { loadProjectFromLocalStorage } from '@/lib/caption-maker/project-storage';
+import { useAuthStore } from '@/lib/use-auth-store';
+import { AuthModal } from '@/components/AuthModal';
+import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { Suspense } from 'react';
 
-export default function SocialPostPage() {
+function SocialPostPageContent() {
   const router = useRouter();
+  const { user, isLoading: authLoading, openAuthModal, checkAuth, logout } = useAuthStore();
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   // Core content states
   const [transcript, setTranscript] = useState<string>('');
@@ -195,15 +208,13 @@ export default function SocialPostPage() {
     }, 2500);
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-amber-400 selection:text-black">
-      {/* Studio Navigation Header */}
-      <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 flex items-center justify-between shrink-0 z-30 sticky top-0 backdrop-blur-md">
-        {/* Brand & Studio Switcher */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+  if (!authLoading && !user) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col text-white">
+        <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 sticky top-0 backdrop-blur-md">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black font-black shadow-md shadow-amber-400/20">
-              <Sparkles className="w-4 h-4 fill-black" />
+              <Share2 className="w-4 h-4 text-black" />
             </div>
             <div>
               <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
@@ -213,49 +224,62 @@ export default function SocialPostPage() {
                 </span>
               </span>
             </div>
-          </div>
-
-          {/* Quick Studio Switcher */}
-          <div className="hidden md:flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 ml-3 text-xs">
-            <Link
-              href="/"
-              className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
-            >
-              <Film className="w-3 h-3" />
-              Clip Finder
-            </Link>
-            <Link
-              href="/caption-maker"
-              className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
-            >
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              Reel Caption Maker
-            </Link>
-            <Link
-              href="/social-post"
-              className="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-1.5 border border-amber-500/30"
-            >
-              <Share2 className="w-3 h-3 text-amber-400" />
-              AI Social Post
-            </Link>
-          </div>
-        </div>
-
-        {/* Back to Caption Studio Action */}
-        <div className="flex items-center gap-2">
-          <Link
-            href="/caption-maker"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
-            title="Return to Reel Caption Studio"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Back to Caption Studio</span>
           </Link>
-        </div>
-      </header>
+          <button
+            onClick={() => openAuthModal('login')}
+            className="px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-sm transition-all"
+          >
+            Sign In / Register
+          </button>
+        </header>
 
-      {/* Informative Banner distinguishing Spoken Subtitles vs Social Post Captions */}
-      <div className="px-4 sm:px-8 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-3 text-xs text-amber-200 shrink-0">
+        <main className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
+          <div className="max-w-md space-y-4 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-400/5">
+              <Share2 className="w-6 h-6" />
+            </div>
+            <h2 className="text-2xl font-bold">Sign In to Use AI Social Copywriter</h2>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Please sign in or create an account to generate viral hooks, post captions, and hashtag strategies for your reels.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => openAuthModal('login')}
+                className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                Sign In to Continue
+              </button>
+            </div>
+          </div>
+        </main>
+        <AuthModal />
+      </div>
+    );
+  }
+
+  return (
+    <DashboardLayout
+      title="AI Social Post Copywriter"
+      subtitle={clipTitle || 'Viral Hooks, Post Captions & Hashtag Strategies'}
+      breadcrumbs={[
+        { label: 'Dashboard', href: '/' },
+        { label: 'AI Social Post' },
+        ...(clipTitle ? [{ label: clipTitle }] : []),
+      ]}
+      headerActions={
+        <Link
+          href="/caption-maker"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+          title="Return to Reel Caption Studio"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Back to Caption Studio</span>
+        </Link>
+      }
+    >
+      <div className="space-y-6">
+        {/* Informative Banner distinguishing Spoken Subtitles vs Social Post Captions */}
+        <div className="px-4 sm:px-6 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-3 text-xs text-amber-200">
         <div className="flex items-center gap-2.5">
           <Info className="w-4 h-4 text-amber-400 shrink-0" />
           <span>
@@ -641,5 +665,21 @@ export default function SocialPostPage() {
         </div>
       </main>
     </div>
+  </DashboardLayout>
+);
+}
+
+export default function SocialPostPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
+          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-zinc-400 text-xs">Loading AI Social Post...</p>
+        </div>
+      }
+    >
+      <SocialPostPageContent />
+    </Suspense>
   );
 }

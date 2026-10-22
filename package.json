@@ -7,6 +7,13 @@
     "node": ">=22 <25",
     "pnpm": ">=12"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "workerd",
+      "esbuild",
+      "sharp"
+    ]
+  },
   "scripts": {
     "dev": "next dev",
     "media-service": "tsx services/media-service/server.ts",
@@ -20,13 +27,17 @@
     "test:presets": "tsx tests/presets_comprehensive_analysis.test.ts",
     "test:qa": "tsx tests/qa_full_audit.ts",
     "test:e2e": "node scripts/test_api.js",
-    "postinstall": "node scripts/patch-remotion.js"
+    "postinstall": "node scripts/patch-remotion.js",
+    "cf:d1:create": "wrangler d1 create reelspark-db",
+    "cf:d1:migrate": "wrangler d1 execute reelspark-db --file=src/lib/cloudflare/schema.sql",
+    "cf:d1:migrate:local": "wrangler d1 execute reelspark-db --local --file=src/lib/cloudflare/schema.sql",
+    "cf:r2:create": "wrangler r2 bucket create reelspark-storage",
+    "cf:deploy": "wrangler pages deploy .next",
+    "cf:dev": "wrangler pages dev .next --port 3001"
   },
   "dependencies": {
-    "@google/genai": "^2.28.0",
     "@remotion/bundler": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
-    "@supabase/supabase-js": "^2.118.0",
     "archiver": "^8.0.0",
     "gsap": "^3.15.0",
     "lucide-react": "^1.54.0",
@@ -38,6 +49,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
     "@tailwindcss/turbopack": "^4",
     "@types/archiver": "^8.0.0",
     "@types/node": "^20",
@@ -47,6 +59,7 @@
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.151.3"
   }
 }

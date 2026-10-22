@@ -216,7 +216,7 @@ export function generateSubtitleExport(
     .slice(0, 40);
 
   let content = '';
-  let extension = format;
+  const extension = format;
   let mimeType = 'text/plain;charset=utf-8';
 
   if (format === 'srt') {

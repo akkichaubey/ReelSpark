@@ -3,12 +3,13 @@ import path from 'path';
 import fs from 'fs';
 import { getProjectDirs, loadProject, saveProject } from '@/lib/storage';
 import { extractAudioForTranscription, probeVideo, detectSpeechIntervals, SpeechInterval } from '@/lib/ffmpeg';
-import { transcribeAudioWithGemini, analyzeTranscriptChunkWithGemini } from '@/lib/gemini';
+import { analyzeTranscriptChunkWithOllama } from '@/lib/ollama';
+import { transcribeAudioWithCloudflarAI } from '@/lib/cloudflare/ai';
 import { calculateTimelineCoverage, chunkTranscript, extractHeuristicCandidatesFromChunk, generateDemoSpeechTranscript } from '@/lib/transcript';
 import { verifyCandidateContext } from '@/lib/context-verifier';
 import { processCandidates } from '@/lib/ranking';
 import { ClipCandidate, TranscriptSegment } from '@/lib/types';
-import { checkGeminiStatus, getGeminiModel } from '@/lib/config';
+import { checkOllamaStatus, getOllamaModel } from '@/lib/config';
 
 export async function POST(
   req: NextRequest,
@@ -29,7 +30,7 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
-    const chosenModel = body?.model || project.settings?.aiModel || getGeminiModel();
+    const chosenModel = body?.model || project.settings?.aiModel || getOllamaModel();
 
     if (!project.settings) {
       project.settings = {} as any;
@@ -37,7 +38,7 @@ export async function POST(
     project.settings.aiModel = chosenModel;
 
     const dirs = getProjectDirs(project.id);
-    const geminiStatus = checkGeminiStatus();
+    const ollamaStatus = await checkOllamaStatus();
 
     // Step 1: Ensure metadata is loaded
     if (!project.videoMetadata) {
@@ -48,7 +49,7 @@ export async function POST(
     // Step 2: Speech-to-Text Transcription Pipeline with Hardware Acoustic Speech Intervals
     project.status = 'TRANSCRIBING';
     project.progress = 15;
-    project.statusMessage = `Extracting audio and generating timestamped speech-to-text transcript with ${chosenModel}...`;
+    project.statusMessage = `Extracting audio and generating timestamped speech-to-text transcript...`;
     await saveProject(project);
 
     let transcript: TranscriptSegment[] = [];
@@ -61,11 +62,16 @@ export async function POST(
         const { intervals } = await detectSpeechIntervals(tempAudioPath);
         detectedIntervals = intervals;
 
-        if (geminiStatus.configured) {
-          transcript = await transcribeAudioWithGemini(tempAudioPath, chosenModel, detectedIntervals);
+        // Try Cloudflare Whisper AI if configured
+        if (process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN) {
+          try {
+            transcript = await transcribeAudioWithCloudflarAI(tempAudioPath);
+          } catch (cfErr: any) {
+            console.warn('Cloudflare Whisper transcription warning:', cfErr?.message);
+          }
         }
       } catch (err: any) {
-        console.warn('Gemini audio transcription fallback to speech transcript:', err.message);
+        console.warn('Audio extraction warning:', err.message);
       } finally {
         if (fs.existsSync(tempAudioPath)) {
           await fs.promises.unlink(tempAudioPath).catch(() => {});
@@ -73,7 +79,7 @@ export async function POST(
       }
     }
 
-    // Fallback if transcript is empty (or no API key provided), locked to hardware speech intervals
+    // Fallback if transcript is empty, locked to hardware acoustic speech intervals
     if (transcript.length === 0) {
       transcript = generateDemoSpeechTranscript(
         duration,
@@ -93,15 +99,15 @@ export async function POST(
     // Step 3: Chunk transcript into overlapping sections
     project.status = 'ANALYZING';
     project.progress = 40;
-    project.statusMessage = 'Analyzing full video timeline into overlapping sections...';
+    project.statusMessage = 'Analyzing full video timeline into overlapping sections with Ollama...';
     await saveProject(project);
 
     const chunks = chunkTranscript(transcript, 180, 30);
     const rawCandidates: ClipCandidate[] = [];
     const analyzedRanges: Array<[number, number]> = [];
-    let geminiQuotaExhausted = false;
+    let ollamaFailed = false;
 
-    // Step 4: Chronological AI semantic analysis
+    // Step 4: Chronological AI semantic analysis with Ollama
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       analyzedRanges.push([chunk.startTime, chunk.endTime]);
@@ -110,11 +116,11 @@ export async function POST(
       project.statusMessage = `Analyzing section ${i + 1} of ${chunks.length} (${Math.round(chunk.startTime)}s - ${Math.round(chunk.endTime)}s)${rawCandidates.length > 0 ? ` • ${rawCandidates.length} viral clips discovered` : ''}...`;
       await saveProject(project);
 
-      let chunkCandidates: ClipCandidate[] = [];
+      const chunkCandidates: ClipCandidate[] = [];
 
-      if (geminiStatus.configured && !geminiQuotaExhausted) {
+      if (ollamaStatus.configured && !ollamaFailed) {
         try {
-          const discovered = await analyzeTranscriptChunkWithGemini({
+          const discovered = await analyzeTranscriptChunkWithOllama({
             chunkIndex: i,
             startTime: chunk.startTime,
             endTime: chunk.endTime,
@@ -126,14 +132,12 @@ export async function POST(
             chunkCandidates.push(...discovered);
           }
         } catch (err: any) {
-          console.warn(`Chunk ${i} AI analysis error:`, err.message);
-          if (err.status === 429 || (err.message && err.message.toLowerCase().includes('quota'))) {
-            geminiQuotaExhausted = true;
-          }
+          console.warn(`Chunk ${i} Ollama analysis error:`, err.message);
+          ollamaFailed = true;
         }
       }
 
-      // If Gemini returned no candidates (or failed/rate-limited/not configured),
+      // If Ollama returned no candidates (or failed / offline),
       // seamlessly extract candidates from the speech section using local NLP
       if (chunkCandidates.length === 0) {
         const fallbackClips = extractHeuristicCandidatesFromChunk(
@@ -184,22 +188,27 @@ export async function POST(
       project.settings.durationLimit
     );
 
-    // Compute Timeline Coverage
-    project.timelineCoverage = calculateTimelineCoverage(analyzedRanges, duration);
+    // Step 7: Calculate timeline coverage
+    const timelineCoverage = calculateTimelineCoverage(analyzedRanges, duration);
+
+    // Save final project state
     project.candidates = finalCandidates;
+    project.timelineCoverage = timelineCoverage;
     project.status = 'COMPLETED';
     project.progress = 100;
-    project.statusMessage = `Analysis complete! Discovered ${finalCandidates.length} high-impact clips covering ${project.timelineCoverage.coveragePercent}% of the video.`;
+    project.statusMessage = `Successfully analyzed ${Math.round(duration)}s video with ${chosenModel}. Discovered ${finalCandidates.length} high-potential short clips.`;
+
     await saveProject(project);
 
     return NextResponse.json({
       success: true,
       project,
-      clipCount: finalCandidates.length,
-      coverage: project.timelineCoverage,
     });
   } catch (err: any) {
-    console.error('Analysis error:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('Project analysis error:', err);
+    return NextResponse.json({
+      success: false,
+      error: err.message || 'An unexpected error occurred during AI analysis.',
+    }, { status: 500 });
   }
 }

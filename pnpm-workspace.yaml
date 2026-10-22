@@ -3,3 +3,5 @@ allowBuilds:
   esbuild: true
   protobufjs: true
   unrs-resolver: true
+  workerd: true
+

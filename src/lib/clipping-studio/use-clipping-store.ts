@@ -27,7 +27,12 @@ import {
   loadCrashRecoverySnapshot,
   clearCrashRecoverySnapshot,
 } from './local-persistence';
-import { getSupabaseStatus, SupabaseConfigStatus, syncProjectToSupabase } from './supabase';
+import {
+  getCloudflareStatus,
+  syncProjectToCloudflare,
+} from './cloudflare-sync';
+// Re-export type alias so existing interface fields compile without changes
+type SupabaseConfigStatus = ReturnType<typeof getCloudflareStatus>;
 import { mediaServiceClient } from './media-service-client';
 
 export type StudioTab = 'dashboard' | 'media' | 'timeline' | 'merge' | 'export';
@@ -184,8 +189,8 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     set({ isLoading: true });
 
     // 1. Check services
-    const supabase = getSupabaseStatus();
-    set({ supabaseStatus: supabase });
+    const cloudflare = getCloudflareStatus();
+    set({ supabaseStatus: cloudflare });
 
     // 2. Load local projects
     const rawLocalProjects = loadProjectsLocally();
@@ -372,7 +377,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     const { activeProject } = get();
     if (!activeProject) return;
     set({ saveStatus: 'saving' });
-    const res = await syncProjectToSupabase(activeProject);
+    const res = await syncProjectToCloudflare(activeProject);
     set({
       saveStatus: res.success ? 'saved' : 'error',
       lastSavedAt: new Date().toLocaleTimeString(),

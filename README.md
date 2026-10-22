@@ -44,12 +44,12 @@ Copy `.env.example` to `.env.local`:
 ```bash
 copy .env.example .env.local
 ```
-Configure your Google Gemini API key:
+Configure your Ollama host and model:
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-3.8-flash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.2
 ```
-*(Note: ReelSpark includes an intelligent local speech heuristic engine, so it runs seamlessly even before configuring an external API key!)*
+*(Note: ReelSpark uses 100% free and local AI via Ollama with zero external API key requirements. Run `ollama serve` and `ollama pull llama3.2` on your machine!)*
 
 ### 3. Run the Studio
 ```bash
@@ -89,6 +89,24 @@ pnpm media-service
 # Apply Supabase database migrations (optional, local persistence active by default)
 # See CLIPPING_STUDIO.md for instructions and SQL file
 ```
+
+---
+
+## ☁️ Cloud Deployment on Render (Recommended)
+
+ReelSpark is pre-configured for 1-click cloud deployment on [Render](https://render.com) using Docker:
+
+1. **Push your code to GitHub / GitLab**.
+2. Go to [dashboard.render.com](https://dashboard.render.com) and click **New +** → **Blueprint** (or **Web Service**).
+3. Select your repository. Render will automatically detect [`render.yaml`](render.yaml) and [`Dockerfile`](Dockerfile).
+4. Configure your environment variables:
+   - `OLLAMA_BASE_URL`: Ollama Host (`http://127.0.0.1:11434` or remote Ollama server).
+   - `OLLAMA_MODEL`: `llama3.2`
+   - `NODE_ENV`: `production`
+5. Click **Apply / Deploy**.
+
+> **Why Render over Vercel?**
+> Render runs your application as a persistent Docker container with native Linux FFmpeg (`libass`), Chromium for Remotion video rendering, persistent disk storage, and no 10-second serverless execution timeouts.
 
 ---
 

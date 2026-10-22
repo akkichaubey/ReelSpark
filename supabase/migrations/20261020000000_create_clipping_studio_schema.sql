@@ -148,24 +148,110 @@ ALTER TABLE merge_recipe_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE export_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE export_sources ENABLE ROW LEVEL SECURITY;
 
--- Allow full access for local desktop development / anon access when auth is not configured:
-CREATE POLICY "Allow anon read/write for local desktop clipping" ON clipping_projects
-    FOR ALL USING (true) WITH CHECK (true);
+-- 1. Clipping Projects: Users can manage their own projects (or local projects with null user_id)
+CREATE POLICY "Users can manage own clipping projects" ON clipping_projects
+    FOR ALL USING (
+        user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = user_id)
+    ) WITH CHECK (
+        user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = user_id)
+    );
 
-CREATE POLICY "Allow anon read/write for media_assets" ON media_assets
-    FOR ALL USING (true) WITH CHECK (true);
+-- 2. Media Assets: Accessible if the parent project is accessible
+CREATE POLICY "Users can manage media assets of own projects" ON media_assets
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = media_assets.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = media_assets.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );
 
-CREATE POLICY "Allow anon read/write for clips" ON clips
-    FOR ALL USING (true) WITH CHECK (true);
+-- 3. Clips: Accessible if parent project is accessible
+CREATE POLICY "Users can manage clips of own projects" ON clips
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = clips.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = clips.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );
 
-CREATE POLICY "Allow anon read/write for merge_recipes" ON merge_recipes
-    FOR ALL USING (true) WITH CHECK (true);
+-- 4. Merge Recipes: Accessible if parent project is accessible
+CREATE POLICY "Users can manage merge recipes of own projects" ON merge_recipes
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = merge_recipes.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = merge_recipes.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );
 
-CREATE POLICY "Allow anon read/write for merge_recipe_items" ON merge_recipe_items
-    FOR ALL USING (true) WITH CHECK (true);
+-- 5. Merge Recipe Items: Accessible if parent recipe belongs to accessible project
+CREATE POLICY "Users can manage merge recipe items" ON merge_recipe_items
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM merge_recipes mr
+            JOIN clipping_projects cp ON cp.id = mr.project_id
+            WHERE mr.id = merge_recipe_items.recipe_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM merge_recipes mr
+            JOIN clipping_projects cp ON cp.id = mr.project_id
+            WHERE mr.id = merge_recipe_items.recipe_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );
 
-CREATE POLICY "Allow anon read/write for export_jobs" ON export_jobs
-    FOR ALL USING (true) WITH CHECK (true);
+-- 6. Export Jobs: Accessible if parent project is accessible
+CREATE POLICY "Users can manage export jobs of own projects" ON export_jobs
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = export_jobs.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM clipping_projects cp
+            WHERE cp.id = export_jobs.project_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );
 
-CREATE POLICY "Allow anon read/write for export_sources" ON export_sources
-    FOR ALL USING (true) WITH CHECK (true);
+-- 7. Export Sources: Accessible if parent export job belongs to accessible project
+CREATE POLICY "Users can manage export sources" ON export_sources
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM export_jobs ej
+            JOIN clipping_projects cp ON cp.id = ej.project_id
+            WHERE ej.id = export_sources.export_job_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    ) WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM export_jobs ej
+            JOIN clipping_projects cp ON cp.id = ej.project_id
+            WHERE ej.id = export_sources.export_job_id
+            AND (cp.user_id IS NULL OR (auth.uid() IS NOT NULL AND auth.uid() = cp.user_id))
+        )
+    );

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateContentWithFallback, getGeminiClient } from '@/lib/gemini';
-import { resolveApiGeminiModel } from '@/lib/config';
+import { generateWithOllama } from '@/lib/ollama';
+import { getOllamaModel } from '@/lib/config';
 
 export interface SocialPostBundle {
   hooks: string[];
@@ -27,7 +27,7 @@ export type ContentTone =
 export type SocialPlatform = 'all' | 'instagram' | 'youtube' | 'tiktok';
 
 /**
- * Fallback heuristic generator in case Gemini API key is unset or network error occurs.
+ * Fallback heuristic generator in case Ollama is offline or network error occurs.
  */
 function generateFallbackSocialBundle(
   transcript: string,
@@ -98,21 +98,20 @@ function generateFallbackSocialBundle(
       `💡 99% log ye baat nahi samajhte: "${firstSentence.substring(0, 60)}..."`,
       `⚠️ Ye 30 seconds aapka mindset change kar denge!`,
     ];
-    const description = `${title ? title + ' — ' : ''}${firstSentence}. Life me grow karne ke liye ye samajhna sabse zaruri hai.`;
-    const callToAction = `👉 Comment "YES" agar aap agree karte ho, aur save karein future ke liye!`;
+    const description = `${title ? title + ' — ' : ''}${firstSentence}. Ye lesson zindagi me bohot kaam aayega agar apply karoge toh.`;
+    const callToAction = `👉 Agar relate kar pa rahe ho toh abhi Save karo aur apne best friend ke sath Share karo!`;
     const hashtags = [
-      '#reels',
-      '#trending',
-      '#growthmindset',
-      '#hinglishmotivation',
+      '#shorts',
       '#viralreels',
+      '#reelsindia',
+      '#desimotivation',
       '#mindsetmatters',
+      '#trendingaudio',
+      '#instagramgrowth',
+      '#hinglishquotes',
       '#lifehacks',
-      '#entrepreneurship',
-      '#explore',
-      '#shortsvideo',
-      '#motivationdaily',
-      '#selfgrowth',
+      '#creatorlife',
+      '#dailymotivation',
     ];
 
     return {
@@ -132,15 +131,15 @@ function generateFallbackSocialBundle(
           title: 'Short & Punchy',
           hook: hooks[1],
           caption: `${firstSentence}.`,
-          callToAction: 'Double tap if this resonated with you ❤️',
-          fullText: `${hooks[1]}\n\n${firstSentence}.\n\nDouble tap if this resonated with you ❤️\n\n${hashtags.slice(0, 8).join(' ')}`,
+          callToAction: 'Save this reel right now! 📌',
+          fullText: `${hooks[1]}\n\n${firstSentence}.\n\nSave this reel right now! 📌\n\n${hashtags.slice(0, 8).join(' ')}`,
         },
         {
-          title: 'Story & Value',
+          title: 'Deep & Reflective',
           hook: hooks[2],
           caption: `${cleanTranscript.substring(0, 200)}...`,
-          callToAction: 'Share this with someone who needs to hear this today 🚀',
-          fullText: `${hooks[2]}\n\n${cleanTranscript.substring(0, 200)}...\n\nShare this with someone who needs to hear this today 🚀\n\n${hashtags.join(' ')}`,
+          callToAction: 'Tag someone who needs to hear this! 👥',
+          fullText: `${hooks[2]}\n\n${cleanTranscript.substring(0, 200)}...\n\nTag someone who needs to hear this! 👥\n\n${hashtags.join(' ')}`,
         },
       ],
     };
@@ -148,25 +147,25 @@ function generateFallbackSocialBundle(
 
   // English fallback
   const hooks = [
-    `🔥 Stop scrolling if you want to master this mindset.`,
-    `💡 The harsh truth most people realize too late: "${firstSentence.substring(0, 60)}..."`,
-    `⚠️ Watch this before making your next big decision!`,
+    `🔥 The bitter truth nobody told you about success.`,
+    `⚠️ Stop scrolling if you want to fix your focus: "${firstSentence.substring(0, 60)}..."`,
+    `💡 Here's the 1 insight that completely changes everything.`,
   ];
-  const description = `${title ? title + ' — ' : ''}${firstSentence}. When you shift your perspective, everything changes.`;
-  const callToAction = `👉 Save this reel for later & share with a friend who needs this reminder!`;
+  const description = `${title ? title + ' — ' : ''}${firstSentence}. This single perspective shift will save you years of trial and error.`;
+  const callToAction = `👉 Save this reel for later and share it with someone who needs this today!`;
   const hashtags = [
     '#shorts',
-    '#viralreels',
-    '#growthmindset',
+    '#reels',
+    '#mindset',
     '#motivation',
-    '#lifeadvice',
-    '#successmindset',
-    '#mindsetmatters',
-    '#reelsinstagram',
-    '#trendingnow',
-    '#selfdevelopment',
     '#wisdom',
-    '#creator',
+    '#successquotes',
+    '#productivity',
+    '#personaldevelopment',
+    '#lifeadvice',
+    '#trendingreels',
+    '#viralcontent',
+    '#growthmindset',
   ];
 
   return {
@@ -186,15 +185,15 @@ function generateFallbackSocialBundle(
         title: 'Short & Punchy',
         hook: hooks[1],
         caption: `${firstSentence}.`,
-        callToAction: 'Save this so you don\'t forget 📌',
-        fullText: `${hooks[1]}\n\n${firstSentence}.\n\nSave this so you don\'t forget 📌\n\n${hashtags.slice(0, 8).join(' ')}`,
+        callToAction: 'Save this for later! 📌',
+        fullText: `${hooks[1]}\n\n${firstSentence}.\n\nSave this for later! 📌\n\n${hashtags.slice(0, 8).join(' ')}`,
       },
       {
-        title: 'Storytelling & Depth',
+        title: 'Deep & Reflective',
         hook: hooks[2],
-        caption: `${cleanTranscript.substring(0, 220)}...`,
-        callToAction: 'Drop a "💯" if you agree with this message!',
-        fullText: `${hooks[2]}\n\n${cleanTranscript.substring(0, 220)}...\n\nDrop a "💯" if you agree with this message!\n\n${hashtags.join(' ')}`,
+        caption: `${cleanTranscript.substring(0, 200)}...`,
+        callToAction: 'Drop a "100" in the comments if you agree! 💬',
+        fullText: `${hooks[2]}\n\n${cleanTranscript.substring(0, 200)}...\n\nDrop a "100" in the comments if you agree! 💬\n\n${hashtags.join(' ')}`,
       },
     ],
   };
@@ -210,6 +209,7 @@ export async function POST(req: NextRequest) {
       language = 'en',
       tone = 'motivational',
       platform = 'all',
+      model,
     } = body;
 
     if (!transcript || typeof transcript !== 'string' || transcript.trim().length === 0) {
@@ -222,19 +222,6 @@ export async function POST(req: NextRequest) {
     const cleanTranscript = transcript.trim();
     const cleanTitle = (title || 'Viral Reel').trim();
     const langKey = language === 'hi' ? 'hi' : language === 'hinglish' ? 'hinglish' : 'en';
-
-    const ai = getGeminiClient();
-    if (!ai) {
-      // Return smart fallback if Gemini API key is not configured
-      const fallback = generateFallbackSocialBundle(cleanTranscript, cleanTitle, langKey, tone);
-      return NextResponse.json({
-        success: true,
-        bundle: fallback,
-        source: 'heuristic_template',
-      });
-    }
-
-    const preferredModel = resolveApiGeminiModel();
 
     const langInstructions =
       langKey === 'hi'
@@ -251,7 +238,7 @@ CRITICAL RULES:
 2. Target Tone: ${tone.toUpperCase()}.
 3. Target Language: ${langInstructions}
 4. Distinguish between SPOKEN subtitles (burned on screen) and SOCIAL POST CAPTIONS (text pasted in the Instagram / YouTube description box).
-5. Output MUST be valid JSON adhering strictly to the schema below. No markdown fences around the JSON if possible, or clean standard JSON.
+5. Output MUST be valid JSON adhering strictly to the schema below. No markdown fences around the JSON.
 
 Schema:
 {
@@ -295,22 +282,17 @@ ${cleanTranscript}
 Generate the complete viral social media post bundle now.`;
 
     try {
-      const response = await generateContentWithFallback(ai, preferredModel, {
-        contents: [
-          { role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
-        ],
-        config: {
-          temperature: 0.7,
-          responseMimeType: 'application/json',
-        },
+      const responseText = await generateWithOllama({
+        prompt: userPrompt,
+        system: systemPrompt,
+        format: 'json',
+        model: model || getOllamaModel(),
+        temperature: 0.6,
       });
 
-      const responseText =
-        response.text ||
-        response.candidates?.[0]?.content?.parts?.[0]?.text ||
-        '';
-
-      const parsed: SocialPostBundle = JSON.parse(responseText.trim());
+      // Strip markdown code fences if Ollama returned them
+      const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
+      const parsed: SocialPostBundle = JSON.parse(cleanJson);
 
       // Validate required fields
       if (
@@ -324,10 +306,10 @@ Generate the complete viral social media post bundle now.`;
       return NextResponse.json({
         success: true,
         bundle: parsed,
-        source: 'gemini_ai',
+        source: 'ollama_ai',
       });
     } catch (aiErr: any) {
-      console.warn('Gemini social generation error, falling back to heuristics:', aiErr?.message || aiErr);
+      console.warn('Ollama social generation notice, falling back to heuristics:', aiErr?.message || aiErr);
       const fallback = generateFallbackSocialBundle(cleanTranscript, cleanTitle, langKey, tone);
       return NextResponse.json({
         success: true,

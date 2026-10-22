@@ -16,6 +16,23 @@ export async function GET(
     // Security: Check path traversal
     const safePath = assertSafePath(fullPath, APP_CONFIG.storageRoot);
 
+    // Security: Block sensitive internal configuration and auth files
+    const basename = path.basename(safePath).toLowerCase();
+    const FORBIDDEN_FILENAMES = new Set([
+      'auth_store.json',
+      'settings.json',
+      'package.json',
+      'tsconfig.json',
+      '.env',
+      '.env.local',
+      '.env.production',
+      '.env.example',
+    ]);
+
+    if (FORBIDDEN_FILENAMES.has(basename) || basename.startsWith('.')) {
+      return new NextResponse('Access denied: sensitive file', { status: 403 });
+    }
+
     if (!fs.existsSync(safePath)) {
       return new NextResponse('File not found', { status: 404 });
     }
@@ -26,6 +43,11 @@ export async function GET(
     }
 
     const ext = path.extname(safePath).toLowerCase();
+
+    // Security: Restrict JSON access to project manifests only
+    if (ext === '.json' && basename !== 'manifest.json' && basename !== 'recipe.json') {
+      return new NextResponse('Access denied: JSON file type not public', { status: 403 });
+    }
     let contentType = 'application/octet-stream';
     if (ext === '.mp4') contentType = 'video/mp4';
     else if (ext === '.webm') contentType = 'video/webm';
