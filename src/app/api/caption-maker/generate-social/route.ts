@@ -63,8 +63,10 @@ const CAPTION_STYLE_GUIDANCE: Record<CaptionStyle, string> = {
 
 const HASHTAG_PATTERN = /^#[a-zA-Z0-9_\u0900-\u097F]+$/;
 
-function limitText(value: string, maxLength: number): string {
-  const clean = value.replace(/\s+/g, ' ').trim();
+function limitText(value: string, maxLength: number, preserveLineBreaks = false): string {
+  const clean = preserveLineBreaks
+    ? value.replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ').trim()
+    : value.replace(/\s+/g, ' ').trim();
   if (clean.length <= maxLength) return clean;
   return `${clean.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
@@ -145,7 +147,7 @@ function composePlatformPost(
   const trailing = trailingParts.join('\n\n');
   const separatorLength = trailing ? 2 : 0;
   const availableBodyLength = Math.max(0, characterLimit - trailing.length - separatorLength);
-  const body = limitText([hook, caption, callToAction].filter(Boolean).join('\n\n'), availableBodyLength);
+  const body = limitText([hook, caption, callToAction].filter(Boolean).join('\n\n'), availableBodyLength, true);
   return [body, trailing].filter(Boolean).join('\n\n').trim();
 }
 
@@ -256,7 +258,8 @@ function formatBundleForPlatform(
     );
     const caption = limitText(
       (typeof variation.caption === 'string' && variation.caption) || bundle.description || options.firstSentence,
-      800
+      800,
+      true
     );
     const callToAction =
       (typeof variation.callToAction === 'string' && variation.callToAction) || bundle.callToAction || fallbackCta;
@@ -615,7 +618,7 @@ Generate the complete viral social media post bundle now.`;
 
     const firstSentence = cleanTranscript.split(/[.!?।\n]/)[0] || cleanTranscript.substring(0, 80);
     const attachEnhancementsToBundle = (bundle: SocialPostBundle): SocialPostBundle =>
-      formatBundleForPlatform(applyCaptionStyle(bundle, selectedCaptionStyle, firstSentence, styleLanguage), {
+      formatBundleForPlatform(bundle, {
         platform: effectivePlatform,
         sourceTitle: cleanTitle,
         firstSentence,
@@ -681,7 +684,9 @@ Generate the complete viral social media post bundle now.`;
     } catch (aiErr: any) {
       console.warn('Ollama social generation notice, falling back to heuristics:', aiErr?.message || aiErr);
       const fallback = generateFallbackSocialBundle(cleanTranscript, cleanTitle, styleLanguage, tone, effectivePlatform);
-      const bundleWithLinks = attachEnhancementsToBundle(fallback);
+      const bundleWithLinks = attachEnhancementsToBundle(
+        applyCaptionStyle(fallback, selectedCaptionStyle, firstSentence, styleLanguage)
+      );
 
       const validationReport = validateSocialPost({
         title: bundleWithLinks.postTitle,

@@ -13,14 +13,14 @@ Run the complete 60-suite test runner:
 cmd.exe /c node ./node_modules/tsx/dist/cli.mjs tests/test_suite.ts
 ```
 
-Or via pnpm:
+Or via npm:
 ```bash
-pnpm test
+npm test
 ```
 
 To run the Next.js production build and TypeScript compilation audit:
 ```bash
-pnpm build
+npm run build
 ```
 
 ---
@@ -105,22 +105,22 @@ Before releasing or deploying changes:
 1. **Automated Unit & Integration Tests**:
    Ensure all core tests pass with 0 failures:
    ```bash
-   pnpm test
+   npm test
    ```
 2. **Specialized Safe-Zone & Preset Test Suites**:
    ```bash
    # Social Media Reel Safe-Zone Measurement System
-   pnpm test:safe-zone
+   npm run test:safe-zone
 
    # Caption & Thumbnail Safe-Zone Two-Way Sync
-   pnpm test:safe-sync
+   npm run test:safe-sync
 
    # Presets Comprehensive Analysis & Isolation
-   pnpm test:presets
+   npm run test:presets
    ```
 3. **Next.js Compilation & Type-Checking**:
    Ensure all static and dynamic routes compile cleanly with zero TypeScript errors:
    ```bash
-   pnpm typecheck
-   pnpm build
+   npm run typecheck
+   npm run build
    ```

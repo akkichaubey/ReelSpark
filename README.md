@@ -35,8 +35,8 @@
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-- **Node.js** 22 or 24 (pinned in `.nvmrc`)
-- **pnpm** package manager
+- **Node.js**: Latest LTS or current (`>=20`, e.g., Node.js 24+)
+- **npm** package manager
 - **FFmpeg & FFprobe**: Included in `./bin/` or detected from system PATH.
 
 ### 2. Configuration
@@ -53,7 +53,7 @@ OLLAMA_MODEL=llama3.2
 
 ### 3. Run the Studio
 ```bash
-pnpm dev
+npm run dev
 ```
 Navigate to:
 - **AI Clip Finder**: [http://localhost:3000](http://localhost:3000)
@@ -63,28 +63,28 @@ Navigate to:
 ### 4. Run Automated Tests
 ```bash
 # Run comprehensive core test runner
-pnpm test
+npm test
 
 # Run social media safe-zone measurement system test
-pnpm test:safe-zone
+npm run test:safe-zone
 
 # Run caption & thumbnail safe-zone two-way sync test
-pnpm test:safe-sync
+npm run test:safe-sync
 
 # Run comprehensive preset analysis & isolation test
-pnpm test:presets
+npm run test:presets
 
 # Run TypeScript type check
-pnpm typecheck
+npm run typecheck
 
 # Run Next.js production build check
-pnpm build
+npm run build
 ```
 
 ### 5. Video & Audio Clipping Studio Services (Phase 1)
 ```bash
 # Start standalone local media service on 127.0.0.1:4000
-pnpm media-service
+npm run media-service
 
 # Apply Supabase database migrations (optional, local persistence active by default)
 # See CLIPPING_STUDIO.md for instructions and SQL file

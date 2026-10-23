@@ -2,17 +2,8 @@
   "name": "reelspark",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@12.11.2",
   "engines": {
-    "node": ">=22 <25",
-    "pnpm": ">=12"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "workerd",
-      "esbuild",
-      "sharp"
-    ]
+    "node": ">=20"
   },
   "scripts": {
     "dev": "next dev",

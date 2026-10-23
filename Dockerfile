@@ -1,5 +1,5 @@
-# Use Node 20 or 22 LTS on Debian Bookworm
-FROM node:22-bookworm-slim
+# Use latest Node.js LTS on Debian Bookworm
+FROM node:24-bookworm-slim
 
 # Install system dependencies: FFmpeg, Chromium for Remotion, and necessary fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,21 +31,20 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Copy dependency manifests and use the pinned pnpm version.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN corepack enable
+# Copy dependency manifests
+COPY package.json package-lock.json* ./
 
-# Install exactly the dependency graph committed to the repository.
-RUN pnpm install --frozen-lockfile
+# Install dependencies using npm
+RUN npm ci || npm install
 
 # Copy full application source
 COPY . .
 
 # Build Next.js application
-RUN pnpm build
+RUN npm run build
 
 # Expose server port
 EXPOSE 3000
 
 # Start production server
-CMD ["pnpm", "start"]
+CMD ["npm", "start"]

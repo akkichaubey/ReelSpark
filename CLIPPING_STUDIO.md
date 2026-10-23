@@ -49,8 +49,8 @@ ReelSpark's **Video & Audio Clipping Studio** is engineered as a local-first, de
 
 ## 3. Prerequisites
 
-- **Node.js**: `v20` to `v24`
-- **pnpm**: `v10+` or `v12+` (or `npm`)
+- **Node.js**: `>=v20` (including latest Node.js v24+)
+- **npm**: `v10+` or `v11+`
 - **FFmpeg & FFprobe**: Installed and accessible in system `PATH` or located in `./bin/ffmpeg.exe` and `./bin/ffprobe.exe`.
 
 ---
@@ -79,8 +79,6 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 ### Step 2: Start the Local Media Service
 Run the standalone local media service on `http://127.0.0.1:4000`:
 ```bash
-pnpm media-service
-# Or using npm
 npm run media-service
 ```
 
@@ -128,7 +126,7 @@ supabase migration up
 
 ### Step 4: Start the Web Application
 ```bash
-pnpm dev
+npm run dev
 # App opens on http://localhost:3000
 ```
 

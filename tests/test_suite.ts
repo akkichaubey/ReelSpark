@@ -1462,7 +1462,7 @@ async function runAllTests() {
     assert.strictEqual(reelSynced.title, 'मनुष्य की सबसे बड़ी', 'Title inherits first caption hook');
     assert.strictEqual(reelSynced.position, 'top', 'Position defaults to top (matching reel captions)');
     assert.strictEqual(reelSynced.customY, 18, 'customY defaults to 18%');
-    assert.strictEqual(reelSynced.overlayDarkness, 0, 'overlayDarkness defaults to 0 (no forced darkening of media)');
+    assert.strictEqual(reelSynced.overlayDarkness, 0.15, 'overlayDarkness defaults to 0.15');
     assert.strictEqual(reelSynced.fontFamily, 'Nirmala UI', 'Font family inherits caption font');
     assert.strictEqual(reelSynced.highlightColor, '#FCD905', 'Active highlight color defaults to #FCD905');
     assert.strictEqual(reelSynced.aspectRatio, '9:16', 'Aspect ratio inherits canvas settings');
@@ -1471,7 +1471,7 @@ async function runAllTests() {
     // Test aspect ratio synchronization for non-standard aspects (e.g. 1:1, 4:5, 16:9)
     const squareThumb = createDefaultThumbnailSettings('Square', '1:1');
     assert.strictEqual(squareThumb.aspectRatio, '1:1');
-    assert.strictEqual(squareThumb.overlayDarkness, 0);
+    assert.strictEqual(squareThumb.overlayDarkness, 0.15);
     assert.strictEqual(squareThumb.showSafeArea, true);
   });
 
@@ -1498,8 +1498,8 @@ async function runAllTests() {
 
     const defaultSettings = createDefaultThumbnailSettings('Spacing Test');
     assert.strictEqual(defaultSettings.badgeEnabled, true, 'Badge must be enabled by default');
-    assert.strictEqual(defaultSettings.badgeSpacing, 24, 'Badge to title spacing defaults to 24px');
-    assert.strictEqual(defaultSettings.subtitleSpacing, 24, 'Title to subtitle spacing defaults to 24px');
+    assert.strictEqual(defaultSettings.badgeSpacing, 38, 'Badge to title spacing defaults to 38px');
+    assert.strictEqual(defaultSettings.subtitleSpacing, 30, 'Title to subtitle spacing defaults to 30px');
     assert.strictEqual(defaultSettings.badgeShape, 'pill', 'Badge shape defaults to pill');
 
     // Test disabled toggle

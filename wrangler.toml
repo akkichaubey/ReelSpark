@@ -12,7 +12,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # ─── Cloudflare Pages ────────────────────────────────────────────────────────
 # Deploy via: Cloudflare Dashboard → Pages → Connect to Git → ReelSpark repo
-# Build command:   pnpm.cmd run build
+# Build command:   npm.cmd run build
 # Build output:    .next
 # Root directory:  /
 

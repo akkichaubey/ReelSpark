@@ -157,7 +157,7 @@ Every discovered clip is strictly capped at **60 seconds**, contextually verifie
 
 ### Step 1: Install Dependencies
 ```bash
-pnpm install
+npm install
 ```
 
 ### Step 2: Configure Environment
@@ -168,7 +168,7 @@ copy .env.example .env.local
 
 ### Step 3: Start the Development Server
 ```bash
-pnpm dev
+npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
@@ -178,12 +178,12 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 Run the full automated unit test suite (covering URL validation, timestamps, SRT offsets, context verification, 60s duration cap, security, and real FFmpeg rendering):
 ```bash
-pnpm test
+npm test
 ```
 
 Run the end-to-end integration test against the running studio:
 ```bash
-pnpm test:e2e
+npm run test:e2e
 ```
 
 ---

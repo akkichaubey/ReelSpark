@@ -3,7 +3,11 @@ import { POST } from '../src/app/api/caption-maker/generate-social/route';
 import { getPlatformConfig } from '../src/lib/social-intelligence/platform-rules';
 import { SocialPlatformKey } from '../src/lib/social-intelligence/types';
 
+const originalFetch = globalThis.fetch;
+
 async function runPlatformGenerationTests() {
+  // Exercise fallback behavior deterministically, even when a local model is online.
+  globalThis.fetch = async () => { throw new Error('Simulated offline model'); };
   const transcript = 'Most people wait for confidence before they start. Progress begins when you take the first small action today.';
   const platforms: SocialPlatformKey[] = ['instagram', 'youtube', 'threads', 'facebook'];
 
@@ -84,14 +88,43 @@ async function runPlatformGenerationTests() {
       assert.ok(data.bundle.variations[0].fullText.includes('GUIDE'), 'Comment-to-DM style must include its keyword CTA');
     }
     if (captionStyle === 'quick_value') {
-      assert.ok(data.bundle.variations[0].caption.includes('1)'), 'Quick Value style must use a scannable list');
+      assert.ok(data.bundle.variations[0].caption.includes('\n2)'), 'Quick Value style must preserve list line breaks');
+      assert.ok(data.bundle.variations[0].fullText.includes('\n2)'), 'Copied post must preserve list line breaks');
     }
 
     console.log(`✓ ${captionStyle}: preset structure and Instagram limits verified`);
   }
+
+  const aiCaption = '1) Start with one small action\n2) Build confidence through progress';
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.ok(request.system.includes('Quick Value List'), 'Selected style must reach the AI prompt');
+    return Response.json({ response: JSON.stringify({
+      postTitle: 'Confidence Starts With Action',
+      hooks: ['Confidence follows action.', 'Start small today.', 'Progress builds belief.'],
+      description: aiCaption,
+      callToAction: 'Save this reminder.',
+      hashtags: ['#confidence', '#progress', '#action', '#mindset', '#growth'],
+      variations: ['Confidence follows action.', 'Start small today.', 'Progress builds belief.'].map((hook) => ({
+        title: 'Quick Value', hook, caption: aiCaption, callToAction: 'Save this reminder.', fullText: '',
+      })),
+    }) });
+  };
+  const aiResponse = await POST(new Request('http://localhost:3000/api/caption-maker/generate-social', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, platform: 'instagram', captionStyle: 'quick_value', includeLinks: false }),
+  }) as any);
+  const aiData = await aiResponse.json();
+  assert.strictEqual(aiData.source, 'ollama_ai', 'Valid AI response must use AI generation');
+  assert.strictEqual(aiData.bundle.hooks[0], 'Confidence follows action.', 'Preserve the AI-generated hook');
+  assert.strictEqual(aiData.bundle.variations[0].caption, aiCaption, 'Preserve AI copy and list formatting');
+  console.log('✓ AI style instructions and generated copy preservation verified');
 }
 
-runPlatformGenerationTests().catch((error) => {
+runPlatformGenerationTests().finally(() => {
+  globalThis.fetch = originalFetch;
+}).catch((error) => {
   console.error(error);
   process.exit(1);
 });
