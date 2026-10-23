@@ -341,7 +341,7 @@ export const GEMINI_AVAILABLE_MODELS = [
 
 export function getGeminiModel(): string {
   const settings = loadAppSettings();
-  return settings.geminiModel || getOllamaModel();
+  return settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 }
 
 export function checkGeminiStatus(): {
@@ -350,17 +350,19 @@ export function checkGeminiStatus(): {
   availableModels: any[];
 } {
   const settings = loadAppSettings();
+  const apiKey = process.env.GEMINI_API_KEY || settings.geminiApiKey;
   return {
-    configured: true,
-    model: settings.geminiModel || getOllamaModel(),
+    configured: Boolean(apiKey && apiKey.trim().length > 0),
+    model: settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     availableModels: GEMINI_AVAILABLE_MODELS,
   };
 }
 
 export function resolveApiGeminiModel(modelId?: string): string {
-  return modelId || getOllamaModel();
+  return modelId || getGeminiModel();
 }
 
 export function getGeminiFallbackChain(preferredModel?: string): string[] {
-  return [preferredModel || getOllamaModel(), 'llama3.2', 'llama3.1', 'qwen2.5'];
+  const base = preferredModel || getGeminiModel();
+  return [base, 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 }

@@ -6,6 +6,7 @@ import { Readable } from 'stream';
 import { probeVideo } from '@/lib/ffmpeg';
 import { APP_CONFIG } from '@/lib/config';
 import { sanitizeFilename, assertSafePath } from '@/lib/storage';
+import { MAX_UPLOAD_BYTES, validateUpload } from '@/lib/media-validation';
 import { MediaAsset } from '@/lib/clipping-studio/contracts';
 
 // Permitted media extensions
@@ -15,11 +16,26 @@ const ALLOWED_EXTS = new Set([
 ]);
 
 function getProjectMediaDir(projectId: string): string {
-  const dir = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects', projectId, 'media');
+  const projectsDir = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
+  const safeProjectId = sanitizeFilename(projectId);
+  const dir = assertSafePath(path.join(projectsDir, safeProjectId, 'media'), projectsDir);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
   return dir;
+}
+
+function getAvailableManagedPath(mediaDir: string, filename: string): string {
+  const safeName = sanitizeFilename(filename);
+  const extension = path.extname(safeName);
+  const stem = path.basename(safeName, extension) || 'media';
+  let target = assertSafePath(path.join(mediaDir, safeName), mediaDir);
+  let suffix = 1;
+  while (fs.existsSync(target)) {
+    target = assertSafePath(path.join(mediaDir, `${stem}_${suffix}${extension}`), mediaDir);
+    suffix++;
+  }
+  return target;
 }
 
 export async function POST(
@@ -40,6 +56,11 @@ export async function POST(
 
       if (!file) {
         return NextResponse.json({ success: false, error: 'No media file provided' }, { status: 400 });
+      }
+
+      const uploadError = validateUpload(file, ['video', 'audio']);
+      if (uploadError) {
+        return NextResponse.json({ success: false, error: uploadError }, { status: 400 });
       }
 
       const ext = path.extname(file.name).toLowerCase();
@@ -79,7 +100,19 @@ export async function POST(
       }
 
       const stat = fs.statSync(localFilePath);
-      targetFilePath = localFilePath;
+      if (!stat.isFile()) {
+        return NextResponse.json({ success: false, error: 'localFilePath must point to a media file' }, { status: 400 });
+      }
+      if (stat.size > MAX_UPLOAD_BYTES) {
+        return NextResponse.json({ success: false, error: 'Files larger than 500 MB are not supported.' }, { status: 400 });
+      }
+
+      // Keep imported files inside the project workspace. Besides making projects
+      // portable, this prevents later export/probe requests from depending on an
+      // arbitrary client-provided path.
+      const mediaDir = getProjectMediaDir(projectId);
+      targetFilePath = getAvailableManagedPath(mediaDir, path.basename(localFilePath));
+      fs.copyFileSync(localFilePath, targetFilePath);
       originalFilename = path.basename(localFilePath);
       fileSizeBytes = stat.size;
     }
@@ -141,11 +174,22 @@ export async function PUT(
     }
 
     const stat = fs.statSync(newPath);
-    const meta = await probeVideo(newPath);
+    if (!stat.isFile() || stat.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ success: false, error: 'Relinked file is not a supported local media file.' }, { status: 400 });
+    }
+    const ext = path.extname(newPath).toLowerCase();
+    if (!ALLOWED_EXTS.has(ext)) {
+      return NextResponse.json({ success: false, error: `Unsupported media format: ${ext}` }, { status: 400 });
+    }
+
+    const mediaDir = getProjectMediaDir(projectId);
+    const managedPath = getAvailableManagedPath(mediaDir, `${sanitizeFilename(assetId)}_${path.basename(newPath)}`);
+    fs.copyFileSync(newPath, managedPath);
+    const meta = await probeVideo(managedPath);
 
     return NextResponse.json({
       success: true,
-      updatedPath: newPath,
+      updatedPath: managedPath,
       fileSizeBytes: stat.size,
       durationMs: Math.round(meta.duration * 1000),
       meta,

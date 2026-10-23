@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithOllama } from '@/lib/ollama';
 import { getOllamaModel } from '@/lib/config';
+import { validateSession } from '@/lib/auth';
+import {
+  getSocialAccounts,
+  getSocialLinkPreferences,
+} from '@/lib/social-intelligence/storage';
+import {
+  resolveEligibleSocialLinks,
+  formatSocialLinksBlock,
+} from '@/lib/social-intelligence/link-engine';
+import { validateSocialPost } from '@/lib/social-intelligence/post-validator';
+import { getPlatformConfig } from '@/lib/social-intelligence/platform-rules';
+import { SocialPlatformKey, PlatformContentType } from '@/lib/social-intelligence/types';
 
 export interface SocialPostBundle {
   hooks: string[];
@@ -24,7 +36,7 @@ export type ContentTone =
   | 'emotional'
   | 'professional';
 
-export type SocialPlatform = 'all' | 'instagram' | 'youtube' | 'tiktok';
+export type SocialPlatform = 'all' | 'instagram' | 'youtube' | 'facebook' | 'threads' | 'tiktok';
 
 /**
  * Fallback heuristic generator in case Ollama is offline or network error occurs.
@@ -209,6 +221,9 @@ export async function POST(req: NextRequest) {
       language = 'en',
       tone = 'motivational',
       platform = 'all',
+      contentType = 'reel',
+      includeLinks = true,
+      explicitAccountId,
       model,
     } = body;
 
@@ -218,6 +233,42 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Resolve authenticated user for profile & social account integration
+    const cookieHeader = req.headers?.get?.('cookie');
+    const token =
+      req.cookies?.get?.('reelspark_session')?.value ||
+      cookieHeader?.match(/reelspark_session=([^;]+)/)?.[1] ||
+      req.headers?.get?.('authorization')?.replace('Bearer ', '');
+    let user = token ? await validateSession(token) : null;
+    if (!user && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_LOGIN === 'true')) {
+      user = { id: body.userId || 'usr_admin', name: 'Administrator', email: 'admin@reelspark.ai', role: 'admin', createdAt: new Date().toISOString() };
+    }
+
+    const userId = user?.id || body.userId;
+    const accounts = userId ? await getSocialAccounts(userId) : [];
+    const preferences = userId ? await getSocialLinkPreferences(userId) : {
+      userId: '',
+      includeWebsite: true,
+      includeOtherSocials: true,
+      excludeTargetPlatform: true,
+      customHeading: '🔗 Connect with us:',
+      displaySeparateLines: true,
+      linkOrder: [],
+      eligibleAccountIds: [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    const eligibleLinks = resolveEligibleSocialLinks(
+      accounts,
+      preferences,
+      platform,
+      explicitAccountId
+    );
+
+    const linksBlock = includeLinks && eligibleLinks.length > 0
+      ? formatSocialLinksBlock(eligibleLinks, preferences)
+      : '';
 
     const cleanTranscript = transcript.trim();
     const cleanTitle = (title || 'Viral Reel').trim();
@@ -230,15 +281,20 @@ export async function POST(req: NextRequest) {
         ? 'Generate all content in conversational Hinglish (Hindi written in Roman/English alphabet, popular on Instagram Reels in India).'
         : 'Generate all content in modern, compelling English.';
 
-    const systemPrompt = `You are an elite social media growth strategist, viral copywriter, and Instagram Reels / YouTube Shorts expert.
+    const platformConfig = getPlatformConfig(platform);
+    const charLimit = platformConfig.characterLimits.maxTotal;
+
+    const systemPrompt = `You are an elite social media growth strategist, viral copywriter, and ${platformConfig.name} expert.
 Your job is to generate high-converting post captions, viral opening hooks, call-to-actions, and hashtags based SOLELY on the provided clip transcript.
 
 CRITICAL RULES:
 1. ONLY use ideas and quotes present in the provided transcript. Do not fabricate unrelated facts.
 2. Target Tone: ${tone.toUpperCase()}.
-3. Target Language: ${langInstructions}
-4. Distinguish between SPOKEN subtitles (burned on screen) and SOCIAL POST CAPTIONS (text pasted in the Instagram / YouTube description box).
-5. Output MUST be valid JSON adhering strictly to the schema below. No markdown fences around the JSON.
+3. Target Platform: ${platformConfig.name} (${contentType.toUpperCase()}).
+4. Target Language: ${langInstructions}
+5. Character constraint: Keep content compliant with ${platformConfig.name}'s character limit of ${charLimit} chars.
+6. Distinguish between SPOKEN subtitles (burned on screen) and SOCIAL POST CAPTIONS (text pasted in the description box).
+7. Output MUST be valid JSON adhering strictly to the schema below. No markdown fences around the JSON.
 
 Schema:
 {
@@ -274,12 +330,61 @@ Schema:
     const userPrompt = `CLIP TITLE: ${cleanTitle}
 CLIP DURATION: ${duration ? Math.round(duration) + ' seconds' : 'Short Reel (< 60s)'}
 TARGET PLATFORM: ${platform}
+CONTENT TYPE: ${contentType}
 CLIP TRANSCRIPT:
 """
 ${cleanTranscript}
 """
 
 Generate the complete viral social media post bundle now.`;
+
+    const activeFixedHashtags = (preferences.fixedHashtags || [])
+      .filter((h) => h.enabled)
+      .map((h) => (h.tag.startsWith('#') ? h.tag : `#${h.tag}`));
+
+    const attachEnhancementsToBundle = (bundle: SocialPostBundle): SocialPostBundle => {
+      // Prepend user's fixed hashtags to the hashtags array without duplicates
+      const mergedHashtags = [
+        ...activeFixedHashtags,
+        ...(bundle.hashtags || []).filter(
+          (t) => !activeFixedHashtags.some((ft) => ft.toLowerCase() === t.toLowerCase())
+        ),
+      ];
+
+      const oldTagsStr = (bundle.hashtags || []).join(' ');
+      const newTagsStr = mergedHashtags.join(' ');
+
+      const updatedVariations = bundle.variations.map((v) => {
+        let text = v.fullText;
+
+        // Replace old hashtags string with new hashtags string if present
+        if (oldTagsStr && text.includes(oldTagsStr)) {
+          text = text.replace(oldTagsStr, newTagsStr);
+        } else if (activeFixedHashtags.length > 0 && !text.includes(activeFixedHashtags[0])) {
+          text = `${text}\n\n${activeFixedHashtags.join(' ')}`;
+        }
+
+        // Insert social links block right before hashtags or at the end
+        if (linksBlock) {
+          if (newTagsStr && text.includes(newTagsStr)) {
+            text = text.replace(newTagsStr, `${linksBlock}\n\n${newTagsStr}`);
+          } else {
+            text = `${text}\n\n${linksBlock}`;
+          }
+        }
+
+        return {
+          ...v,
+          fullText: text,
+        };
+      });
+
+      return {
+        ...bundle,
+        hashtags: mergedHashtags,
+        variations: updatedVariations,
+      };
+    };
 
     try {
       const responseText = await generateWithOllama({
@@ -303,17 +408,72 @@ Generate the complete viral social media post bundle now.`;
         throw new Error('Incomplete response structure from AI model');
       }
 
+      const bundleWithLinks = attachEnhancementsToBundle(parsed);
+      const validationReport = validateSocialPost({
+        title: cleanTitle,
+        hook: bundleWithLinks.variations[0]?.hook,
+        caption: bundleWithLinks.variations[0]?.caption,
+        callToAction: bundleWithLinks.variations[0]?.callToAction,
+        fullText: bundleWithLinks.variations[0]?.fullText,
+        hashtags: bundleWithLinks.hashtags,
+        platform,
+        contentType,
+        includedLinks: eligibleLinks.map((l) => ({
+          platform: l.account.platform,
+          url: l.account.accountUrl,
+          displayName: l.account.displayName,
+        })),
+      });
+
       return NextResponse.json({
         success: true,
-        bundle: parsed,
+        bundle: bundleWithLinks,
+        validationReport,
+        eligibleLinks: eligibleLinks.map((l) => ({
+          id: l.account.id,
+          platform: l.account.platform,
+          url: l.account.accountUrl,
+          displayName: l.account.displayName,
+          formattedText: l.formattedText,
+          isTargetPlatform: l.isTargetPlatform,
+        })),
+        platformConfig,
         source: 'ollama_ai',
       });
     } catch (aiErr: any) {
       console.warn('Ollama social generation notice, falling back to heuristics:', aiErr?.message || aiErr);
       const fallback = generateFallbackSocialBundle(cleanTranscript, cleanTitle, langKey, tone);
+      const bundleWithLinks = attachEnhancementsToBundle(fallback);
+
+      const validationReport = validateSocialPost({
+        title: cleanTitle,
+        hook: bundleWithLinks.variations[0]?.hook,
+        caption: bundleWithLinks.variations[0]?.caption,
+        callToAction: bundleWithLinks.variations[0]?.callToAction,
+        fullText: bundleWithLinks.variations[0]?.fullText,
+        hashtags: bundleWithLinks.hashtags,
+        platform,
+        contentType,
+        includedLinks: eligibleLinks.map((l) => ({
+          platform: l.account.platform,
+          url: l.account.accountUrl,
+          displayName: l.account.displayName,
+        })),
+      });
+
       return NextResponse.json({
         success: true,
-        bundle: fallback,
+        bundle: bundleWithLinks,
+        validationReport,
+        eligibleLinks: eligibleLinks.map((l) => ({
+          id: l.account.id,
+          platform: l.account.platform,
+          url: l.account.accountUrl,
+          displayName: l.account.displayName,
+          formattedText: l.formattedText,
+          isTargetPlatform: l.isTargetPlatform,
+        })),
+        platformConfig,
         source: 'heuristic_fallback',
         aiWarning: aiErr?.message || 'Model fallback used',
       });

@@ -12,9 +12,6 @@ import {
   ArrowRight,
   Film,
   Clock,
-  CheckCircle2,
-  HardDrive,
-  Cpu,
   Layers,
   Video,
 } from 'lucide-react';
@@ -35,7 +32,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenProject,
   onDeleteProject,
   onNewProject,
-  ollamaModel = 'llama3.2',
 }) => {
   return (
     <div className="space-y-10 animate-in fade-in duration-300">
@@ -47,10 +43,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center space-x-2">
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/20">
                 Workspace Dashboard
-              </span>
-              <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-amber-400" />
-                <span>Ollama Engine ({ollamaModel})</span>
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
@@ -149,9 +141,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="w-12 h-12 rounded-2xl bg-sky-400/10 border border-sky-400/30 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
                   <Share2 className="w-6 h-6" />
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-400/20 text-sky-300 border border-sky-400/30">
-                  Ollama AI Copy
-                </span>
               </div>
               <h4 className="text-base font-bold text-white group-hover:text-sky-300 transition-colors">
                 AI Social Post
@@ -277,23 +266,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ))}
           </div>
         )}
-      </div>
-
-      {/* ─── Infrastructure Footprint ───────────────────────────────────── */}
-      <div className="p-4 rounded-2xl bg-zinc-900/30 border border-white/5 flex flex-wrap items-center justify-between gap-4 text-xs text-zinc-500">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5 text-zinc-400">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>FFmpeg Hardware Codecs Ready</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-zinc-400">
-            <HardDrive className="w-3.5 h-3.5 text-amber-400" />
-            <span>Cloudflare D1 & R2 Ready</span>
-          </span>
-        </div>
-        <div>
-          <span>Local Studio v1.0.0 • 100% Client-Side Privacy</span>
-        </div>
       </div>
     </div>
   );

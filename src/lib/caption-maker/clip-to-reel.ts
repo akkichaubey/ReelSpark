@@ -194,7 +194,8 @@ export function createCaptionProjectFromClip(
     if (rel) {
       audioUrl = `/api/files/${rel.replace(/\\/g, '/')}`;
       storagePath = candidate.renderedVideoPath;
-      fileName = `${clipSafeId}.mp4`;
+      const baseName = candidate.renderedVideoPath.split(/[/\\]/).pop();
+      fileName = baseName || `${clipSafeId}.mp4`;
     }
   } else if (activeProject?.id) {
     // Route to clip-audio endpoint which slices the original audio specifically for this clip

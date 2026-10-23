@@ -1,6 +1,6 @@
 /**
  * Cloudflare D1 Database Client
- * Replaces Supabase PostgreSQL with Cloudflare's edge-native SQLite (D1).
+ * Cloudflare's edge-native SQLite database (D1).
  *
  * D1 is accessed via the Cloudflare Workers Bindings API (env.DB) in
  * Cloudflare Pages Functions/Workers, or via the D1 HTTP REST API when

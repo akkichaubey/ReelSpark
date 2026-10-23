@@ -26,16 +26,19 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   headerActions,
   contentFullWidth = false,
 }) => {
-  // Sidebar Collapsed State (persisted in localStorage)
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem('reelspark_sidebar_collapsed') === 'true';
-      } catch {}
-    }
-    return false;
-  });
+  // Sidebar Collapsed State (persisted in localStorage, hydrated safely after mount)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+
+  // Sync persisted collapse state safely on client after initial hydration
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('reelspark_sidebar_collapsed');
+      if (stored === 'true') {
+        setIsCollapsed(true);
+      }
+    } catch {}
+  }, []);
 
   // System Status & Modals
   const [, setSystemStatus] = useState<any>(null);

@@ -14,7 +14,7 @@ import {
   loadCrashRecoverySnapshot,
   clearCrashRecoverySnapshot,
 } from '../src/lib/clipping-studio/local-persistence';
-import { syncProjectToSupabase } from '../src/lib/clipping-studio/supabase';
+import { syncProjectToCloudflare } from '../src/lib/clipping-studio/cloudflare-sync';
 
 async function runPhase5Tests() {
   console.log('\n======================================================');
@@ -195,10 +195,10 @@ async function runPhase5Tests() {
     assert.strictEqual(targetAsset.localPath, newPath);
   });
 
-  // 6. Supabase Resilient Sync fallback
-  await test('Supabase Synchronizer: Non-destructive local fallback when offline or unconfigured', async () => {
-    const proj = createBlankClippingProject('Supabase Sync Test');
-    const result = await syncProjectToSupabase(proj);
+  // 6. Cloudflare D1 Resilient Sync fallback
+  await test('Cloudflare D1 Synchronizer: Non-destructive local fallback when offline or unconfigured', async () => {
+    const proj = createBlankClippingProject('Cloudflare Sync Test');
+    const result = await syncProjectToCloudflare(proj);
     assert.strictEqual(result.success, true);
     assert.ok(result.message);
   });

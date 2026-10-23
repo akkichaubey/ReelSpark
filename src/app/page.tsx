@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   Sparkles,
   CheckCircle2,
@@ -11,7 +10,6 @@ import {
   Trash2,
   ArrowRight,
   ArrowLeft,
-  Search,
   PlusCircle,
   Clock,
   Film,
@@ -49,9 +47,6 @@ function DashboardPageContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Search filter for My Projects view
-  const [projectSearchQuery, setProjectSearchQuery] = useState('');
 
   // Modals & Active Selections
   const [showCreatorModal, setShowCreatorModal] = useState(false);
@@ -170,6 +165,13 @@ function DashboardPageContent() {
       active = false;
     };
   }, [checkAuth]);
+
+  // The legacy My Projects screen has been removed; keep old bookmarks usable.
+  useEffect(() => {
+    if (view === 'projects') {
+      router.replace('/');
+    }
+  }, [router, view]);
 
   // Sync active project if URL requests clip-finder and none is active
   useEffect(() => {
@@ -531,11 +533,6 @@ function DashboardPageContent() {
   const allSelected =
     displayCandidates.length > 0 && displayCandidates.every((c) => c.selected);
 
-  // Filter projects in My Projects view
-  const filteredProjects = projects.filter((p) =>
-    p.title.toLowerCase().includes(projectSearchQuery.toLowerCase())
-  );
-
   // 1. Unauthenticated Visitor Flow -> Public Website Landing Page
   if (authLoading) {
     return (
@@ -573,21 +570,16 @@ function DashboardPageContent() {
 
   // 2. Authenticated Dashboard Flow -> Left Sidebar DashboardLayout
   const isClipFinder = view === 'clip-finder';
-  const isMyProjects = view === 'projects';
 
   return (
     <DashboardLayout
       title={
-        isMyProjects
-          ? 'My Projects'
-          : isClipFinder
+        isClipFinder
           ? 'Clip Finder'
           : 'Dashboard'
       }
       subtitle={
-        isMyProjects
-          ? 'Manage and organize your video projects'
-          : isClipFinder && activeProject
+        isClipFinder && activeProject
           ? activeProject.title
           : isClipFinder
           ? 'Select a project to find viral clips'
@@ -602,8 +594,6 @@ function DashboardPageContent() {
                 { label: activeProject.title },
               ]
             : [{ label: 'Dashboard', href: '/' }, { label: 'Clip Finder' }]
-          : isMyProjects
-          ? [{ label: 'Dashboard', href: '/' }, { label: 'My Projects' }]
           : undefined
       }
       onNewProject={() => setShowCreatorModal(true)}
@@ -632,128 +622,6 @@ function DashboardPageContent() {
         <div className="flex flex-col items-center justify-center py-24 space-y-4">
           <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
           <p className="text-zinc-400 text-sm">Loading studio workspace...</p>
-        </div>
-      ) : isMyProjects ? (
-        /* ─── My Projects View ─────────────────────────────────────────────── */
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-            <div>
-              <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-amber-400" />
-                <span>Video Projects</span>
-                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
-                  {projects.length}
-                </span>
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                All long-form video projects analyzed for viral moments and reel extraction.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-                <input
-                  type="text"
-                  placeholder="Search projects..."
-                  value={projectSearchQuery}
-                  onChange={(e) => setProjectSearchQuery(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
-                />
-              </div>
-
-              <button
-                onClick={() => setShowCreatorModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>New Project</span>
-              </button>
-            </div>
-          </div>
-
-          {filteredProjects.length === 0 ? (
-            <div className="text-center py-20 bg-zinc-900/30 border border-zinc-800 rounded-3xl p-8 space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-400/10 text-amber-400 flex items-center justify-center mx-auto border border-amber-400/20">
-                <FolderOpen className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-white">No projects found</h3>
-                <p className="text-xs text-zinc-400 max-w-sm mx-auto">
-                  {projectSearchQuery
-                    ? `No projects matching "${projectSearchQuery}".`
-                    : 'Create your first project by pasting a YouTube URL or uploading a video file.'}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowCreatorModal(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-400 text-black font-bold text-xs rounded-xl hover:bg-amber-300 transition-all cursor-pointer shadow-md"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Create New Project</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProjects.map((p) => (
-                <div
-                  key={p.id}
-                  className="group bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-2xl p-5 transition-all shadow-sm flex flex-col justify-between space-y-4"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-400/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-400/20">
-                        <Film className="w-5 h-5" />
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
-                        {p.status}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h4
-                        onClick={() => {
-                          setActiveProject(p);
-                          router.push('/?view=clip-finder');
-                        }}
-                        className="text-sm font-bold text-white group-hover:text-amber-400 transition-colors line-clamp-2 cursor-pointer"
-                        title={p.title}
-                      >
-                        {p.title}
-                      </h4>
-                      <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-2">
-                        <Clock className="w-3 h-3" />
-                        <span>{new Date(p.createdAt).toLocaleDateString()}</span>
-                        <span>•</span>
-                        <span>{p.candidates?.length || 0} clips identified</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80 gap-2">
-                    <button
-                      onClick={() => {
-                        setActiveProject(p);
-                        router.push('/?view=clip-finder');
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-400 hover:text-black text-zinc-200 text-xs font-semibold transition-all cursor-pointer"
-                    >
-                      <span>Open Clip Finder</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => handleDeleteProject(p.id)}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                      title="Delete project"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       ) : isClipFinder && activeProject ? (
         /* ─── Active Project Studio (Clip Finder View) ──────────────────────── */

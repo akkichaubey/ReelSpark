@@ -4,14 +4,10 @@ import React, { useState } from 'react';
 import {
   Sparkles,
   Film,
-  Zap,
   ArrowRight,
   CheckCircle2,
-  Play,
   Share2,
-  Tv,
   Layers,
-  Flame,
   Mail,
   X,
   MessageSquare,
@@ -27,8 +23,9 @@ export const LandingHero: React.FC = () => {
   const [contactMessage, setContactMessage] = useState('');
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
+  const [isSubmittingContact, setIsSubmittingContact] = useState(false);
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setContactError(null);
 
@@ -43,14 +40,30 @@ export const LandingHero: React.FC = () => {
       return;
     }
 
-    setContactSubmitted(true);
-    setTimeout(() => {
-      setContactSubmitted(false);
-      setShowContactModal(false);
-      setContactName('');
-      setContactEmail('');
-      setContactMessage('');
-    }, 2500);
+    setIsSubmittingContact(true);
+    try {
+      const response = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: contactName, email: contactEmail, message: contactMessage }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Unable to send your request.');
+      }
+      setContactSubmitted(true);
+      setTimeout(() => {
+        setContactSubmitted(false);
+        setShowContactModal(false);
+        setContactName('');
+        setContactEmail('');
+        setContactMessage('');
+      }, 2500);
+    } catch (error: any) {
+      setContactError(error.message || 'Unable to send your request.');
+    } finally {
+      setIsSubmittingContact(false);
+    }
   };
 
   return (
@@ -190,9 +203,11 @@ export const LandingHero: React.FC = () => {
       {/* Contact & Support Modal */}
       {showContactModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md p-6 bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl text-left">
+          <div role="dialog" aria-modal="true" aria-labelledby="contact-support-title" className="relative w-full max-w-md p-6 bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl text-left">
             <button
+              type="button"
               onClick={() => setShowContactModal(false)}
+              aria-label="Close contact and support dialog"
               className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/60 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
@@ -203,7 +218,7 @@ export const LandingHero: React.FC = () => {
                 <MessageSquare className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">Contact & Support</h3>
+                <h3 id="contact-support-title" className="text-sm font-bold text-white">Contact & Support</h3>
                 <p className="text-[11px] text-zinc-400">Send an inquiry or feature request to the ReelSpark team.</p>
               </div>
             </div>
@@ -219,14 +234,17 @@ export const LandingHero: React.FC = () => {
             ) : (
               <form onSubmit={handleContactSubmit} className="space-y-3">
                 {contactError && (
-                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+                  <div role="alert" className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
                     {contactError}
                   </div>
                 )}
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">Your Name</label>
+                  <label htmlFor="support-name" className="block text-[11px] font-semibold text-zinc-300 mb-1">Your Name</label>
                   <input
+                    id="support-name"
+                    name="name"
                     type="text"
+                    required
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
                     placeholder="Enter your name"
@@ -234,9 +252,12 @@ export const LandingHero: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">Email Address</label>
+                  <label htmlFor="support-email" className="block text-[11px] font-semibold text-zinc-300 mb-1">Email Address</label>
                   <input
+                    id="support-email"
+                    name="email"
                     type="email"
+                    required
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
                     placeholder="name@example.com"
@@ -244,9 +265,12 @@ export const LandingHero: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">Message</label>
+                  <label htmlFor="support-message" className="block text-[11px] font-semibold text-zinc-300 mb-1">Message</label>
                   <textarea
+                    id="support-message"
+                    name="message"
                     rows={3}
+                    required
                     value={contactMessage}
                     onChange={(e) => setContactMessage(e.target.value)}
                     placeholder="How can we help you?"
@@ -255,10 +279,11 @@ export const LandingHero: React.FC = () => {
                 </div>
                 <button
                   type="submit"
+                  disabled={isSubmittingContact}
                   className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Send Message</span>
+                  <span>{isSubmittingContact ? 'Sending…' : 'Send Message'}</span>
                 </button>
               </form>
             )}

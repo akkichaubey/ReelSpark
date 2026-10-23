@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '../dashboard/DashboardLayout';
-import { ProjectDashboard } from './ProjectDashboard';
 import { MediaLibrary } from './MediaLibrary';
 import { MediaPlayerPreview } from './MediaPlayerPreview';
 import { InteractiveTimeline } from './InteractiveTimeline';
@@ -17,7 +16,6 @@ import {
   Scissors,
   Layers,
   Download,
-  FolderOpen,
   Sparkles,
   Edit2,
   Undo2,
@@ -39,6 +37,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
     activeTab,
     setActiveTab,
     activeProject,
+    createProject,
     initializeStore,
     isLoading,
     mediaServiceStatus,
@@ -58,6 +57,9 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
   const [viewMode, setViewMode] = useState<'studio' | 'ai_candidates'>('studio');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [projectTitle, setProjectTitle] = useState(activeProject?.name || '');
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
 
   useEffect(() => {
     initializeStore();
@@ -65,7 +67,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
 
   // Synchronize tab from URL query param if present
   useEffect(() => {
-    if (tabParam && ['dashboard', 'media', 'timeline', 'merge', 'export'].includes(tabParam)) {
+    if (tabParam && ['media', 'timeline', 'merge', 'export'].includes(tabParam)) {
       setActiveTab(tabParam as StudioTab);
     }
   }, [tabParam, setActiveTab]);
@@ -107,16 +109,26 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
     setIsEditingTitle(false);
   };
 
+  const handleCreateProject = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newProjectName.trim();
+    if (!name) return;
+
+    createProject(name, newProjectDescription.trim() || undefined);
+    setNewProjectName('');
+    setNewProjectDescription('');
+    setShowCreateProject(false);
+  };
+
   const ffmpegOk = mediaServiceStatus?.ffmpeg?.available;
   const ffprobeOk = mediaServiceStatus?.ffprobe?.available;
   const isLocalServiceOnline = ffmpegOk && ffprobeOk;
 
   const tabs: { id: StudioTab; label: string; icon: React.ReactNode; num: string }[] = [
-    { id: 'dashboard', label: 'Projects', icon: <FolderOpen className="w-3.5 h-3.5" />, num: '1' },
-    { id: 'media', label: 'Media Library', icon: <Film className="w-3.5 h-3.5" />, num: '2' },
-    { id: 'timeline', label: 'Timeline & Clips', icon: <Scissors className="w-3.5 h-3.5" />, num: '3' },
-    { id: 'merge', label: 'Merge Studio', icon: <Layers className="w-3.5 h-3.5" />, num: '4' },
-    { id: 'export', label: 'Export Queue', icon: <Download className="w-3.5 h-3.5" />, num: '5' },
+    { id: 'media', label: 'Media Library', icon: <Film className="w-3.5 h-3.5" />, num: '1' },
+    { id: 'timeline', label: 'Timeline & Clips', icon: <Scissors className="w-3.5 h-3.5" />, num: '2' },
+    { id: 'merge', label: 'Merge Studio', icon: <Layers className="w-3.5 h-3.5" />, num: '3' },
+    { id: 'export', label: 'Export Queue', icon: <Download className="w-3.5 h-3.5" />, num: '4' },
   ];
 
   if (isLoading) {
@@ -242,6 +254,14 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
 
           {/* Right: Mode Switcher & Media Engine Status */}
           <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateProject(true)}
+              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white hover:bg-zinc-200 text-zinc-950 transition-colors cursor-pointer"
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>New Project</span>
+            </button>
             {children && (
               <div className="flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800">
                 <button
@@ -328,27 +348,25 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
           {viewMode === 'ai_candidates' ? (
             /* Render existing AI candidates UI */
             <div className="max-w-[1600px] mx-auto p-4">{children}</div>
-          ) : activeTab === 'dashboard' ? (
-            <ProjectDashboard />
           ) : !activeProject ? (
             /* Friendly No-Project Guidance State */
             <div className="max-w-md mx-auto my-20 p-8 rounded-2xl bg-zinc-900/40 border border-white/10 text-center space-y-4 shadow-xl">
               <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
-                <FolderOpen className="w-7 h-7" />
+                <Film className="w-7 h-7" />
               </div>
               <div className="space-y-1.5">
                 <h3 className="text-base font-bold text-white">No Project Open</h3>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Select an existing project from the Projects tab or create a new one to access media, clipping tools, and export recipes.
+                  Create a clipping project to import media, mark clips, and build export recipes.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab('dashboard')}
+                onClick={() => setShowCreateProject(true)}
                 className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-all cursor-pointer"
               >
-                <FolderOpen className="w-4 h-4" />
-                <span>Go to Projects Dashboard</span>
+                <Film className="w-4 h-4" />
+                <span>Create Clipping Project</span>
               </button>
             </div>
           ) : (
@@ -366,15 +384,6 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     {activeTab === 'export' && 'Export Queue & Job Manager'}
                   </h2>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('dashboard')}
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium border border-white/10 transition-colors cursor-pointer"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>All Projects</span>
-                </button>
               </div>
 
               {/* Media Library View (Phase 2) */}
@@ -411,6 +420,46 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
             </div>
           )}
         </div>
+
+        {showCreateProject && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Create Clipping Project</h2>
+                <p className="mt-1 text-xs text-zinc-400">Start a workspace for media, clips, and export recipes.</p>
+              </div>
+              <form onSubmit={handleCreateProject} className="space-y-4">
+                <div>
+                  <label htmlFor="clipping-project-name" className="mb-1 block text-xs font-semibold text-zinc-300">Project name</label>
+                  <input
+                    id="clipping-project-name"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="e.g. Podcast highlights"
+                    required
+                    autoFocus
+                    className="w-full rounded-xl border border-white/15 bg-zinc-950 px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="clipping-project-description" className="mb-1 block text-xs font-semibold text-zinc-300">Description (optional)</label>
+                  <textarea
+                    id="clipping-project-description"
+                    value={newProjectDescription}
+                    onChange={(e) => setNewProjectDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Add editorial notes or a topic summary..."
+                    className="w-full resize-none rounded-xl border border-white/15 bg-zinc-950 px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-white focus:outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowCreateProject(false)} className="rounded-xl bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700">Cancel</button>
+                  <button type="submit" className="rounded-xl bg-white px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-zinc-200">Create &amp; Open</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

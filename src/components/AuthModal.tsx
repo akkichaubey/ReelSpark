@@ -1,24 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuthStore } from '@/lib/use-auth-store';
-import { X, Mail, Lock, User, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { X, Mail, Lock, User, Loader2, ArrowRight } from 'lucide-react';
 import { ReelSparkLogo } from './ReelSparkLogo';
 
 export const AuthModal: React.FC = () => {
   const { authModalOpen, authModalMode, closeAuthModal, login, register, openAuthModal } = useAuthStore();
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const mode = authModalMode;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    setMode(authModalMode);
-    setError(null);
-  }, [authModalMode, authModalOpen]);
 
   if (!authModalOpen) return null;
 
@@ -55,6 +50,9 @@ export const AuthModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
         className="relative w-full max-w-md p-6 sm:p-8 bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -64,7 +62,9 @@ export const AuthModal: React.FC = () => {
 
         {/* Close Button */}
         <button
+          type="button"
           onClick={closeAuthModal}
+          aria-label="Close sign-in dialog"
           className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/60 transition-colors"
         >
           <X className="w-5 h-5" />
@@ -75,7 +75,7 @@ export const AuthModal: React.FC = () => {
           <div className="flex justify-center mb-3">
             <ReelSparkLogo variant="icon" className="w-12 h-12 shadow-lg shadow-amber-500/10" />
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
+          <h2 id="auth-modal-title" className="text-xl font-bold text-white tracking-tight">
             {mode === 'login' ? 'Welcome Back' : 'Create an Account'}
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
@@ -125,7 +125,7 @@ export const AuthModal: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setMode('login');
+              openAuthModal('login');
               setError(null);
             }}
             className={`flex-1 py-2 rounded-lg transition-all ${
@@ -139,7 +139,7 @@ export const AuthModal: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setMode('register');
+              openAuthModal('register');
               setError(null);
             }}
             className={`flex-1 py-2 rounded-lg transition-all ${
@@ -184,10 +184,12 @@ export const AuthModal: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           {mode === 'register' && (
             <div>
-              <label className="block text-zinc-300 font-medium mb-1.5">Full Name</label>
+              <label htmlFor="auth-name" className="block text-zinc-300 font-medium mb-1.5">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
                 <input
+                  id="auth-name"
+                  name="name"
                   type="text"
                   required
                   placeholder="Rahul Sharma"
@@ -200,12 +202,14 @@ export const AuthModal: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-zinc-300 font-medium mb-1.5">
+            <label htmlFor="auth-email" className="block text-zinc-300 font-medium mb-1.5">
               {mode === 'login' ? 'Username or Email' : 'Email Address'}
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
               <input
+                id="auth-email"
+                name="email"
                 type={mode === 'login' ? 'text' : 'email'}
                 required
                 placeholder={mode === 'login' ? 'admin or you@example.com' : 'you@example.com'}
@@ -217,10 +221,12 @@ export const AuthModal: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-zinc-300 font-medium mb-1.5">Password</label>
+            <label htmlFor="auth-password" className="block text-zinc-300 font-medium mb-1.5">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
               <input
+                id="auth-password"
+                name="password"
                 type="password"
                 required
                 placeholder={mode === 'login' ? 'admin' : 'At least 6 characters'}
@@ -257,7 +263,7 @@ export const AuthModal: React.FC = () => {
               Don&apos;t have an account?{' '}
               <button
                 type="button"
-                onClick={() => setMode('register')}
+                onClick={() => openAuthModal('register')}
                 className="text-white hover:underline font-semibold"
               >
                 Sign up free
@@ -268,7 +274,7 @@ export const AuthModal: React.FC = () => {
               Already have an account?{' '}
               <button
                 type="button"
-                onClick={() => setMode('login')}
+                onClick={() => openAuthModal('login')}
                 className="text-white hover:underline font-semibold"
               >
                 Sign in

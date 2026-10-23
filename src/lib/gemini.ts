@@ -21,37 +21,53 @@ export type ChunkAnalysisInput = OllamaChunkInput;
 export const ANALYSIS_SYSTEM_INSTRUCTION = `You are a master video editor, philosopher, and AI clip curator specializing in identifying viral, deeply meaningful, motivational, and thought-provoking short clips from long-form speeches, podcasts, and talks.`;
 
 /**
- * Direct Google Gemini API call using the user's personal API key via standard HTTP REST.
+ * Direct Google Gemini API call using the user's personal API key or environment key via standard HTTP REST.
  * No external npm packages required.
  */
 export async function generateWithGemini(params: {
-  prompt: string;
+  prompt?: string;
+  contents?: any[];
+  parts?: any[];
   system?: string;
   model?: string;
   apiKey?: string;
   responseMimeType?: string;
   temperature?: number;
 }): Promise<string> {
-  const model = params.model || 'gemini-2.5-flash';
-  const apiKey = (params.apiKey || loadAppSettings().geminiApiKey || '').trim();
+  const model = params.model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const apiKey = (
+    params.apiKey ||
+    process.env.GEMINI_API_KEY ||
+    loadAppSettings().geminiApiKey ||
+    ''
+  ).trim();
 
   if (!apiKey) {
-    throw new Error('Please enter your personal Google Gemini API key to use Gemini.');
+    throw new Error('Please enter your Google Gemini API key or set GEMINI_API_KEY in .env.local to use Gemini.');
   }
 
-  const payload: any = {
-    contents: [
+  let finalContents: any[] = [];
+  if (Array.isArray(params.contents) && params.contents.length > 0) {
+    finalContents = params.contents;
+  } else if (Array.isArray(params.parts) && params.parts.length > 0) {
+    finalContents = [{ role: 'user', parts: params.parts }];
+  } else {
+    finalContents = [
       {
         role: 'user',
         parts: [
           {
-            text: params.system ? `${params.system}\n\n${params.prompt}` : params.prompt,
+            text: params.system ? `${params.system}\n\n${params.prompt || ''}` : params.prompt || '',
           },
         ],
       },
-    ],
+    ];
+  }
+
+  const payload: any = {
+    contents: finalContents,
     generationConfig: {
-      temperature: params.temperature ?? 0.3,
+      temperature: params.temperature ?? 0.2,
       ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
     },
   };
@@ -81,18 +97,30 @@ export async function generateWithGemini(params: {
  * Backward compatibility stub for getGeminiClient.
  */
 export function getGeminiClient(customApiKey?: string): any {
+  const apiKey = (
+    customApiKey ||
+    process.env.GEMINI_API_KEY ||
+    loadAppSettings().geminiApiKey ||
+    ''
+  ).trim();
+
   return {
     models: {
       generateContent: async (params: any) => {
-        const apiKey = (customApiKey || loadAppSettings().geminiApiKey || '').trim();
-        const prompt = typeof params.contents === 'string'
-          ? params.contents
-          : JSON.stringify(params.contents);
-
         let text = '';
         if (apiKey) {
-          text = await generateWithGemini({ prompt, apiKey });
+          text = await generateWithGemini({
+            contents: Array.isArray(params.contents) ? params.contents : undefined,
+            prompt: typeof params.contents === 'string' ? params.contents : undefined,
+            model: params.model,
+            apiKey,
+            responseMimeType: params.config?.responseMimeType,
+            temperature: params.config?.temperature,
+          });
         } else {
+          const prompt = typeof params.contents === 'string'
+            ? params.contents
+            : JSON.stringify(params.contents);
           text = await generateWithOllama({ prompt });
         }
 
@@ -101,6 +129,12 @@ export function getGeminiClient(customApiKey?: string): any {
           candidates: [{ content: { parts: [{ text }] } }],
         };
       },
+    },
+    files: {
+      upload: async () => {
+        throw new Error('File upload not supported via REST stub, please use inline data.');
+      },
+      delete: async () => {},
     },
   };
 }
@@ -113,30 +147,41 @@ export async function generateContentWithFallback(
   preferredModel: string | undefined,
   params: { contents: any; config?: any }
 ): Promise<any> {
-  const apiKey = (loadAppSettings().geminiApiKey || '').trim();
-  let prompt = '';
-  if (Array.isArray(params.contents)) {
-    prompt = params.contents
-      .map((c: any) => (c.parts ? c.parts.map((p: any) => p.text || '').join('\n') : String(c)))
-      .join('\n');
-  } else if (typeof params.contents === 'string') {
-    prompt = params.contents;
-  } else {
-    prompt = JSON.stringify(params.contents);
-  }
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    loadAppSettings().geminiApiKey ||
+    ''
+  ).trim();
 
   let responseText = '';
   if (apiKey) {
     try {
+      const contents = Array.isArray(params.contents)
+        ? params.contents
+        : typeof params.contents === 'string'
+        ? [{ role: 'user', parts: [{ text: params.contents }] }]
+        : [params.contents];
+
       responseText = await generateWithGemini({
-        prompt,
+        contents,
         model: preferredModel,
         apiKey,
         responseMimeType: params.config?.responseMimeType,
         temperature: params.config?.temperature,
       });
-    } catch {
-      // Fallback to Ollama
+    } catch (err: any) {
+      console.warn('Gemini generate note, checking Ollama fallback:', err.message);
+      // Fallback to Ollama text if possible
+      let prompt = '';
+      if (Array.isArray(params.contents)) {
+        prompt = params.contents
+          .map((c: any) => (c.parts ? c.parts.map((p: any) => p.text || '').join('\n') : String(c)))
+          .join('\n');
+      } else if (typeof params.contents === 'string') {
+        prompt = params.contents;
+      } else {
+        prompt = JSON.stringify(params.contents);
+      }
       responseText = await generateWithOllama({
         prompt,
         format: params.config?.responseMimeType === 'application/json' ? 'json' : undefined,
@@ -144,6 +189,16 @@ export async function generateContentWithFallback(
       });
     }
   } else {
+    let prompt = '';
+    if (Array.isArray(params.contents)) {
+      prompt = params.contents
+        .map((c: any) => (c.parts ? c.parts.map((p: any) => p.text || '').join('\n') : String(c)))
+        .join('\n');
+    } else if (typeof params.contents === 'string') {
+      prompt = params.contents;
+    } else {
+      prompt = JSON.stringify(params.contents);
+    }
     responseText = await generateWithOllama({
       prompt,
       format: params.config?.responseMimeType === 'application/json' ? 'json' : undefined,

@@ -84,7 +84,7 @@ import {
   loadCrashRecoverySnapshot,
   clearCrashRecoverySnapshot,
 } from '../src/lib/clipping-studio/local-persistence';
-import { getSupabaseStatus, syncProjectToSupabase } from '../src/lib/clipping-studio/supabase';
+import { getCloudflareStatus, syncProjectToCloudflare } from '../src/lib/clipping-studio/cloudflare-sync';
 import { checkFfprobeStatus } from '../src/lib/config';
 import { extractAudioFromVideo, detectBestVideoEncoder, cleanupTempStorage } from '../src/lib/caption-maker/ffmpeg-renderer';
 import { devanagariToHinglish, getKeywordEmoji, enrichWordsWithEmojis } from '../src/lib/caption-maker/hinglish-and-emoji';
@@ -3175,7 +3175,7 @@ async function runAllTests() {
     );
   });
 
-  await test('Test 59: Video & Audio Clipping Studio Phase 1 (Local Media Service Contracts, Timestamp Parsing, SQL Migration & Supabase Resilient Fallback)', async () => {
+  await test('Test 59: Video & Audio Clipping Studio Phase 1 (Local Media Service Contracts, Timestamp Parsing, SQL Migration & Cloudflare D1 Resilient Fallback)', async () => {
     // 1. Millisecond timestamp parser accuracy
     assert.strictEqual(parseTimestampToMs('00:01:15.500'), 75500);
     assert.strictEqual(parseTimestampToMs('01:02:03.250'), 3723250);
@@ -3189,15 +3189,15 @@ async function runAllTests() {
     const invalidRange = parseTimestampRangeLine('00:00:20.000 to 00:00:10.000', 2);
     assert.strictEqual(invalidRange.valid, false);
 
-    // 3. Supabase configuration status check without throwing
-    const supabaseStatus = getSupabaseStatus();
-    assert.ok(typeof supabaseStatus.configured === 'boolean');
-    assert.ok(supabaseStatus.message.length > 0);
+    // 3. Cloudflare D1 configuration status check without throwing
+    const cfStatus = getCloudflareStatus();
+    assert.ok(typeof cfStatus.configured === 'boolean');
+    assert.ok(cfStatus.message.length > 0);
 
-    // 4. Version-controlled migration verification
-    const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261020000000_create_clipping_studio_schema.sql');
-    assert.ok(fs.existsSync(migrationPath), 'Phase 1 SQL migration must exist');
-    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    // 4. Version-controlled schema verification
+    const schemaPath = path.join(process.cwd(), 'src', 'lib', 'cloudflare', 'schema.sql');
+    assert.ok(fs.existsSync(schemaPath), 'Phase 1 SQL schema must exist');
+    const sql = fs.readFileSync(schemaPath, 'utf-8');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS clipping_projects'));
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS merge_recipes'));
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS export_sources'));
@@ -3464,8 +3464,8 @@ invalid_malformed_entry
     clearCrashRecoverySnapshot(proj.id);
     assert.strictEqual(loadCrashRecoverySnapshot(proj.id), null);
 
-    // 3. Supabase resilient sync fallback
-    const syncRes = await syncProjectToSupabase(proj);
+    // 3. Cloudflare D1 resilient sync fallback
+    const syncRes = await syncProjectToCloudflare(proj);
     assert.strictEqual(syncRes.success, true);
     assert.ok(syncRes.message);
 

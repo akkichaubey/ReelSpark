@@ -9,7 +9,6 @@ import {
   Scissors,
   Sparkles,
   Share2,
-  FolderOpen,
   Download,
   Sliders,
   HelpCircle,
@@ -17,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Users,
+  BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ReelSparkLogo } from '@/components/ReelSparkLogo';
@@ -81,12 +82,6 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           icon: Scissors,
         },
         {
-          id: 'my-projects',
-          label: 'My Projects',
-          href: '/?view=projects',
-          icon: FolderOpen,
-        },
-        {
           id: 'export-history',
           label: 'Export History',
           href: '/clipping-studio?tab=export',
@@ -95,20 +90,25 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
       ],
     },
     {
-      title: 'AI Tools',
+      title: 'Social Intelligence',
       items: [
-        {
-          id: 'caption-maker',
-          label: 'AI Reel Caption Maker',
-          href: '/caption-maker',
-          icon: Sparkles,
-          badge: 'Remotion',
-        },
         {
           id: 'social-post',
           label: 'AI Social Post',
           href: '/social-post',
           icon: Share2,
+        },
+        {
+          id: 'social-accounts',
+          label: 'Social Accounts',
+          href: '/social-post?tab=accounts',
+          icon: Users,
+        },
+        {
+          id: 'social-guidelines',
+          label: 'Platform Specs',
+          href: '/social-post?tab=guidelines',
+          icon: BookOpen,
         },
       ],
     },
@@ -117,13 +117,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   // Helper to check if item is currently active
   const isItemActive = (item: NavItem) => {
     if (item.href === '/') {
-      return pathname === '/' && !currentView;
+      return pathname === '/' && currentView !== 'clip-finder';
     }
     if (item.href === '/?view=clip-finder') {
       return pathname === '/' && currentView === 'clip-finder';
-    }
-    if (item.href === '/?view=projects') {
-      return pathname === '/' && currentView === 'projects';
     }
     if (item.href === '/clipping-studio?tab=export') {
       return pathname === '/clipping-studio' && searchParams.get('tab') === 'export';
@@ -134,8 +131,19 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     if (item.href === '/caption-maker') {
       return pathname.startsWith('/caption-maker');
     }
-    if (item.href === '/social-post') {
-      return pathname.startsWith('/social-post');
+    if (item.href.startsWith('/social-post')) {
+      if (!pathname.startsWith('/social-post')) return false;
+      const currentTab = searchParams.get('tab') || 'generator';
+      if (item.href === '/social-post' || item.href === '/social-post?tab=generator') {
+        return currentTab === 'generator' || !searchParams.get('tab');
+      }
+      if (item.href === '/social-post?tab=accounts' || item.href === '/social-post?tab=preferences') {
+        return currentTab === 'accounts';
+      }
+      if (item.href === '/social-post?tab=guidelines') {
+        return currentTab === 'guidelines';
+      }
+      return false;
     }
     return pathname === item.href;
   };
@@ -337,6 +345,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     <>
       {/* Desktop Sidebar (Persistent) */}
       <aside
+        suppressHydrationWarning
         className={`hidden md:flex flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 transition-all duration-200 z-30 overflow-hidden ${
           isCollapsed ? 'w-[72px]' : 'w-64'
         }`}

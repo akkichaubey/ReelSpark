@@ -19,7 +19,7 @@ import {
   deleteProjectLocally,
   duplicateProjectLocally,
 } from '../src/lib/clipping-studio/local-persistence';
-import { getSupabaseStatus, getServerSupabase } from '../src/lib/clipping-studio/supabase';
+import { getCloudflareStatus } from '../src/lib/clipping-studio/cloudflare-sync';
 import { checkFfmpegStatus, checkFfprobeStatus } from '../src/lib/config';
 
 async function runPhase1Tests() {
@@ -143,24 +143,19 @@ async function runPhase1Tests() {
     assert.strictEqual(project.clips.length, 1);
   });
 
-  // 4. Supabase Client & Graceful Fallback
-  await test('Supabase: Detects configuration status without crashing when credentials are missing', () => {
-    const status = getSupabaseStatus();
+  // 4. Cloudflare D1 Client & Graceful Fallback
+  await test('Cloudflare D1: Detects configuration status without crashing when credentials are missing', () => {
+    const status = getCloudflareStatus();
     assert.ok(typeof status.configured === 'boolean');
     assert.ok(typeof status.message === 'string');
-
-    // Server client returns null or client without crash
-    const serverClient = getServerSupabase();
-    // It should safely evaluate to null or SupabaseClient
-    assert.ok(serverClient === null || typeof serverClient === 'object');
   });
 
-  // 5. Version-controlled SQL migration verification
-  await test('Supabase Migrations: 20261020000000_create_clipping_studio_schema.sql exists and contains all required tables', () => {
-    const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261020000000_create_clipping_studio_schema.sql');
-    assert.ok(fs.existsSync(migrationPath), 'SQL migration file must exist');
+  // 5. Version-controlled SQL schema verification
+  await test('Cloudflare D1 Schema: src/lib/cloudflare/schema.sql exists and contains all required tables', () => {
+    const schemaPath = path.join(process.cwd(), 'src', 'lib', 'cloudflare', 'schema.sql');
+    assert.ok(fs.existsSync(schemaPath), 'SQL schema file must exist');
 
-    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    const sql = fs.readFileSync(schemaPath, 'utf-8');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS clipping_projects'), 'clipping_projects table missing');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS media_assets'), 'media_assets table missing');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS clips'), 'clips table missing');
@@ -168,7 +163,6 @@ async function runPhase1Tests() {
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS merge_recipe_items'), 'merge_recipe_items table missing');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS export_jobs'), 'export_jobs table missing');
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS export_sources'), 'export_sources table missing');
-    assert.ok(sql.includes('ENABLE ROW LEVEL SECURITY'), 'RLS missing');
   });
 
   // 6. Local Project Persistence

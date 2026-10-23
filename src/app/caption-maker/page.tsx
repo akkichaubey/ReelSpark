@@ -59,6 +59,7 @@ import {
   Tv,
   Image as ImageIcon,
   ShieldCheck,
+  Shield,
   Loader2,
   AlertCircle,
   History,
@@ -220,6 +221,13 @@ function CaptionMakerPageContent() {
 
     // If localStorage matches the requested clipId (or no specific clipId is in the URL), apply it immediately
     if (restoredParsed && (!urlClipId || restoredParsed.sourceClipId === urlClipId)) {
+      if (
+        restoredParsed.transcript &&
+        restoredParsed.transcript.length > 0 &&
+        (!restoredParsed.captionGroups || restoredParsed.captionGroups.length === 0)
+      ) {
+        restoredParsed.captionGroups = groupTranscriptWords(restoredParsed.transcript, 4);
+      }
       try {
         localStorage.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
       } catch {}
@@ -317,7 +325,14 @@ function CaptionMakerPageContent() {
       } catch {}
     }
 
-    const fallbackProj = restoredParsed || createEmptyCaptionProject();
+    const fallbackProj = restoredParsed || createDefaultCaptionProject();
+    if (
+      fallbackProj.transcript &&
+      fallbackProj.transcript.length > 0 &&
+      (!fallbackProj.captionGroups || fallbackProj.captionGroups.length === 0)
+    ) {
+      fallbackProj.captionGroups = groupTranscriptWords(fallbackProj.transcript, 4);
+    }
     setProject(fallbackProj);
     setHistory([fallbackProj]);
     setHistoryIndex(0);
@@ -325,6 +340,9 @@ function CaptionMakerPageContent() {
       setAudioDuration(fallbackProj.audio.duration);
     } else {
       setAudioDuration(0);
+    }
+    if (fallbackProj.transcript && fallbackProj.transcript.length > 0) {
+      setLeftTab('transcript');
     }
     const recovery = detectCrashRecovery(fallbackProj);
     if (recovery.hasRecovery && recovery.recoverySnapshot) {
@@ -900,6 +918,16 @@ function CaptionMakerPageContent() {
       isTranscribingRef.current = true;
       setIsTranscribing(true);
       try {
+        const isSampleQuote = (t?: string) =>
+          Boolean(
+            t &&
+              (t.includes('Zindagi mein kabhi HAAR') ||
+                t.includes('ज़िंदगी में कभी हार') ||
+                t.includes('girte wahi hain jo'))
+          );
+
+        const isCustomAudio = targetProj.audio.fileUrl !== '/sample-audio.mp3';
+
         const res = await fetch('/api/caption-maker/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -907,11 +935,13 @@ function CaptionMakerPageContent() {
             storagePath: targetProj.audio.storagePath,
             fileUrl: targetProj.audio.fileUrl,
             preferredLanguage: targetProj.preferredLanguage || 'en',
+            clipId: targetProj.sourceClipId,
+            audioTitle: targetProj.audio.fileName || targetProj.title,
             fallbackHint: {
-              textHindi: targetProj.rawTranscriptHindi,
-              textEnglish: targetProj.rawTranscriptEnglish,
-              titleHindi: targetProj.title,
-              titleEnglish: targetProj.title,
+              textHindi: isCustomAudio && isSampleQuote(targetProj.rawTranscriptHindi) ? undefined : targetProj.rawTranscriptHindi,
+              textEnglish: isCustomAudio && isSampleQuote(targetProj.rawTranscriptEnglish) ? undefined : targetProj.rawTranscriptEnglish,
+              titleHindi: isSampleQuote(targetProj.title) ? undefined : targetProj.title,
+              titleEnglish: isSampleQuote(targetProj.title) ? undefined : targetProj.title,
             },
           }),
         });
@@ -973,6 +1003,7 @@ function CaptionMakerPageContent() {
       } catch (err: any) {
         if (!silent) {
           console.error('Audio transcription error:', err);
+          alert(`Transcription error: ${err.message || 'Failed to re-analyze audio'}`);
         } else {
           console.warn('Auto audio sync failed:', err);
         }
@@ -1217,12 +1248,12 @@ function CaptionMakerPageContent() {
     if (
       project.audio?.fileUrl &&
       project.audio.fileUrl !== '/sample-audio.mp3' &&
-      (!project.isAudioSynced || project.syncVersion !== 4) &&
+      (!project.isAudioSynced || project.syncVersion !== 4 || project.transcript.length === 0) &&
       !isTranscribing
     ) {
       syncAudioWithTranscript(project, true);
     }
-  }, [project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion]);
+  }, [project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion, project.transcript.length]);
 
   const handleUpdateGroups = (groups: CaptionGroup[]) => {
     // Flatten words
@@ -1233,6 +1264,27 @@ function CaptionMakerPageContent() {
       transcript: flattenedWords,
       updatedAt: new Date().toISOString(),
     }));
+  };
+
+  const isSafeAreaOn = project.captionStyle?.showSafeArea !== false;
+
+  const handleToggleSafeArea = () => {
+    const nextState = !isSafeAreaOn;
+    updateProjectWithHistory((prev) => {
+      const currentThumb = prev.thumbnailSettings || currentThumbSettings;
+      return {
+        ...prev,
+        captionStyle: {
+          ...prev.captionStyle,
+          showSafeArea: nextState,
+        },
+        thumbnailSettings: {
+          ...currentThumb,
+          showSafeArea: nextState,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const handleChangeStyle = (style: CaptionStyle) => {
@@ -1676,7 +1728,7 @@ function CaptionMakerPageContent() {
               placeholder="Project title..."
             />
 
-            {/* Bilingual Language Switcher Toggle */}
+            {/* Multilingual Language Switcher Toggle (English / Hindi / Hinglish) */}
             <div className="flex items-center bg-zinc-800/90 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
               <button
                 type="button"
@@ -1688,7 +1740,7 @@ function CaptionMakerPageContent() {
                 }`}
                 title="Show English captions"
               >
-                EN
+                English
               </button>
               <button
                 type="button"
@@ -1701,6 +1753,18 @@ function CaptionMakerPageContent() {
                 title="Show Hindi captions"
               >
                 हिन्दी
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchLanguage('hinglish')}
+                className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
+                  project.preferredLanguage === 'hinglish'
+                    ? 'bg-amber-400 text-black shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Show Hinglish captions (Roman Hindi)"
+              >
+                Hinglish
               </button>
             </div>
 
@@ -1767,13 +1831,23 @@ function CaptionMakerPageContent() {
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
-            {/* Shortcuts Help */}
+            {/* Safe Mode Toggle Button in Header */}
             <button
-              onClick={() => setIsShortcutsOpen(true)}
-              title="Keyboard Shortcuts"
-              className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              type="button"
+              onClick={handleToggleSafeArea}
+              title={
+                isSafeAreaOn
+                  ? 'Safe Mode guides are ON (Overlaying 9:16 safe zones). Click to hide.'
+                  : 'Safe Mode guides are OFF. Click to show.'
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isSafeAreaOn
+                  ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 hover:bg-sky-500/30 shadow-sky-500/10'
+                  : 'bg-zinc-800/80 border-zinc-700/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+              }`}
             >
-              <Keyboard className="w-3.5 h-3.5" />
+              <Shield className={`w-3.5 h-3.5 ${isSafeAreaOn ? 'text-sky-400' : 'text-zinc-500'}`} />
+              <span>Safe Mode: {isSafeAreaOn ? 'ON' : 'OFF'}</span>
             </button>
 
             {/* Autosave Status Indicator */}
@@ -1787,17 +1861,6 @@ function CaptionMakerPageContent() {
               />
               <span>{autosaveStatus === 'saving' ? 'Saving...' : 'Autosaved'}</span>
             </div>
-
-            {/* Version Snapshots Modal Trigger */}
-            <button
-              type="button"
-              onClick={() => setIsHistoryModalOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Project Version History & Snapshots"
-            >
-              <History className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Versions</span>
-            </button>
 
             {/* Save */}
             <button
@@ -1896,8 +1959,12 @@ function CaptionMakerPageContent() {
             </button>
           </div>
 
-          {/* Left Tab Body (Scrollable Box) */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-3">
+          {/* Left Tab Body (Scrollable for assets, flex pinned for transcript) */}
+          <div
+            className={`flex-1 min-h-0 ${
+              leftTab === 'transcript' ? 'overflow-hidden flex flex-col p-3' : 'overflow-y-auto p-3'
+            }`}
+          >
             {leftTab === 'assets' ? (
               <AssetUploadSection
                 image={project.image}
@@ -1989,76 +2056,22 @@ function CaptionMakerPageContent() {
                 }}
               />
             ) : (
-              <div className="flex flex-col h-full gap-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleTranscribe}
-                      disabled={isTranscribing || !project.audio}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        isTranscribing
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
-                          : project.isAudioSynced
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
-                          : 'bg-amber-400 text-black hover:bg-amber-300 shadow-sm'
-                      }`}
-                      title="Transcribe and synchronize caption timestamps directly from clip audio"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      {isTranscribing
-                        ? 'Syncing Audio...'
-                        : project.isAudioSynced
-                        ? 'Audio Synced'
-                        : 'Sync Audio & Text'}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchLanguage('en')}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                        project.preferredLanguage === 'en'
-                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      English
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchLanguage('hi')}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                        project.preferredLanguage === 'hi'
-                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      हिन्दी
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchLanguage('hinglish')}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                        project.preferredLanguage === 'hinglish'
-                          ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      Hinglish
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 min-h-0">
-                  <TranscriptEditor
-                    groups={project.captionGroups}
-                    currentTime={currentTime}
-                    onUpdateGroups={handleUpdateGroups}
-                    onSeek={handleSeek}
-                    onClearAll={handleClearAllTranscript}
-                  />
-                </div>
+              <div className="h-full min-h-0">
+                <TranscriptEditor
+                  groups={
+                    project.captionGroups && project.captionGroups.length > 0
+                      ? project.captionGroups
+                      : project.transcript && project.transcript.length > 0
+                      ? groupTranscriptWords(project.transcript, 4)
+                      : []
+                  }
+                  currentTime={currentTime}
+                  onUpdateGroups={handleUpdateGroups}
+                  onSeek={handleSeek}
+                  onClearAll={handleClearAllTranscript}
+                  onAutoDetectTranscript={handleTranscribe}
+                  isTranscribing={isTranscribing}
+                />
               </div>
             )}
           </div>

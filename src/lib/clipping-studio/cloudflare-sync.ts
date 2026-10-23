@@ -1,8 +1,6 @@
 /**
  * Cloudflare D1 — Clipping Studio Project Sync
  *
- * Replaces: src/lib/clipping-studio/supabase.ts
- *
  * Synchronizes clipping projects, media assets, and clips to Cloudflare D1.
  * Falls back gracefully to local-only mode when D1 is not configured.
  */
@@ -19,7 +17,6 @@ export interface CloudflareConfigStatus {
 
 /**
  * Returns configuration status of Cloudflare D1 without throwing errors.
- * Drop-in replacement for getSupabaseStatus().
  */
 export function getCloudflareStatus(): CloudflareConfigStatus {
   return getD1Status();
@@ -28,8 +25,6 @@ export function getCloudflareStatus(): CloudflareConfigStatus {
 /**
  * Synchronizes a clipping project and its child entities to Cloudflare D1.
  * Fails safely without throwing if offline or unconfigured.
- *
- * Drop-in replacement for syncProjectToSupabase().
  */
 export async function syncProjectToCloudflare(
   project: any

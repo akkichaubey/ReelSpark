@@ -1,4 +1,5 @@
 import { CaptionGroup, TranscriptWord } from './types';
+import { detectImportantWords } from './important-words';
 
 /**
  * Group an array of TranscriptWords into natural, readable caption phrases (approx 2-5 words each).
@@ -61,14 +62,14 @@ export function groupTranscriptWords(
 }
 
 function buildCaptionGroup(words: TranscriptWord[], id: string): CaptionGroup {
-  const start = words[0]?.start ?? 0;
-  const end = words[words.length - 1]?.end ?? start + 1;
+  const start = words.length > 0 ? Math.min(...words.map((w) => w.start)) : 0;
+  const end = words.length > 0 ? Math.max(...words.map((w) => w.end)) : start + 1;
   const text = words.map((w) => w.text).join(' ');
   return {
     id,
     words,
-    start,
-    end,
+    start: Number(start.toFixed(2)),
+    end: Number(end.toFixed(2)),
     text,
   };
 }
@@ -183,4 +184,110 @@ export function addWordToGroup(
     }
     return buildCaptionGroup(nextWords, group.id);
   });
+}
+
+/**
+ * Delete an entire caption group by its id.
+ */
+export function deleteCaptionGroup(
+  groups: CaptionGroup[],
+  groupId: string
+): CaptionGroup[] {
+  return groups.filter((g) => g.id !== groupId);
+}
+
+/**
+ * Edit an entire caption group's phrase text and/or timing.
+ * Tokenizes the new phrase text and spreads words evenly across the group's time interval.
+ */
+export function updateCaptionGroupPhrase(
+  groups: CaptionGroup[],
+  groupId: string,
+  newPhraseText: string,
+  customStart?: number,
+  customEnd?: number
+): CaptionGroup[] {
+  return groups.map((g) => {
+    if (g.id !== groupId) return g;
+
+    const start = customStart !== undefined ? customStart : g.start;
+    const end = customEnd !== undefined ? customEnd : g.end;
+    const duration = Math.max(0.2, end - start);
+
+    const tokens = newPhraseText
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.length > 0);
+
+    if (tokens.length === 0) {
+      return g;
+    }
+
+    const timePerWord = duration / tokens.length;
+    const newWords: TranscriptWord[] = tokens.map((token, idx) => {
+      const isLast = idx === tokens.length - 1;
+      const wStart = Number((start + idx * timePerWord).toFixed(2));
+      const wEnd = isLast ? end : Number(Math.min(end, start + (idx + 0.9) * timePerWord).toFixed(2));
+      const existingWord = g.words[idx];
+      return {
+        id: existingWord ? existingWord.id : `w_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+        text: token,
+        start: wStart,
+        end: Math.max(wStart + 0.05, wEnd),
+        isImportant: existingWord ? existingWord.isImportant : undefined,
+      };
+    });
+
+    return buildCaptionGroup(detectImportantWords(newWords), g.id);
+  });
+}
+
+/**
+ * Add a brand-new caption group.
+ */
+export function addCaptionGroup(
+  groups: CaptionGroup[],
+  afterGroupId: string | null,
+  text: string,
+  start: number,
+  end: number
+): CaptionGroup[] {
+  const tokens = text
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+  const duration = Math.max(0.4, end - start);
+  const timePerWord = duration / Math.max(1, tokens.length);
+
+  const newWords: TranscriptWord[] = tokens.map((token, idx) => {
+    const isLast = idx === tokens.length - 1;
+    const wStart = Number((start + idx * timePerWord).toFixed(2));
+    const wEnd = isLast ? end : Number(Math.min(end, start + (idx + 0.9) * timePerWord).toFixed(2));
+    return {
+      id: `w_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+      text: token,
+      start: wStart,
+      end: Math.max(wStart + 0.05, wEnd),
+    };
+  });
+
+  const newGroup = buildCaptionGroup(
+    detectImportantWords(newWords),
+    `group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+  );
+
+  if (!afterGroupId) {
+    const next = [...groups, newGroup];
+    next.sort((a, b) => a.start - b.start);
+    return next;
+  }
+
+  const idx = groups.findIndex((g) => g.id === afterGroupId);
+  const next = [...groups];
+  if (idx !== -1) {
+    next.splice(idx + 1, 0, newGroup);
+  } else {
+    next.push(newGroup);
+  }
+  return next;
 }
