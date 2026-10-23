@@ -11,6 +11,7 @@ import { ImageAsset, ImagePosition, OutputSettings } from '@/lib/caption-maker/t
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
 import { Download, Sparkles } from 'lucide-react';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
+import { normalizeHookWord } from '@/lib/caption-maker/hook-quality';
 
 // Exact 1:1 position alignment map matching CaptionPreview.tsx
 const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -197,18 +198,18 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   const renderTitleWords = () => {
     const rawTitle = settings.title?.trim() || 'CREATE VIRAL REELS';
     const words = rawTitle.split(/\s+/).filter(Boolean);
-    const highlighted = (settings.highlightWords || []).map((w) => w.toLowerCase());
+    const highlighted = (settings.highlightWords || []).map(normalizeHookWord);
     const isUppercase = settings.textTransform === 'uppercase';
 
     return words.map((w, idx) => {
       const isStarWrapped = w.startsWith('*') && w.endsWith('*') && w.length > 2;
       const cleanText = isStarWrapped ? w.slice(1, -1) : w;
-      const strippedClean = cleanText.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const strippedClean = normalizeHookWord(cleanText);
 
       const isCurrentHighlight =
         isStarWrapped ||
         highlighted.includes(strippedClean) ||
-        highlighted.includes(cleanText.toLowerCase());
+        highlighted.includes(normalizeHookWord(cleanText));
 
       const wordColor = isCurrentHighlight
         ? settings.highlightColor || '#FCD905'

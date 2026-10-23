@@ -187,6 +187,7 @@ export function validateSocialPost(content: PostContentToValidate): PostValidati
     lowerText.includes('save') ||
     lowerText.includes('follow') ||
     lowerText.includes('comment') ||
+    lowerText.includes('reply') ||
     lowerText.includes('subscribe') ||
     lowerText.includes('link') ||
     lowerText.includes('👇');

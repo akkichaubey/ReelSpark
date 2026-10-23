@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  Sparkles,
+  Clapperboard,
   Scissors,
   Share2,
   FolderOpen,
@@ -77,29 +77,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Card 1: AI Caption Maker */}
+          {/* Card 1: AI Reel Maker */}
           <Link
-            href="/caption-maker"
+            href="/reel-maker"
             className="group relative rounded-2xl bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 hover:border-amber-400/40 p-6 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 shadow-lg"
           >
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                  <Sparkles className="w-6 h-6" />
+                  <Clapperboard className="w-6 h-6" />
                 </div>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30">
                   Most Popular
                 </span>
               </div>
               <h4 className="text-base font-bold text-white group-hover:text-amber-300 transition-colors">
-                AI Caption Maker
+                AI Reel Maker
               </h4>
               <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
                 Word-level timestamped subtitles, viral animation styles (Hormozi, Neon, Pop), karaoke colors, and 9:16 vertical MP4 export.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-semibold text-amber-400 group-hover:text-amber-300">
-              <span>Open Caption Maker</span>
+              <span>Open AI Reel Maker</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </Link>

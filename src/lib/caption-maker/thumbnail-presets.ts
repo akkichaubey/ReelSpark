@@ -8,6 +8,7 @@ import {
   ThumbnailBackgroundType,
   ImageAsset,
 } from './types';
+import { normalizeHookWord } from './hook-quality';
 
 export type {
   ThumbnailSettings,
@@ -274,8 +275,8 @@ export const THUMBNAIL_PRESETS: ThumbnailPreset[] = [
 export function createDefaultThumbnailSettings(
   projectTitle?: string,
   initialAspectRatio: '9:16' | '4:5' | '1:1' | '16:9' = '9:16',
-  position: ThumbnailLayoutPosition = 'top',
-  customY: number = 23,
+  position: ThumbnailLayoutPosition = 'custom',
+  customY: number = 27,
   fontFamily: string = 'Montserrat',
   highlightColor: string = '#FCD905'
 ): ThumbnailSettings {
@@ -288,7 +289,7 @@ export function createDefaultThumbnailSettings(
     badgeStyle: 'solid',
     badgeColor: '#FCD905',
     badgeEnabled: true,
-    badgeSpacing: 24,
+    badgeSpacing: 38,
     badgeShape: 'pill',
     badgeBorderRadius: 10,
     badgeBorderWidth: 0,
@@ -301,7 +302,7 @@ export function createDefaultThumbnailSettings(
     badgePaddingX: 18,
     badgePaddingY: 9,
     badgeGlowBlur: 18,
-    subtitleSpacing: 24,
+    subtitleSpacing: 30,
     preset: 'hormozi',
     fontFamily,
     fontSize: 78,
@@ -315,7 +316,7 @@ export function createDefaultThumbnailSettings(
     customY,
     textAlign: 'center',
     customX: 50,
-    overlayDarkness: 0,
+    overlayDarkness: 0.15,
     overlayType: 'radial-vignette',
     strokeWidth: 8,
     strokeColor: '#000000',
@@ -574,7 +575,7 @@ export async function renderThumbnailToCanvas(
       cleanWord = cleanWord.substring(1, cleanWord.length - 1);
       isHl = true;
     } else {
-      const stripped = cleanWord.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const stripped = normalizeHookWord(cleanWord);
       if (stripped && highlightSet.has(stripped)) {
         isHl = true;
       }

@@ -6,7 +6,7 @@
 
 ## ⚡ Highlights
 
-### 1. Professional AI Reel Studio (`/caption-maker`)
+### 1. Professional AI Reel Studio (`/reel-maker`)
 - **Word-by-Word Kinetic & Highlight Captions**: Exact verbatim speech synchronization in English, Hindi, and Hinglish with active-word pop and color highlights (`#FCD905`).
 - **Social Media Reel Safe-Zone Measurement Engine**: Verified boundary calculation and guides for **Instagram Reels** (14% top / 22% bottom / 15% rail / 35% warning), **Facebook Reels** (14% top / 26% bottom / 14% rail), **YouTube Shorts** (10% top / 23% bottom / 14% rail / 1.2% scrubber), and **Threads Video** (9% top / 20% bottom / no rail).
 - **Unified Reel Caption & Thumbnail Safe-Zone Studio**: Interactive calibration sliders (Top, Bottom, Right margin, Left margin), real-time usable canvas computation ($853 \times 1229\,\text{px}$ to $950 \times 1363\,\text{px}$), 1-click reset to official specs, Instagram 1:1 profile grid center square ($1080 \times 1080\,\text{px}$) and 4:5 in-feed crop lines ($1080 \times 1350\,\text{px}$).
@@ -57,7 +57,7 @@ pnpm dev
 ```
 Navigate to:
 - **AI Clip Finder**: [http://localhost:3000](http://localhost:3000)
-- **AI Reel Caption Studio**: [http://localhost:3000/caption-maker](http://localhost:3000/caption-maker)
+- **AI Reel Maker**: [http://localhost:3000/reel-maker](http://localhost:3000/reel-maker)
 - **AI Social Post Studio**: [http://localhost:3000/social-post](http://localhost:3000/social-post)
 
 ### 4. Run Automated Tests

@@ -199,7 +199,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   </div>
                   <div>
                     <h4 className="font-bold text-zinc-100 text-xs">Save As My Style</h4>
-                    <p className="text-[10px] text-zinc-400">Reuse your exact font, colors, stroke & badge anytime</p>
+                    <p className="text-[10px] text-zinc-400">Reuse the complete visual recipe: type, motion, badges, anchor and safe zone.</p>
                   </div>
                 </div>
                 <button

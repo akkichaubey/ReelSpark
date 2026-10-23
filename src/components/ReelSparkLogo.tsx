@@ -9,6 +9,8 @@ export interface ReelSparkLogoProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
 }
 
+const BRAND_NAME = 'ReelMaker';
+
 const BOX_PATH =
   'M221.166 0.126482C224.916 0.0864819 228.676 0.866488 232.386 1.22649C238.176 1.76649 244.076 1.43649 249.846 2.13649C255.286 2.80649 260.656 3.78649 266.096 4.47649C280.696 6.31649 296.576 10.5065 308.836 18.9865C323.546 29.1565 330.536 46.4165 334.856 63.0565C344.056 98.5265 341.916 135.786 341.906 172.196C341.896 208.566 343.656 259.987 322.836 291.427C308.086 313.687 277.756 319.727 253.096 321.837C232.746 323.577 212.536 323.327 192.096 323.827C170.046 324.367 148.116 324.257 126.096 323.697C96.1963 322.947 63.0563 323.257 36.4763 307.316C14.4763 294.116 6.33631 266.166 3.66631 242.196C2.74631 233.866 1.52631 225.506 0.946308 217.156C-0.353691 198.326 0.246309 179.076 0.376309 160.196C0.536309 136.276 0.486312 112.576 3.10631 88.8465C5.88631 63.5365 11.8763 35.2665 33.6963 19.2765C51.8463 5.97649 77.4663 3.44649 99.0963 1.93649C139.626 -0.893505 180.516 0.566482 221.166 0.126482Z';
 
@@ -35,7 +37,7 @@ export const ReelSparkLogo: React.FC<ReelSparkLogoProps> = ({
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className={className || 'w-8 h-8 shrink-0'}
-        aria-label="ReelSpark Icon"
+        aria-label={`${BRAND_NAME} icon`}
         {...props}
       >
         {/* Outer badge box */}
@@ -74,7 +76,7 @@ export const ReelSparkLogo: React.FC<ReelSparkLogoProps> = ({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className || 'h-8 w-auto shrink-0'}
-      aria-label="ReelSpark Logo"
+      aria-label={`${BRAND_NAME} logo`}
       {...props}
     >
       {/* Icon Container Box */}
@@ -100,9 +102,10 @@ export const ReelSparkLogo: React.FC<ReelSparkLogoProps> = ({
         strokeLinejoin="round"
         stroke={accentColor}
       />
-      {/* Wordmark Letters "REELSPARK" */}
+      {/* Preserve the original vector source for backwards-compatible SVG sizing. */}
       <path
         d={WORDMARK_PATH}
+        display="none"
         fillRule="evenodd"
         clipRule="evenodd"
         fill={textColor}
@@ -110,6 +113,17 @@ export const ReelSparkLogo: React.FC<ReelSparkLogoProps> = ({
         strokeLinejoin="round"
         stroke={textColor}
       />
+      <text
+        x="385"
+        y="222"
+        fill={textColor}
+        fontFamily="Arial Rounded MT Bold, Arial, sans-serif"
+        fontSize="205"
+        fontWeight="800"
+        letterSpacing="-10"
+      >
+        {BRAND_NAME}
+      </text>
     </svg>
   );
 };

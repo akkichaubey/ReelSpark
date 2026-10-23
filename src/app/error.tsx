@@ -10,7 +10,7 @@ export default function AppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('[ReelSpark route error]', error);
+    console.error('[ReelMaker route error]', error);
   }, [error]);
 
   return (
@@ -18,7 +18,7 @@ export default function AppError({
       <section className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900/80 p-6 text-center shadow-2xl">
         <h1 className="text-xl font-bold">Something went wrong</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          ReelSpark could not load this screen. Your saved local work has not been removed.
+          ReelMaker could not load this screen. Your saved local work has not been removed.
         </p>
         <button
           type="button"

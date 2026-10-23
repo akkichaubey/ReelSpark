@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   CaptionProject,
   CaptionGroup,
@@ -77,12 +77,23 @@ import { Suspense } from 'react';
 
 function CaptionMakerPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, isLoading: authLoading, openAuthModal, checkAuth, logout } = useAuthStore();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // Keep existing bookmarks working while presenting Reel Maker as the only
+  // public editor route. Query parameters carry over for clip/project links.
+  useEffect(() => {
+    if (pathname !== '/caption-maker') return;
+
+    const query = searchParams.toString();
+    router.replace(`/reel-maker${query ? `?${query}` : ''}`);
+  }, [pathname, router, searchParams]);
 
   // --- Project State & Undo/Redo History ---
   const [project, setProject] = useState<CaptionProject>(() =>
@@ -100,9 +111,9 @@ function CaptionMakerPageContent() {
 
   // UI Panels & Tabs
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
-  const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('style');
-  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
-  const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('layout');
+  const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('thumbnail');
+  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('thumbnail');
+  const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
   // Modals & History
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -776,8 +787,8 @@ function CaptionMakerPageContent() {
     const defaults = createDefaultThumbnailSettings(
       resolvedTitle,
       initialThumbAspect,
-      (project.captionStyle?.position as any) || 'top',
-      project.captionStyle?.customY ?? (project.captionStyle?.position === 'top' ? 18 : 50),
+      'custom',
+      27,
       project.captionStyle?.fontFamily || 'Montserrat',
       project.captionStyle?.importantColor || '#FCD905'
     );
@@ -1592,7 +1603,7 @@ function CaptionMakerPageContent() {
             </div>
             <div>
               <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
-                AI Reel Caption Maker
+                AI Reel Maker
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
                   Pro Studio
                 </span>
@@ -1612,7 +1623,7 @@ function CaptionMakerPageContent() {
             <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-400/5">
               <Sparkles className="w-6 h-6" />
             </div>
-            <h2 className="text-2xl font-bold">Sign In to Use AI Caption Maker</h2>
+            <h2 className="text-2xl font-bold">Sign In to Use AI Reel Maker</h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
               Please sign in or create an account to start editing animated captions, generating thumbnails, and rendering video reels.
             </p>
@@ -1633,11 +1644,11 @@ function CaptionMakerPageContent() {
 
   return (
     <DashboardLayout
-      title="AI Reel Caption Maker"
+      title="AI Reel Maker"
       subtitle={project.title}
       breadcrumbs={[
         { label: 'Dashboard', href: '/' },
-        { label: 'Caption Maker' },
+        { label: 'Reel Maker' },
         { label: project.title },
       ]}
       contentFullWidth

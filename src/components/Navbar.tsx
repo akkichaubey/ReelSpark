@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenGeminiModal,
 }) => {
   const pathname = usePathname();
-  const isCaptionMaker = pathname === '/caption-maker';
+  const isCaptionMaker = pathname === '/reel-maker' || pathname === '/caption-maker';
   const isSocialPost = pathname === '/social-post';
   const isClippingStudio = pathname === '/clipping-studio';
   const isDashboard = pathname === '/' || (!isCaptionMaker && !isSocialPost && !isClippingStudio);
@@ -60,7 +60,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Brand & Studio Navigation */}
       <div className="flex items-center gap-3">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center hover:opacity-90 transition-opacity" title="ReelSpark">
+        <Link href="/" className="flex items-center hover:opacity-90 transition-opacity" title="ReelMaker">
           <ReelSparkLogo variant="full" className="h-7 w-auto shrink-0" />
         </Link>
 
@@ -79,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Dashboard</span>
             </Link>
             <Link
-              href="/caption-maker"
+              href="/reel-maker"
               className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
                 isCaptionMaker
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
@@ -87,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>Reel Caption Maker</span>
+              <span>AI Reel Maker</span>
             </Link>
             <Link
               href="/clipping-studio"

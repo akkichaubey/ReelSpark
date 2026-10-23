@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
   const host = rawHost.startsWith('[') ? rawHost.slice(1, rawHost.indexOf(']')) : rawHost.split(':')[0];
   const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
   if (!isLocal) {
-    return new NextResponse('ReelSpark is configured for local use only.', { status: 403 });
+    return new NextResponse('ReelMaker is configured for local use only.', { status: 403 });
   }
   return NextResponse.next();
 }

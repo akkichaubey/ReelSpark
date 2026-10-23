@@ -9,7 +9,7 @@ const storageBase = process.env.STORAGE_DIR
     : path.join(process.cwd(), 'storage');
 
 export const APP_CONFIG = {
-  appName: 'ReelSpark — Local Studio',
+  appName: 'ReelMaker — Local Studio',
   version: '1.0.0',
   /** Default Ollama Model */
   defaultOllamaModel: process.env.OLLAMA_MODEL || 'llama3.2',

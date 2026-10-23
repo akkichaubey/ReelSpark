@@ -360,7 +360,7 @@ function DashboardPageContent() {
     document.body.removeChild(a);
   };
 
-  // Handler: Open in AI Reel Caption Maker
+  // Handler: Open in AI Reel Maker
   const handleCreateReel = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
     const projIdParam = activeProject?.id ? `projectId=${encodeURIComponent(activeProject.id)}&` : '';
     try {
@@ -405,10 +405,10 @@ function DashboardPageContent() {
         audioOverride
       );
       localStorage.setItem('reel_caption_project_v2', JSON.stringify(captionProject));
-      router.push(`/caption-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
+      router.push(`/reel-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
     } catch (err: any) {
       console.error('Failed to create caption project:', err);
-      router.push(`/caption-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
+      router.push(`/reel-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
     }
   };
 
@@ -1029,7 +1029,7 @@ export default function DashboardPage() {
       fallback={
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
           <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-zinc-400 text-xs">Loading ReelSpark...</p>
+          <p className="text-zinc-400 text-xs">Loading ReelMaker...</p>
         </div>
       }
     >

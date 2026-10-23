@@ -135,7 +135,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         } catch (e) {
           console.warn('Could not save to localStorage', e);
         }
-        router.push(`/caption-maker?clipId=${encodeURIComponent(candidate.id)}&t=${Date.now()}`);
+        router.push(`/reel-maker?clipId=${encodeURIComponent(candidate.id)}&t=${Date.now()}`);
       }
     } catch (e) {
       console.error('Error creating reel project:', e);
@@ -423,7 +423,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             onClick={handleCreateReelClick}
             disabled={isCreatingReel}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 font-semibold text-xs border border-amber-500/40 shadow-sm shadow-amber-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-            title="Open in AI Reel Caption Maker to create animated caption video"
+            title="Open in AI Reel Maker to create animated caption video"
           >
             <Sparkles className={`w-3.5 h-3.5 text-amber-400 fill-amber-400/20 ${isCreatingReel ? 'animate-spin' : ''}`} />
             <span>{isCreatingReel ? 'Preparing...' : 'Create Reel'}</span>

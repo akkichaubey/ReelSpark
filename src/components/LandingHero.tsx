@@ -185,7 +185,7 @@ export const LandingHero: React.FC = () => {
 
       {/* Footer with Contact Link */}
       <footer className="w-full border-t border-white/10 py-6 px-4 text-center text-xs text-zinc-500 relative z-10 flex flex-col sm:flex-row items-center justify-between max-w-5xl mx-auto gap-3">
-        <p>© {new Date().getFullYear()} ReelSpark — AI Video Reel Studio. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} ReelMaker — AI Video Reel Studio. All rights reserved.</p>
         <div className="flex items-center gap-4 text-zinc-400">
           <button
             type="button"
@@ -219,7 +219,7 @@ export const LandingHero: React.FC = () => {
               </div>
               <div>
                 <h3 id="contact-support-title" className="text-sm font-bold text-white">Contact & Support</h3>
-                <p className="text-[11px] text-zinc-400">Send an inquiry or feature request to the ReelSpark team.</p>
+                <p className="text-[11px] text-zinc-400">Send an inquiry or feature request to the ReelMaker team.</p>
               </div>
             </div>
 

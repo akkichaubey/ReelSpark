@@ -7,7 +7,7 @@ import {
   Film,
   LayoutDashboard,
   Scissors,
-  Sparkles,
+  Clapperboard,
   Share2,
   Download,
   Sliders,
@@ -70,6 +70,12 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           icon: LayoutDashboard,
         },
         {
+          id: 'reel-maker',
+          label: 'AI Reel Maker',
+          href: '/reel-maker',
+          icon: Clapperboard,
+        },
+        {
           id: 'clip-finder',
           label: 'Clip Finder',
           href: '/?view=clip-finder',
@@ -128,8 +134,8 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     if (item.href === '/clipping-studio') {
       return pathname === '/clipping-studio' && searchParams.get('tab') !== 'export';
     }
-    if (item.href === '/caption-maker') {
-      return pathname.startsWith('/caption-maker');
+    if (item.href === '/reel-maker') {
+      return pathname.startsWith('/reel-maker') || pathname.startsWith('/caption-maker');
     }
     if (item.href.startsWith('/social-post')) {
       if (!pathname.startsWith('/social-post')) return false;
@@ -160,7 +166,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           href="/"
           onClick={onCloseMobile}
           className="flex items-center gap-2.5 group"
-          title="ReelSpark Studio"
+          title="ReelMaker Studio"
         >
           {isCollapsed ? (
             <ReelSparkLogo

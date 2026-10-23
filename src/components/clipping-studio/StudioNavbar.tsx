@@ -51,11 +51,11 @@ export const StudioNavbar: React.FC = () => {
               <span>Dashboard</span>
             </Link>
             <Link
-              href="/caption-maker"
+              href="/reel-maker"
               className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
             >
               <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>Reel Caption Maker</span>
+              <span>AI Reel Maker</span>
             </Link>
             <Link
               href="/clipping-studio"
