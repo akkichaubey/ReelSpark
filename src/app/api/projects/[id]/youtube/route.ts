@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadProject, saveProject } from '@/lib/storage';
-import { analyzeYouTubeWithGemini } from '@/lib/gemini';
-import { checkGeminiStatus } from '@/lib/config';
+import { analyzeYouTubeWithOllama } from '@/lib/ollama';
+import { checkOllamaStatus } from '@/lib/config';
 import { ClipCandidate } from '@/lib/types';
 
 /**
@@ -44,19 +44,17 @@ export async function POST(
     project.youtubeVideoId = videoId;
     project.status = 'ANALYZING';
     project.progress = 25;
-    project.statusMessage = 'Connecting to Google Gemini API for YouTube video semantic understanding...';
+    project.statusMessage = 'Connecting to Ollama for YouTube video semantic understanding...';
     await saveProject(project);
 
-    const geminiStatus = checkGeminiStatus();
+    const ollamaStatus = await checkOllamaStatus();
 
-    // Check Gemini API support
     let candidates: ClipCandidate[] = [];
-    if (geminiStatus.configured) {
+    if (ollamaStatus.configured) {
       try {
-        candidates = await analyzeYouTubeWithGemini(youtubeUrl, project.settings?.aiModel);
-      } catch (geminiErr: any) {
-        console.warn('Gemini YouTube direct analysis notice:', geminiErr.message);
-        // Fallback or retry
+        candidates = await analyzeYouTubeWithOllama(youtubeUrl, project.settings?.aiModel);
+      } catch (ollamaErr: any) {
+        console.warn('Ollama YouTube analysis notice:', ollamaErr.message);
       }
     }
 
@@ -65,7 +63,7 @@ export async function POST(
     project.status = 'COMPLETED';
     project.progress = 100;
     project.statusMessage =
-      'AI analysis completed. Note: Local FFmpeg clip rendering requires the original video file. Upload an authorized local copy when ready to render.';
+      'Ollama analysis completed. Note: Local FFmpeg clip rendering requires the original video file. Upload an authorized local copy when ready to render.';
     await saveProject(project);
 
     return NextResponse.json({

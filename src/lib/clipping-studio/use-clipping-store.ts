@@ -27,10 +27,15 @@ import {
   loadCrashRecoverySnapshot,
   clearCrashRecoverySnapshot,
 } from './local-persistence';
-import { getSupabaseStatus, SupabaseConfigStatus, syncProjectToSupabase } from './supabase';
+import {
+  getCloudflareStatus,
+  syncProjectToCloudflare,
+} from './cloudflare-sync';
+
+export type CloudflareConfigStatus = ReturnType<typeof getCloudflareStatus>;
 import { mediaServiceClient } from './media-service-client';
 
-export type StudioTab = 'dashboard' | 'media' | 'timeline' | 'merge' | 'export';
+export type StudioTab = 'media' | 'timeline' | 'merge' | 'export';
 
 interface ClippingStudioState {
   // Navigation & UI
@@ -54,11 +59,11 @@ interface ClippingStudioState {
   redo: () => void;
   restoreCrashRecovery: () => void;
   dismissCrashRecovery: () => void;
-  syncToSupabase: () => Promise<void>;
+  syncToCloudflare: () => Promise<void>;
 
   // Service Status
   mediaServiceStatus: (MediaServiceHealthResponse & { source?: 'standalone' | 'internal' }) | null;
-  supabaseStatus: SupabaseConfigStatus | null;
+  cloudflareStatus: CloudflareConfigStatus | null;
   isCheckingHealth: boolean;
 
   // Media & Timeline Editing State (Phase 2)
@@ -142,7 +147,7 @@ interface ClippingStudioState {
 }
 
 export const useClippingStore = create<ClippingStudioState>((set, get) => ({
-  activeTab: 'dashboard',
+  activeTab: 'media',
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   projects: [],
@@ -152,7 +157,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
   lastSavedAt: null,
 
   mediaServiceStatus: null,
-  supabaseStatus: null,
+  cloudflareStatus: null,
   isCheckingHealth: false,
 
   // Phase 2 State
@@ -184,8 +189,8 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     set({ isLoading: true });
 
     // 1. Check services
-    const supabase = getSupabaseStatus();
-    set({ supabaseStatus: supabase });
+    const cloudflare = getCloudflareStatus();
+    set({ cloudflareStatus: cloudflare });
 
     // 2. Load local projects
     const rawLocalProjects = loadProjectsLocally();
@@ -209,7 +214,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
       activeProject: currentActive,
       selectedAssetId: firstAssetId,
       outPointMs: initialDuration,
-      activeTab: currentActive ? 'media' : 'dashboard',
+      activeTab: 'media',
       isLoading: false,
     });
 
@@ -368,11 +373,11 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     set({ hasCrashRecovery: false });
   },
 
-  syncToSupabase: async () => {
+  syncToCloudflare: async () => {
     const { activeProject } = get();
     if (!activeProject) return;
     set({ saveStatus: 'saving' });
-    const res = await syncProjectToSupabase(activeProject);
+    const res = await syncProjectToCloudflare(activeProject);
     set({
       saveStatus: res.success ? 'saved' : 'error',
       lastSavedAt: new Date().toLocaleTimeString(),
@@ -401,7 +406,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
         activeProject: nextActive,
         selectedAssetId: nextActive?.mediaAssets[0]?.id || null,
         selectedClipId: null,
-        activeTab: remaining.length === 0 ? 'dashboard' : state.activeTab,
+        activeTab: 'media',
       };
     });
   },

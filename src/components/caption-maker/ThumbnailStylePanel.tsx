@@ -1,4 +1,3 @@
-'use strict';
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8,13 +7,13 @@ import {
   THUMBNAIL_GRADIENTS,
   QUICK_BADGES,
 } from '@/lib/caption-maker/thumbnail-presets';
-import { getSafeZoneConfig } from '@/lib/caption-maker/safe-zone';
 import { CaptionGroup, ImageAsset } from '@/lib/caption-maker/types';
 import {
   POPULAR_GOOGLE_FONTS,
   loadGoogleFontInDocument,
   loadFontBatch,
 } from '@/lib/caption-maker/google-fonts';
+import { assessHookQuality, normalizeHookWord } from '@/lib/caption-maker/hook-quality';
 import {
   Type,
   Palette,
@@ -31,7 +30,6 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   SlidersHorizontal,
-  ShieldAlert,
   Square,
 } from 'lucide-react';
 
@@ -108,6 +106,8 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
     return list;
   }, [projectTitle, captionGroups]);
 
+  const hookQuality = useMemo(() => assessHookQuality(settings.title || ''), [settings.title]);
+
   // Load font whenever it changes
   useEffect(() => {
     if (settings.fontFamily) {
@@ -150,7 +150,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
     .filter(Boolean);
 
   const toggleHighlightWord = (rawWord: string) => {
-    const clean = rawWord.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const clean = normalizeHookWord(rawWord);
     if (!clean) return;
 
     const current = settings.highlightWords || [];
@@ -211,7 +211,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
         {[
           { id: 'presets', label: 'Presets', icon: Wand2 },
           { id: 'content', label: 'Text', icon: Type },
-          { id: 'typography', label: 'Effects', icon: Sparkles },
+          { id: 'typography', label: 'Typography', icon: Sparkles },
           { id: 'badge', label: 'Badge', icon: Square },
           { id: 'layout', label: 'Position', icon: Layout },
         ].map((tab) => {
@@ -371,6 +371,38 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   </button>
                 ))}
               </div>
+
+              <div className="mt-3 p-2.5 rounded-xl bg-sky-950/25 border border-sky-400/20 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-sky-200">Hook readability</span>
+                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    hookQuality.score >= 85
+                      ? 'bg-emerald-500/15 text-emerald-300'
+                      : hookQuality.score >= 65
+                      ? 'bg-sky-500/15 text-sky-200'
+                      : 'bg-amber-500/15 text-amber-300'
+                  }`}>
+                    {hookQuality.score}/100 · {hookQuality.label}
+                  </span>
+                </div>
+                {hookQuality.tips.slice(0, 2).map((tip) => (
+                  <p key={tip} className="text-[10px] leading-snug text-zinc-400">{tip}</p>
+                ))}
+                {hookQuality.focusWords.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => update({
+                      highlightWords: Array.from(new Set([
+                        ...(settings.highlightWords || []).map(normalizeHookWord),
+                        ...hookQuality.focusWords.map(normalizeHookWord),
+                      ])),
+                    })}
+                    className="text-[10px] font-semibold text-sky-200 hover:text-white transition-colors"
+                  >
+                    Highlight key words: {hookQuality.focusWords.join(' · ')}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Click-to-Highlight Words in Title */}
@@ -387,7 +419,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {titleWords.map((word, idx) => {
-                    const clean = word.toLowerCase();
+                    const clean = normalizeHookWord(word);
                     const isHl = (settings.highlightWords || []).includes(clean);
                     return (
                       <button
@@ -1219,263 +1251,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               )}
             </div>
 
-            {/* Social Media Safe-Zone & Platform Calibration Studio */}
-            {(() => {
-              const activeSafePlatform = settings.safeZoneOverrides?.platform || 'instagram-reel';
-              const currentSafeConfig = getSafeZoneConfig(activeSafePlatform, settings.safeZoneOverrides);
-              const safeWidthPx = Math.round(
-                currentSafeConfig.baseWidth *
-                  (1 - (currentSafeConfig.leftMarginPercent + currentSafeConfig.rightMarginPercent) / 100)
-              );
-              const safeHeightPx = Math.round(
-                currentSafeConfig.baseHeight *
-                  (1 - (currentSafeConfig.topDangerPercent + currentSafeConfig.bottomDangerPercent) / 100)
-              );
-
-              return (
-                <div className="p-3 bg-zinc-950/90 border border-sky-500/30 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                        <ShieldAlert className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-bold text-zinc-100 text-xs">Social Safe-Zone Studio</p>
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
-                            {settings.aspectRatio || '9:16'} Cover
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-zinc-400">
-                          Profile grid, in-feed crop & platform UI safe zones
-                        </p>
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.showSafeArea !== false}
-                      onChange={(e) => update({ showSafeArea: e.target.checked })}
-                      className="w-4 h-4 accent-amber-400 rounded cursor-pointer shrink-0"
-                    />
-                  </div>
-
-                  {settings.showSafeArea !== false && (
-                    <div className="pt-2 border-t border-zinc-800/80 space-y-3">
-                      {/* Platform Presets Switcher Pills */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-semibold text-zinc-300">
-                            Target Social Platform
-                          </span>
-                          <span className="text-[9px] font-mono text-amber-400 font-semibold">
-                            {currentSafeConfig.sourceLabel}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {[
-                            { id: 'instagram-reel', label: 'Instagram Reels', sub: '14% Top / 22% Bottom' },
-                            { id: 'facebook-reel', label: 'Facebook Reels', sub: '14% Top / 26% Bottom' },
-                            { id: 'youtube-short', label: 'YouTube Shorts', sub: '10% Top / 23% Bottom' },
-                            { id: 'threads-video', label: 'Threads Video', sub: '9% Top / 20% Bottom' },
-                          ].map((p) => {
-                            const isSelected = activeSafePlatform === p.id;
-                            return (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => {
-                                  update({
-                                    safeZoneOverrides: {
-                                      ...settings.safeZoneOverrides,
-                                      platform: p.id as any,
-                                      topDangerPercent: undefined,
-                                      bottomDangerPercent: undefined,
-                                      rightMarginPercent: undefined,
-                                      leftMarginPercent: undefined,
-                                    },
-                                  });
-                                }}
-                                className={`p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-sky-500/20 border-sky-400 text-sky-200 shadow-sm'
-                                    : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200'
-                                }`}
-                              >
-                                <span className="block font-semibold text-[11px]">{p.label}</span>
-                                <span className="text-[9px] font-mono text-zinc-500">{p.sub}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Thumbnail Specific Crop Guidelines */}
-                      {(settings.aspectRatio === '9:16' || !settings.aspectRatio) && (
-                        <div className="p-2.5 bg-zinc-900/80 border border-zinc-800 rounded-lg space-y-1.5 text-[10px]">
-                          <div className="flex items-center justify-between text-zinc-300 font-semibold">
-                            <span>Key Thumbnail Crop Guidelines</span>
-                            <span className="text-[9px] font-mono text-emerald-400">1080 × 1920 Base</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-1.5 text-[9px] font-mono">
-                            <div className="p-1.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300">
-                              <span className="font-bold block">1:1 Profile Grid Safe</span>
-                              <span className="text-zinc-400">Center 1080×1080 (Y: 21.9%–78.1%)</span>
-                            </div>
-                            <div className="p-1.5 rounded bg-purple-950/40 border border-purple-500/30 text-purple-300">
-                              <span className="font-bold block">4:5 In-Feed Crop</span>
-                              <span className="text-zinc-400">Center 1080×1350 (Y: 14.8%–85.2%)</span>
-                            </div>
-                          </div>
-                          <p className="text-[9.5px] text-zinc-400 leading-snug">
-                            Center your primary hook text and subject within the green 1:1 box so your thumbnail looks crisp across Instagram, Facebook, and Threads profile feeds without cropping.
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Calibration Sliders */}
-                      <div className="p-2.5 bg-zinc-900/70 border border-zinc-800 rounded-lg space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-zinc-300">
-                            Custom Danger Zone Calibration
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              update({
-                                safeZoneOverrides: {
-                                  ...settings.safeZoneOverrides,
-                                  topDangerPercent: undefined,
-                                  bottomDangerPercent: undefined,
-                                  rightMarginPercent: undefined,
-                                  leftMarginPercent: undefined,
-                                },
-                              });
-                            }}
-                            className="text-[9px] font-mono text-amber-400 hover:text-amber-300 cursor-pointer"
-                            title="Reset sliders back to official platform specifications"
-                          >
-                            Reset to Official
-                          </button>
-                        </div>
-
-                        {/* Top Danger Slider */}
-                        <div>
-                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                            <span>Top UI Danger Zone</span>
-                            <span className="font-mono text-amber-400 font-bold">
-                              {currentSafeConfig.topDangerPercent}% (~{Math.round((1920 * currentSafeConfig.topDangerPercent) / 100)}px)
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min="5"
-                            max="25"
-                            step="0.5"
-                            value={currentSafeConfig.topDangerPercent}
-                            onChange={(e) =>
-                              update({
-                                safeZoneOverrides: {
-                                  ...settings.safeZoneOverrides,
-                                  topDangerPercent: Number(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full accent-amber-400 cursor-pointer"
-                          />
-                        </div>
-
-                        {/* Bottom Danger Slider */}
-                        <div>
-                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                            <span>Bottom UI Danger Zone</span>
-                            <span className="font-mono text-amber-400 font-bold">
-                              {currentSafeConfig.bottomDangerPercent}% (~{Math.round((1920 * currentSafeConfig.bottomDangerPercent) / 100)}px)
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min="12"
-                            max="38"
-                            step="0.5"
-                            value={currentSafeConfig.bottomDangerPercent}
-                            onChange={(e) =>
-                              update({
-                                safeZoneOverrides: {
-                                  ...settings.safeZoneOverrides,
-                                  bottomDangerPercent: Number(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full accent-amber-400 cursor-pointer"
-                          />
-                        </div>
-
-                        {/* Right Action Bar Width Slider */}
-                        <div>
-                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                            <span>Right Action Rail Width</span>
-                            <span className="font-mono text-amber-400 font-bold">
-                              {currentSafeConfig.rightMarginPercent}% (~{Math.round((1080 * currentSafeConfig.rightMarginPercent) / 100)}px)
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min="4"
-                            max="22"
-                            step="0.5"
-                            value={currentSafeConfig.rightMarginPercent}
-                            onChange={(e) =>
-                              update({
-                                safeZoneOverrides: {
-                                  ...settings.safeZoneOverrides,
-                                  rightMarginPercent: Number(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full accent-amber-400 cursor-pointer"
-                          />
-                        </div>
-
-                        {/* Left Margin Slider */}
-                        <div>
-                          <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                            <span>Left Margin Guide</span>
-                            <span className="font-mono text-amber-400 font-bold">
-                              {currentSafeConfig.leftMarginPercent}% (~{Math.round((1080 * currentSafeConfig.leftMarginPercent) / 100)}px)
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min="2"
-                            max="15"
-                            step="0.5"
-                            value={currentSafeConfig.leftMarginPercent}
-                            onChange={(e) =>
-                              update({
-                                safeZoneOverrides: {
-                                  ...settings.safeZoneOverrides,
-                                  leftMarginPercent: Number(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full accent-amber-400 cursor-pointer"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Usable Safe Canvas Dimension Badge */}
-                      <div className="p-2 rounded bg-zinc-900 border border-zinc-800 text-[10px] flex items-center justify-between">
-                        <span className="text-zinc-400">Usable Content Area:</span>
-                        <span className="font-mono text-sky-300 font-bold">
-                          {safeWidthPx} × {safeHeightPx} px ({Math.round((safeWidthPx * safeHeightPx) / (1080 * 19.2))}% of frame)
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
+            {/* Advanced safe-zone controls removed from thumbnail settings. */}
             {/* Element Vertical Spacing */}
             <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
               <div className="flex items-center justify-between">

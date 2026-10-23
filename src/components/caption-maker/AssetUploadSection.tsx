@@ -685,49 +685,6 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           )}
         </div>
 
-        {/* Trilingual Language Switcher Toggle */}
-        <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/80 border border-white/5">
-          <span className="text-[11px] font-medium text-zinc-300">Caption Language:</span>
-          <div className="flex items-center bg-zinc-900 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
-            <button
-              type="button"
-              onClick={() => onLanguageChange?.('en')}
-              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
-                (preferredLanguage || 'en') === 'en'
-                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-              title="Generate / show English captions"
-            >
-              English
-            </button>
-            <button
-              type="button"
-              onClick={() => onLanguageChange?.('hi')}
-              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
-                preferredLanguage === 'hi'
-                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-              title="Generate / show Hindi captions (हिन्दी)"
-            >
-              हिन्दी
-            </button>
-            <button
-              type="button"
-              onClick={() => onLanguageChange?.('hinglish')}
-              className={`px-2.5 py-1 rounded font-medium text-xs transition-all cursor-pointer ${
-                preferredLanguage === 'hinglish'
-                  ? 'bg-amber-400 text-black font-semibold shadow-sm'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-              title="Generate / show Hinglish captions (Roman Hindi)"
-            >
-              Hinglish
-            </button>
-          </div>
-        </div>
-
         {audio ? (
           <div className="space-y-3">
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-white/10 flex items-center justify-between gap-3">

@@ -1,17 +1,36 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, PlusCircle, ChevronDown, Share2 } from 'lucide-react';
+import {
+  Film,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  PlusCircle,
+  ChevronDown,
+  Share2,
+  User,
+  LogOut,
+  Scissors,
+  Cpu,
+  LayoutDashboard,
+} from 'lucide-react';
+import { useAuthStore } from '@/lib/use-auth-store';
+import { AuthModal } from './AuthModal';
+import { ReelSparkLogo } from './ReelSparkLogo';
 
 interface NavbarProps {
   systemStatus: {
     ffmpeg: { available: boolean; version?: string };
-    gemini: { configured: boolean; model: string };
+    ollama?: { configured: boolean; model: string; baseUrl?: string };
+    gemini?: { configured: boolean; model: string };
   } | null;
   onNewProject: () => void;
   onRefreshSystem: () => void;
+  onOpenOllamaModal?: () => void;
   onOpenGeminiModal?: () => void;
 }
 
@@ -19,128 +38,203 @@ export const Navbar: React.FC<NavbarProps> = ({
   systemStatus,
   onNewProject,
   onRefreshSystem,
+  onOpenOllamaModal,
   onOpenGeminiModal,
 }) => {
   const pathname = usePathname();
-  const isCaptionMaker = pathname === '/caption-maker';
+  const isCaptionMaker = pathname === '/reel-maker' || pathname === '/caption-maker';
   const isSocialPost = pathname === '/social-post';
-  const isClipFinder = !isCaptionMaker && !isSocialPost;
+  const isClippingStudio = pathname === '/clipping-studio';
+  const isDashboard = pathname === '/' || (!isCaptionMaker && !isSocialPost && !isClippingStudio);
+
+  const { user, checkAuth, logout, openAuthModal } = useAuthStore();
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 sm:px-8 py-3.5 flex items-center justify-between">
+    <>
+    <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 sticky top-0 backdrop-blur-md">
       {/* Brand & Studio Navigation */}
-      <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-white/10">
-            <Film className="w-5 h-5 text-zinc-950" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-bold text-white tracking-tight">ReelSpark</h1>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-zinc-200 border border-white/20">
-                PRO
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400">Local-First Video & Animated Caption Studio</p>
-          </div>
-        </div>
+      <div className="flex items-center gap-3">
+        {/* Brand Logo */}
+        <Link href="/" className="flex items-center hover:opacity-90 transition-opacity" title="ReelMaker">
+          <ReelSparkLogo variant="full" className="h-7 w-auto shrink-0" />
+        </Link>
 
-        {/* Studio Switcher */}
-        <div className="hidden sm:flex items-center bg-zinc-900 border border-white/10 rounded-xl p-1 text-xs">
-          <Link
-            href="/"
-            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-              isClipFinder
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Film className="w-3.5 h-3.5" />
-            <span>Clip Finder</span>
-          </Link>
-          <Link
-            href="/caption-maker"
-            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-              isCaptionMaker
-                ? 'bg-amber-400 text-zinc-950 shadow-sm'
-                : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${isCaptionMaker ? 'text-zinc-950' : 'text-amber-400'}`} />
-            <span>AI Caption Maker</span>
-          </Link>
-          <Link
-            href="/social-post"
-            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-              isSocialPost
-                ? 'bg-amber-400 text-zinc-950 shadow-sm font-bold'
-                : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Share2 className={`w-3.5 h-3.5 ${isSocialPost ? 'text-zinc-950' : 'text-amber-400'}`} />
-            <span>AI Social Post</span>
-          </Link>
-        </div>
+        {/* Studio Switcher — only shown when logged in */}
+        {user && (
+          <div className="hidden md:flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 ml-2 text-xs">
+            <Link
+              href="/"
+              className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+                isDashboard
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <LayoutDashboard className="w-3 h-3" />
+              <span>Dashboard</span>
+            </Link>
+            <Link
+              href="/reel-maker"
+              className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+                isCaptionMaker
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>AI Reel Maker</span>
+            </Link>
+            <Link
+              href="/clipping-studio"
+              className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+                isClippingStudio
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Scissors className="w-3 h-3 text-emerald-400" />
+              <span>Clipping Studio</span>
+            </Link>
+            <Link
+              href="/social-post"
+              className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+                isSocialPost
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Share2 className="w-3 h-3 text-sky-400" />
+              <span>AI Social Post</span>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* System Status Indicators & Actions */}
-      <div className="flex items-center space-x-3 sm:space-x-4">
-        {/* FFmpeg Indicator */}
-        <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-zinc-900/80 border border-white/10 text-xs">
-          <span className="text-zinc-400 font-medium">FFmpeg:</span>
-          {systemStatus?.ffmpeg.available ? (
-            <span className="flex items-center space-x-1 text-emerald-400 font-semibold" title={systemStatus.ffmpeg.version}>
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Ready (v9.0)</span>
-            </span>
-          ) : (
-            <span className="flex items-center space-x-1 text-amber-400 font-semibold">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Checking...</span>
-            </span>
-          )}
-        </div>
+      <div className="flex items-center gap-2.5">
+        {user ? (
+          <>
+            {/* FFmpeg Indicator */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/60 border border-zinc-700/50 text-[11px]">
+              <span className="text-zinc-400 font-medium">FFmpeg:</span>
+              {systemStatus?.ffmpeg.available ? (
+                <span className="flex items-center gap-1 text-emerald-400 font-semibold" title={systemStatus.ffmpeg.version}>
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Ready (v9.0)</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Checking...</span>
+                </span>
+              )}
+            </div>
 
-        {/* Gemini Model Selector Indicator */}
-        <button
-          onClick={onOpenGeminiModal}
-          title="Click to Choose Gemini AI Model & Configure Engine"
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 hover:border-sky-400/40 text-xs transition-all group shadow-sm cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
-          <span className="text-zinc-400 font-medium hidden sm:inline">AI Model:</span>
-          {systemStatus?.gemini.configured ? (
-            <span className="text-white font-semibold flex items-center gap-1">
-              <span>{systemStatus.gemini.model}</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
-            </span>
-          ) : (
-            <span className="text-amber-400 font-semibold flex items-center gap-1" title="Running in intelligent local speech mode. Click to configure API key or choose model.">
-              <span>{systemStatus?.gemini.model || 'gemini-3.8-flash'}</span>
-              <span className="text-[10px] text-amber-500 font-normal hidden xl:inline">(Demo)</span>
-              <ChevronDown className="w-3 h-3 text-amber-400/70" />
-            </span>
-          )}
-        </button>
+            {/* AI Engine & Model Selector Indicator */}
+            {(() => {
+              const isGemini = (systemStatus as any)?.provider === 'gemini';
+              const activeModel = isGemini
+                ? (systemStatus?.gemini?.model || 'gemini-2.5-flash')
+                : (systemStatus?.ollama?.model || 'llama3.2');
 
-        {/* Refresh System button */}
-        <button
-          onClick={onRefreshSystem}
-          title="Refresh System Status"
-          className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-400 hover:text-white transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+              return (
+                <button
+                  type="button"
+                  onClick={onOpenOllamaModal || onOpenGeminiModal}
+                  title={isGemini ? "Google Gemini AI (User's Personal Key). Click to change key or model." : "Ollama Local AI (100% Free). Click to configure host or model."}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 hover:border-amber-400/40 text-xs transition-all group cursor-pointer shadow-sm"
+                >
+                  {isGemini ? (
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+                  ) : (
+                    <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+                  )}
+                  <span className="text-zinc-400 font-medium hidden sm:inline text-[11px]">
+                    {isGemini ? 'Gemini:' : 'Ollama:'}
+                  </span>
+                  <span className="text-white font-semibold text-xs flex items-center gap-1">
+                    <span>{activeModel}</span>
+                    <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
+                  </span>
+                </button>
+              );
+            })()}
 
-        {/* New Project Button */}
-        <button
-          onClick={onNewProject}
-          className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs sm:text-sm shadow-lg shadow-white/5 transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>New Project</span>
-        </button>
+            {/* Refresh System button */}
+            <button
+              onClick={onRefreshSystem}
+              title="Refresh System Status"
+              className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* User Account / Profile Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 hover:border-zinc-500 text-xs transition-all cursor-pointer"
+              >
+                <div className="w-5 h-5 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center text-[10px]">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-white font-medium max-w-[85px] truncate hidden sm:inline text-xs">
+                  {user.name}
+                </span>
+                <ChevronDown className="w-3 h-3 text-zinc-400" />
+              </button>
+
+              {userDropdownOpen && (
+                <div
+                  className="absolute right-0 mt-2 w-52 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-2 z-50 text-xs animate-in fade-in"
+                  onMouseLeave={() => setUserDropdownOpen(false)}
+                >
+                  <div className="px-3 py-2 border-b border-zinc-800 mb-1">
+                    <p className="font-bold text-white truncate">{user.name}</p>
+                    <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setUserDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* New Project Button */}
+            <button
+              onClick={onNewProject}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs shadow-md shadow-amber-400/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">New Project</span>
+            </button>
+          </>
+        ) : (
+          /* When NOT logged in: Keep only Login / Register button on top right */
+          <button
+            onClick={() => openAuthModal('login')}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <User className="w-3.5 h-3.5 text-zinc-950" />
+            <span>Login / Register</span>
+          </button>
+        )}
       </div>
+
     </header>
+    <AuthModal />
+    </>
   );
 };

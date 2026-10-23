@@ -581,6 +581,41 @@ export function createDefaultCaptionProject(id = `proj_${Date.now()}`): CaptionP
     },
     transcript: words,
     captionGroups: groups,
+    preferredLanguage: 'hinglish',
+    rawTranscriptHinglish:
+      'Zindagi mein kabhi HAAR mat maanna, kyunki girte wahi hain jo CHALTE hain. Tumhara DREAM tumhari asli PEHCHAN hai, focus apne LAKSHYA par rakho.',
+    rawTranscriptHindi:
+      'ज़िंदगी में कभी हार मत मानना, क्योंकि गिरते वही हैं जो चलते हैं। तुम्हारा सपना तुम्हारी असली पहचान है, फोकस अपने लक्ष्य पर रखो।',
+    rawTranscriptEnglish:
+      'Never give up in life, because only those who walk ever fall. Your dream is your true identity, keep your focus on your goal.',
+    syncedSegments: [
+      {
+        id: 'seg_1',
+        start: 0.0,
+        end: 2.45,
+        textEnglish: 'Never give up in life,',
+        textHindi: 'ज़िंदगी में कभी हार मत मानना,',
+        textHinglish: 'Zindagi mein kabhi HAAR mat maanna,',
+      },
+      {
+        id: 'seg_2',
+        start: 2.55,
+        end: 5.08,
+        textEnglish: 'because only those who walk ever fall.',
+        textHindi: 'क्योंकि गिरते वही हैं जो चलते हैं।',
+        textHinglish: 'kyunki girte wahi hain jo CHALTE hain.',
+      },
+      {
+        id: 'seg_3',
+        start: 5.2,
+        end: 10.1,
+        textEnglish: 'Your dream is your true identity, keep your focus on your goal.',
+        textHindi: 'तुम्हारा सपना तुम्हारी असली पहचान है, फोकस अपने लक्ष्य पर रखो।',
+        textHinglish: 'Tumhara DREAM tumhari asli PEHCHAN hai, focus apne LAKSHYA par rakho.',
+      },
+    ],
+    isAudioSynced: true,
+    syncVersion: 4,
     captionStyle: { ...DEFAULT_CAPTION_STYLE },
     outputSettings: { ...DEFAULT_OUTPUT_SETTINGS },
     voiceVolume: 1.0,

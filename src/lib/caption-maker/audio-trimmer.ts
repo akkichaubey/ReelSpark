@@ -165,8 +165,8 @@ export function remapTranscriptWords(
     const startMapped = remapTimestamp(w.start, keepIntervals);
     const endMapped = remapTimestamp(w.end, keepIntervals);
 
-    let newStart = Math.max(0, startMapped.newTime);
-    let newEnd = Math.max(newStart + 0.05, endMapped.newTime);
+    const newStart = Math.max(0, startMapped.newTime);
+    const newEnd = Math.max(newStart + 0.05, endMapped.newTime);
 
     remapped.push({
       ...w,
@@ -199,8 +199,8 @@ export function remapSyncedSegments(
     const startMapped = remapTimestamp(seg.start, keepIntervals);
     const endMapped = remapTimestamp(seg.end, keepIntervals);
 
-    let newStart = Math.max(0, startMapped.newTime);
-    let newEnd = Math.max(newStart + 0.1, endMapped.newTime);
+    const newStart = Math.max(0, startMapped.newTime);
+    const newEnd = Math.max(newStart + 0.1, endMapped.newTime);
 
     remapped.push({
       ...seg,

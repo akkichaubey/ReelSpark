@@ -3,11 +3,19 @@ import { MediaErrorHandler } from '@/components/MediaErrorHandler';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ReelSpark — Local Video to Reels & Shorts Studio',
+  title: 'ReelMaker — Local Video to Reels & Shorts Studio',
   description:
     'Identify and render the best short viral and philosophical clips under 60 seconds from long speeches, podcasts, and interviews with synchronized subtitles and local FFmpeg processing.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
   keywords: [
-    'ReelSpark',
+    'ReelMaker',
     'Reels Studio',
     'Osho Speeches',
     'Video to Shorts',

@@ -15,6 +15,7 @@ import {
   Music,
   Loader2,
   ChevronDown,
+  Cpu,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
 
@@ -26,6 +27,7 @@ interface ProjectHeaderProps {
   onUploadLocalFileForYouTube: (file: File) => void;
   isAnalyzing: boolean;
   isRendering: boolean;
+  onOpenOllamaModal?: () => void;
   onOpenGeminiModal?: () => void;
 }
 
@@ -37,6 +39,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   onUploadLocalFileForYouTube,
   isAnalyzing,
   isRendering,
+  onOpenOllamaModal,
   onOpenGeminiModal,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,13 +136,13 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onOpenGeminiModal}
-                title="Choose Gemini Model for Analysis"
-                className="flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-sky-400/40 text-xs text-zinc-200 transition-all group cursor-pointer shadow-sm"
+                onClick={onOpenOllamaModal || onOpenGeminiModal}
+                title="Choose Ollama Model for Analysis"
+                className="flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-amber-400/40 text-xs text-zinc-200 transition-all group cursor-pointer shadow-sm"
               >
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+                <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform flex-shrink-0" />
                 <span className="font-semibold text-white">
-                  {project.settings?.aiModel || 'gemini-3.8-flash'}
+                  {project.settings?.aiModel || 'llama3.2'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
               </button>
@@ -196,7 +199,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
             <div>
               <p className="font-bold text-amber-400">Local Source Video File Needed for FFmpeg Rendering</p>
               <p className="text-zinc-300 text-xs mt-0.5 leading-relaxed">
-                Gemini has analyzed the timestamps. To cut clips and burn subtitles locally, please attach the authorized video file.
+                AI has analyzed the timestamps. To cut clips and burn subtitles locally, please attach the authorized video file.
               </p>
             </div>
           </div>

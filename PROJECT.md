@@ -222,9 +222,9 @@ pnpm test:e2e
 
 ---
 
-## 14. AI Reel Caption Video Maker (Image + Audio → Animated Caption Video)
+## 14. AI Reel Maker (Image + Audio → Animated Caption Video)
 
-The **AI Reel Caption Video Maker** is a dedicated studio (`/caption-maker`) for turning any voice recording or spoken clip plus a background image into a high-engagement, animated caption video ready for Instagram Reels, YouTube Shorts, TikTok, and Square feeds.
+The **AI Reel Maker** is a dedicated studio (`/reel-maker`) for turning any voice recording or spoken clip plus a background image into a high-engagement, animated caption video ready for Instagram Reels, YouTube Shorts, TikTok, and Square feeds.
 
 ### Core Workflow:
 ```text
@@ -269,7 +269,7 @@ Download MP4 & Word/Phrase-level SRT
 
 ## 15. Professional AI Reel Studio Engine (Advanced Capabilities)
 
-The Studio upgrade adds 10 specialized, production-ready modules powering `/caption-maker`:
+The Studio upgrade adds 10 specialized, production-ready modules powering `/reel-maker`:
 
 ### 1. Dedicated AI Reel Social Media Post Copywriter Studio (`/social-post`, `generate-social/route.ts`)
 - **Standalone Dedicated Page**: Accessible directly via `/social-post`, top navigation studio switcher, and clip cards.

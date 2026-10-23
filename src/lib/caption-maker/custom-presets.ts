@@ -54,6 +54,7 @@ export function saveCustomPreset(
     fontWeight: style.fontWeight,
     textAlign: style.textAlign,
     position: style.position,
+    ninePosition: style.ninePosition,
     customX: style.customX,
     customY: style.customY,
     textColor: style.textColor,
@@ -68,7 +69,9 @@ export function saveCustomPreset(
     animationPreset: style.animationPreset,
     highlightAnimation: style.highlightAnimation,
     uppercase: style.uppercase,
+    textTransform: style.textTransform,
     showSafeArea: style.showSafeArea,
+    safeZoneOverrides: style.safeZoneOverrides,
     backgroundStyle: style.backgroundStyle,
     backgroundOpacity: style.backgroundOpacity,
     backgroundRadius: style.backgroundRadius,
@@ -83,6 +86,8 @@ export function saveCustomPreset(
     shadowOffsetY: style.shadowOffsetY,
     activeWordBgColor: style.activeWordBgColor,
     showEmojis: style.showEmojis,
+    speaker1Color: style.speaker1Color,
+    speaker2Color: style.speaker2Color,
   };
 
   const newPreset: CustomStylePreset = {

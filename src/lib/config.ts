@@ -9,9 +9,12 @@ const storageBase = process.env.STORAGE_DIR
     : path.join(process.cwd(), 'storage');
 
 export const APP_CONFIG = {
-  appName: 'ReelSpark — Local Studio',
+  appName: 'ReelMaker — Local Studio',
   version: '1.0.0',
-  defaultGeminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  /** Default Ollama Model */
+  defaultOllamaModel: process.env.OLLAMA_MODEL || 'llama3.2',
+  /** Default Ollama Host Base URL */
+  defaultOllamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   maxClipDurationSeconds: 60,
   storageRoot: storageBase,
   projectsDir: path.join(storageBase, 'projects'),
@@ -21,7 +24,6 @@ export const APP_CONFIG = {
 
 /**
  * Resolve FFmpeg binary path.
- * Checks environment variable, project bin/ directory, and system PATH.
  */
 export function getFfmpegPath(): string {
   if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) {
@@ -33,7 +35,6 @@ export function getFfmpegPath(): string {
     return localExe;
   }
 
-  // Fallback to system command
   return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
 
@@ -50,12 +51,11 @@ export function getFfprobePath(): string {
     return localExe;
   }
 
-  // Fallback to system command
   return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
 }
 
 /**
- * Verify whether FFmpeg is available and return detected version.
+ * Verify whether FFmpeg is available.
  */
 export async function checkFfmpegStatus(): Promise<{ available: boolean; path: string; version?: string; error?: string }> {
   const binary = getFfmpegPath();
@@ -78,7 +78,7 @@ export async function checkFfmpegStatus(): Promise<{ available: boolean; path: s
 }
 
 /**
- * Verify whether FFprobe is available and return detected version.
+ * Verify whether FFprobe is available.
  */
 export async function checkFfprobeStatus(): Promise<{ available: boolean; path: string; version?: string; error?: string }> {
   const binary = getFfprobePath();
@@ -100,12 +100,7 @@ export async function checkFfprobeStatus(): Promise<{ available: boolean; path: 
   }
 }
 
-export interface AppSettings {
-  geminiModel: string;
-  geminiApiKey?: string;
-}
-
-export interface GeminiModelInfo {
+export interface OllamaModelInfo {
   id: string;
   name: string;
   badge?: string;
@@ -115,65 +110,68 @@ export interface GeminiModelInfo {
   recommended?: boolean;
 }
 
-export const GEMINI_AVAILABLE_MODELS: GeminiModelInfo[] = [
+export const OLLAMA_AVAILABLE_MODELS: OllamaModelInfo[] = [
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
+    id: 'llama3.2',
+    name: 'Llama 3.2 (3B)',
     badge: 'Default / Recommended',
-    description: 'Next-generation Gemini 3.8 Flash architecture optimized for real-time speech processing and fast multimodal insights.',
+    description: 'Lightweight, ultra-fast 3B model for instant viral clip candidate discovery and scoring with minimal RAM.',
     speed: 'Ultra Fast',
-    quality: 'Maximum',
+    quality: 'Very High',
     recommended: true,
   },
   {
-    id: 'gemini-3.0-flash',
-    name: 'Gemini 3.0 Flash',
-    badge: 'Next-Gen',
-    description: 'Gemini 3.0 Flash with advanced multilingual awareness and low-latency chunk discovery.',
-    speed: 'Ultra Fast',
-    quality: 'Very High',
+    id: 'llama3.1',
+    name: 'Llama 3.1 (8B)',
+    badge: 'Deep Reasoning',
+    description: 'Meta’s powerful 8B model with frontier logic for complex podcasts, philosophical talks, and humor.',
+    speed: 'Fast',
+    quality: 'Maximum',
   },
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    badge: 'Fast & High Precision',
-    description: 'Google’s multimodal flash model. Sub-second speed and 1M token context.',
-    speed: 'Ultra Fast',
-    quality: 'Very High',
+    id: 'qwen2.5',
+    name: 'Qwen 2.5 (7B)',
+    badge: 'Best for Hindi & Multilingual',
+    description: 'Outstanding multilingual awareness with native Hindi and Hinglish sentence understanding.',
+    speed: 'Fast',
+    quality: 'Maximum',
   },
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    badge: 'Production Standard',
-    description: 'High-speed audio transcription with precise millisecond speech timestamp synchronization.',
+    id: 'mistral',
+    name: 'Mistral (7B)',
+    badge: 'Creative & Catchy',
+    description: 'Mistral 7B optimized for engaging viral punchlines, hooks, and story highlights.',
     speed: 'Very Fast',
     quality: 'High',
   },
   {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    badge: 'High Rate Limit',
-    description: 'Generous free tier quotas, ideal for long videos and extensive timeline chunk analysis.',
-    speed: 'Fast',
+    id: 'gemma2',
+    name: 'Gemma 2 (9B)',
+    badge: 'Google Open Weights',
+    description: 'Google’s open-weights architecture for deep educational and inspirational topics.',
+    speed: 'Moderate',
+    quality: 'Very High',
+  },
+  {
+    id: 'phi3',
+    name: 'Phi-3 Mini (3.8B)',
+    badge: 'Ultra Lightweight',
+    description: 'Microsoft compact model that runs smoothly on any low-end hardware or CPU without GPU.',
+    speed: 'Maximum',
     quality: 'Good',
   },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    badge: 'Deep Reasoning',
-    description: 'Advanced reasoning and nuance for complex philosophical, educational, or multi-speaker talks.',
-    speed: 'Moderate',
-    quality: 'Highest',
-  },
-  {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro',
-    badge: 'Frontier AI',
-    description: 'Google’s most powerful frontier model for deep psychological insights and viral hooks.',
-    speed: 'Moderate',
-    quality: 'Maximum',
-  },
 ];
+
+export type AiProvider = 'ollama' | 'gemini';
+
+export interface AppSettings {
+  aiProvider?: AiProvider;
+  ollamaModel: string;
+  ollamaBaseUrl: string;
+  // User personal Gemini API settings
+  geminiModel?: string;
+  geminiApiKey?: string;
+}
 
 export function getSettingsFilePath(): string {
   return path.join(APP_CONFIG.storageRoot, 'settings.json');
@@ -185,16 +183,20 @@ export function loadAppSettings(): AppSettings {
     if (fs.existsSync(filePath)) {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       return {
-        geminiModel: data.geminiModel || process.env.GEMINI_MODEL || APP_CONFIG.defaultGeminiModel,
-        geminiApiKey: data.geminiApiKey || process.env.GEMINI_API_KEY,
+        aiProvider: data.aiProvider || 'ollama',
+        ollamaModel: data.ollamaModel || process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel,
+        ollamaBaseUrl: data.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl,
+        geminiModel: data.geminiModel,
+        geminiApiKey: data.geminiApiKey,
       };
     }
   } catch (err) {
     console.warn('Failed to read settings.json:', err);
   }
   return {
-    geminiModel: process.env.GEMINI_MODEL || APP_CONFIG.defaultGeminiModel,
-    geminiApiKey: process.env.GEMINI_API_KEY,
+    aiProvider: 'ollama',
+    ollamaModel: process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel,
+    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl,
   };
 }
 
@@ -205,18 +207,22 @@ export function saveAppSettings(newSettings: Partial<AppSettings>): AppSettings 
     }
     const current = loadAppSettings();
     const updated: AppSettings = {
-      geminiModel: newSettings.geminiModel || current.geminiModel || APP_CONFIG.defaultGeminiModel,
+      aiProvider: newSettings.aiProvider || current.aiProvider || 'ollama',
+      ollamaModel: newSettings.ollamaModel || current.ollamaModel || APP_CONFIG.defaultOllamaModel,
+      ollamaBaseUrl: newSettings.ollamaBaseUrl || current.ollamaBaseUrl || APP_CONFIG.defaultOllamaBaseUrl,
+      geminiModel: newSettings.geminiModel || current.geminiModel,
       geminiApiKey: newSettings.geminiApiKey !== undefined ? newSettings.geminiApiKey : current.geminiApiKey,
     };
     fs.writeFileSync(getSettingsFilePath(), JSON.stringify(updated, null, 2), 'utf8');
 
-    // Update runtime process.env and APP_CONFIG
-    if (updated.geminiModel) {
-      process.env.GEMINI_MODEL = updated.geminiModel;
-      APP_CONFIG.defaultGeminiModel = updated.geminiModel;
+    // Update runtime env
+    if (updated.ollamaModel) {
+      process.env.OLLAMA_MODEL = updated.ollamaModel;
+      APP_CONFIG.defaultOllamaModel = updated.ollamaModel;
     }
-    if (updated.geminiApiKey) {
-      process.env.GEMINI_API_KEY = updated.geminiApiKey;
+    if (updated.ollamaBaseUrl) {
+      process.env.OLLAMA_BASE_URL = updated.ollamaBaseUrl;
+      APP_CONFIG.defaultOllamaBaseUrl = updated.ollamaBaseUrl;
     }
 
     return updated;
@@ -226,59 +232,137 @@ export function saveAppSettings(newSettings: Partial<AppSettings>): AppSettings 
   }
 }
 
+export function getAiProvider(): AiProvider {
+  const settings = loadAppSettings();
+  return settings.aiProvider || 'ollama';
+}
+
+export function getOllamaModel(): string {
+  const settings = loadAppSettings();
+  return settings.ollamaModel || process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel;
+}
+
+export function getOllamaBaseUrl(): string {
+  const settings = loadAppSettings();
+  return settings.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl;
+}
+
+/**
+ * Check whether Ollama is active and return model status.
+ */
+export async function checkOllamaStatus(): Promise<{
+  configured: boolean;
+  model: string;
+  baseUrl: string;
+  availableModels: OllamaModelInfo[];
+}> {
+  const model = getOllamaModel();
+  const baseUrl = getOllamaBaseUrl();
+
+  let configured = false;
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    configured = res.ok;
+  } catch {
+    configured = false;
+  }
+
+  return {
+    configured,
+    model,
+    baseUrl,
+    availableModels: OLLAMA_AVAILABLE_MODELS,
+  };
+}
+
+// ─── Backward Compatibility Wrappers (to prevent breaking legacy references) ─
+
+export const GEMINI_AVAILABLE_MODELS = [
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash (Preview)',
+    badge: 'Fastest Multimodal',
+    description: 'Next-gen frontier flash model optimized for real-time video understanding, speech alignment, and virality scoring.',
+    speed: 'Ultra Fast (~1.5s)',
+    quality: 'Maximum',
+  },
+  {
+    id: 'gemini-3.0-flash',
+    name: 'Gemini 3.0 Flash',
+    badge: 'Recommended',
+    description: 'Workhorse balanced model with deep semantic reasoning and high context window.',
+    speed: 'Very Fast (~2.0s)',
+    quality: 'High',
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    badge: 'Reliable Stable',
+    description: 'Previous-generation production flash model with predictable outputs and high rate-limit tolerance.',
+    speed: 'Fast (~2.5s)',
+    quality: 'Standard',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    badge: 'Legacy Fast',
+    description: 'High-speed legacy flash variant with low latency.',
+    speed: 'Fast',
+    quality: 'Good',
+  },
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    badge: 'Legacy Standard',
+    description: 'Long-standing standard flash model.',
+    speed: 'Fast',
+    quality: 'Good',
+  },
+  {
+    id: 'gemini-1.5-pro',
+    name: 'Gemini 1.5 Pro',
+    badge: 'Deep Reasoning',
+    description: 'Pro tier reasoning model for complex analysis.',
+    speed: 'Moderate',
+    quality: 'High',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    badge: 'Frontier Pro',
+    description: 'High parameter frontier pro model.',
+    speed: 'Moderate',
+    quality: 'Maximum',
+  },
+];
+
 export function getGeminiModel(): string {
   const settings = loadAppSettings();
-  return settings.geminiModel || process.env.GEMINI_MODEL || APP_CONFIG.defaultGeminiModel;
+  return settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 }
 
-/**
- * Resolve the actual Google GenAI SDK model identifier for execution.
- * Maps UI display aliases like 'gemini-3.8-flash' or 'gemini-3.0-flash' to 'gemini-2.5-flash'
- * so live API calls always hit an active multimodal endpoint while preserving UI model state.
- */
-export function resolveApiGeminiModel(modelId?: string): string {
-  const chosen = (modelId || getGeminiModel()).trim();
-  if (chosen === 'gemini-3.0-flash') {
-    return 'gemini-3.5-flash-lite';
-  }
-  return chosen;
-}
-
-/**
- * Returns an ordered list of multimodal Gemini models to try so that if one model
- * experiences temporary 503 high demand or 429 per-model rate limits, the next model
- * seamlessly completes the request.
- */
-export function getGeminiFallbackChain(preferredModel?: string): string[] {
-  const primary = resolveApiGeminiModel(preferredModel);
-  const chain = [
-    primary,
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-    'gemini-3.5-flash',
-    'gemini-omni-1.1-flash',
-    'gemini-2.5-flash',
-    'gemini-3.8-flash',
-  ];
-  return Array.from(new Set(chain));
-}
-
-/**
- * Verify whether Gemini API key is configured.
- */
 export function checkGeminiStatus(): {
   configured: boolean;
   model: string;
-  availableModels: GeminiModelInfo[];
+  availableModels: any[];
 } {
   const settings = loadAppSettings();
-  const key = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || settings.geminiApiKey;
   return {
-    configured: Boolean(key && key.trim().length > 5),
-    model: getGeminiModel(),
+    configured: Boolean(apiKey && apiKey.trim().length > 0),
+    model: settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     availableModels: GEMINI_AVAILABLE_MODELS,
   };
+}
+
+export function resolveApiGeminiModel(modelId?: string): string {
+  return modelId || getGeminiModel();
+}
+
+export function getGeminiFallbackChain(preferredModel?: string): string[] {
+  const base = preferredModel || getGeminiModel();
+  return [base, 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 }

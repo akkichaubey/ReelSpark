@@ -113,7 +113,7 @@ export const ClipsLibrary: React.FC = () => {
     setEditingClipId(null);
   };
 
-  // Seamless Bridge to AI Reel Caption Maker (/caption-maker)
+  // Seamless bridge to AI Reel Maker (/reel-maker)
   const handleSendToCaptionMaker = async (clip: Clip) => {
     if (!activeProject || bridgingClipId) return;
     const mediaAsset = activeProject.mediaAssets.find((a) => a.id === clip.mediaAssetId);
@@ -138,7 +138,7 @@ export const ClipsLibrary: React.FC = () => {
 
       const data = await res.json();
       if (!res.ok || !data.success || !data.audio) {
-        throw new Error(data.error || 'Failed to prepare clip audio for Caption Maker');
+        throw new Error(data.error || 'Failed to prepare clip audio for Reel Maker');
       }
 
       // Create a ClipCandidate adapter to pass through the project creator
@@ -198,10 +198,10 @@ export const ClipsLibrary: React.FC = () => {
       }
 
       saveProjectToLocalStorage(captionProject);
-      router.push('/caption-maker');
+      router.push('/reel-maker');
     } catch (err: any) {
-      console.error('Failed to bridge clip to Caption Maker:', err);
-      alert(err.message || 'Failed to prepare clip for Caption Maker');
+      console.error('Failed to bridge clip to Reel Maker:', err);
+      alert(err.message || 'Failed to prepare clip for Reel Maker');
     } finally {
       setBridgingClipId(null);
     }
@@ -398,7 +398,7 @@ export const ClipsLibrary: React.FC = () => {
                           disabled={bridgingClipId === clip.id}
                           onClick={() => handleSendToCaptionMaker(clip)}
                           className="p-1 rounded text-amber-400 hover:bg-amber-500/10 disabled:opacity-50 cursor-pointer"
-                          title="Open in AI Caption Maker"
+                          title="Open in AI Reel Maker"
                         >
                           {bridgingClipId === clip.id ? (
                             <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
@@ -578,12 +578,12 @@ export const ClipsLibrary: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Send to AI Caption Maker */}
+                  {/* Send to AI Reel Maker */}
                   <button
                     type="button"
                     disabled={bridgingClipId === clip.id}
                     onClick={() => handleSendToCaptionMaker(clip)}
-                    title="Open this clip in AI Reel Caption Maker"
+                    title="Open this clip in AI Reel Maker"
                     className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-semibold border border-amber-500/30 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {bridgingClipId === clip.id ? (

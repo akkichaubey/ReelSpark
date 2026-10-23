@@ -26,7 +26,7 @@ export function resolveOutputDirectory(projectId: string, customDir?: string): s
   if (!targetDir || !path.isAbsolute(targetDir)) {
     targetDir = path.join(process.cwd(), 'storage', 'clipping-studio', 'projects', projectId, 'exports');
   }
-  if (!fs.existsSync(targetDir)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
   return targetDir;
@@ -41,7 +41,7 @@ export function getCollisionSafeFilename(dir: string, baseName: string, ext: str
   let fullPath = path.join(dir, fileName);
   let counter = 1;
 
-  while (fs.existsSync(fullPath)) {
+  while (fs.existsSync(/*turbopackIgnore: true*/ fullPath)) {
     fileName = `${baseName}_${counter}${cleanExt}`;
     fullPath = path.join(dir, fileName);
     counter++;
@@ -84,7 +84,7 @@ export function executeExportProcess(
     const logs: string[] = [];
     let isCancelled = false;
 
-    const child = spawn(ffmpegBin, args, { windowsHide: true });
+    const child = spawn(/*turbopackIgnore: true*/ ffmpegBin, args, { windowsHide: true });
 
     activeProcessMap.set(jobId, {
       process: child,

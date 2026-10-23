@@ -1,0 +1,241 @@
+/**
+ * Cloudflare D1 — Database Schema
+ *
+ * Run this with Wrangler to create all tables in your D1 database:
+ *   npx wrangler d1 execute reelspark-db --file=src/lib/cloudflare/schema.sql
+ *
+ * Or for local dev:
+ *   npx wrangler d1 execute reelspark-db --local --file=src/lib/cloudflare/schema.sql
+ */
+
+-- ─── Users & Authentication ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  salt          TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'user',  -- 'user' | 'admin'
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- ─── User Profiles (Extended Details & Customization) ────────────────────────
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  first_name    TEXT,
+  last_name     TEXT,
+  avatar_url    TEXT,
+  bio           TEXT,
+  preferences   TEXT NOT NULL DEFAULT '{}', -- JSON: default tone, language, platform
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─── Social Media Accounts ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_accounts (
+  id            TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform      TEXT NOT NULL, -- 'facebook' | 'youtube' | 'instagram' | 'threads' | 'website'
+  account_url   TEXT NOT NULL,
+  display_name  TEXT,
+  is_primary    INTEGER NOT NULL DEFAULT 0, -- BOOLEAN
+  enabled       INTEGER NOT NULL DEFAULT 1, -- BOOLEAN
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_social_accounts_user ON social_accounts(user_id);
+
+-- ─── Social Link Engine Preferences ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_link_preferences (
+  user_id                 TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  include_website         INTEGER NOT NULL DEFAULT 1,
+  include_other_socials   INTEGER NOT NULL DEFAULT 1,
+  exclude_target_platform INTEGER NOT NULL DEFAULT 1,
+  custom_heading          TEXT NOT NULL DEFAULT '🔗 Connect with us:',
+  display_separate_lines  INTEGER NOT NULL DEFAULT 1,
+  link_order              TEXT NOT NULL DEFAULT '[]', -- JSON: array of platform keys or account IDs
+  eligible_account_ids    TEXT NOT NULL DEFAULT '[]', -- JSON: array of account IDs
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token         TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at    TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- ─── Projects (AI Clip Finder) ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS projects (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL DEFAULT 'Untitled Project',
+  status      TEXT NOT NULL DEFAULT 'QUEUED',
+  -- QUEUED | UPLOADING | TRANSCRIBING | ANALYZING | DONE | ERROR
+  source_type TEXT NOT NULL DEFAULT 'upload',
+  -- upload | youtube
+  youtube_url TEXT,
+  local_video_path TEXT,
+  r2_video_key    TEXT,    -- R2 object key for the uploaded video
+  r2_audio_key    TEXT,    -- R2 object key for the extracted audio
+  duration_seconds REAL,
+  file_size_bytes  INTEGER,
+  settings    TEXT NOT NULL DEFAULT '{}',   -- JSON: { durationLimit, geminiModel, ... }
+  progress    TEXT NOT NULL DEFAULT '{}',   -- JSON: { step, percent, message }
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─── Transcript Segments ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS transcript_segments (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  start_sec   REAL NOT NULL,
+  end_sec     REAL NOT NULL,
+  text        TEXT NOT NULL,
+  text_en     TEXT,
+  seg_index   INTEGER NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_project ON transcript_segments(project_id);
+
+-- ─── Clip Candidates ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clip_candidates (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  title_hindi     TEXT,
+  title_english   TEXT,
+  start_sec       REAL NOT NULL,
+  end_sec         REAL NOT NULL,
+  duration_sec    REAL NOT NULL,
+  topic           TEXT,
+  explanation     TEXT,
+  explanation_hindi TEXT,
+  explanation_english TEXT,
+  transcript      TEXT,
+  transcript_hindi TEXT,
+  transcript_english TEXT,
+  first_words     TEXT,
+  last_words      TEXT,
+  scores          TEXT NOT NULL DEFAULT '{}',   -- JSON: { meaningAndDepth, ... total }
+  context_verification TEXT NOT NULL DEFAULT '{}',
+  selected        INTEGER NOT NULL DEFAULT 1,   -- BOOLEAN
+  render_status   TEXT NOT NULL DEFAULT 'idle', -- idle | rendering | done | error
+  r2_output_key   TEXT,   -- R2 key of the rendered MP4
+  r2_srt_key      TEXT,   -- R2 key of the SRT file
+  r2_ass_key      TEXT,   -- R2 key of the ASS subtitle file
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_candidates_project ON clip_candidates(project_id);
+
+-- ─── Clipping Studio Projects ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clipping_projects (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL DEFAULT 'Untitled',
+  description TEXT,
+  settings    TEXT NOT NULL DEFAULT '{}',   -- JSON
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─── Media Assets (Clipping Studio) ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS media_assets (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES clipping_projects(id) ON DELETE CASCADE,
+  filename        TEXT NOT NULL,
+  r2_key          TEXT,           -- R2 object key (null if local-only)
+  local_path      TEXT,           -- fallback for Render.com / local dev
+  file_size_bytes INTEGER,
+  metadata        TEXT NOT NULL DEFAULT '{}',  -- JSON: duration, width, height, fps, ...
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_assets_project ON media_assets(project_id);
+
+-- ─── Clips (Clipping Studio Timeline) ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clips (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES clipping_projects(id) ON DELETE CASCADE,
+  media_asset_id  TEXT REFERENCES media_assets(id) ON DELETE SET NULL,
+  name            TEXT NOT NULL DEFAULT 'Clip',
+  start_ms        INTEGER NOT NULL DEFAULT 0,
+  end_ms          INTEGER NOT NULL DEFAULT 0,
+  duration_ms     INTEGER NOT NULL DEFAULT 0,
+  order_index     INTEGER NOT NULL DEFAULT 0,
+  notes           TEXT,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_clips_project ON clips(project_id);
+
+-- ─── Merge Recipes (Clipping Studio) ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS merge_recipes (
+  id                TEXT PRIMARY KEY,
+  project_id        TEXT NOT NULL REFERENCES clipping_projects(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  description       TEXT,
+  output_format     TEXT NOT NULL DEFAULT 'mp4',
+  target_resolution TEXT NOT NULL DEFAULT 'source',
+  normalize_audio   INTEGER NOT NULL DEFAULT 1,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merge_recipes_project ON merge_recipes(project_id);
+
+-- ─── Merge Recipe Items (Ordered sequence of clip references) ─────────────────
+CREATE TABLE IF NOT EXISTS merge_recipe_items (
+  id          TEXT PRIMARY KEY,
+  recipe_id   TEXT NOT NULL REFERENCES merge_recipes(id) ON DELETE CASCADE,
+  clip_id     TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  transition  TEXT NOT NULL DEFAULT 'none',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_merge_recipe_items_recipe ON merge_recipe_items(recipe_id, order_index ASC);
+CREATE INDEX IF NOT EXISTS idx_merge_recipe_items_clip ON merge_recipe_items(clip_id);
+
+-- ─── Export Jobs ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS export_jobs (
+  id               TEXT PRIMARY KEY,
+  project_id       TEXT NOT NULL REFERENCES clipping_projects(id) ON DELETE CASCADE,
+  job_type         TEXT NOT NULL,
+  target_id        TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'queued',
+  progress_percent REAL NOT NULL DEFAULT 0.0,
+  output_path      TEXT,
+  error_message    TEXT,
+  settings_json    TEXT NOT NULL DEFAULT '{}',
+  started_at       TEXT,
+  completed_at     TEXT,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_export_jobs_project_status ON export_jobs(project_id, status);
+
+-- ─── Export Sources (Bidirectional Provenance) ────────────────────────────────
+CREATE TABLE IF NOT EXISTS export_sources (
+  id              TEXT PRIMARY KEY,
+  export_job_id   TEXT NOT NULL REFERENCES export_jobs(id) ON DELETE CASCADE,
+  clip_id         TEXT REFERENCES clips(id) ON DELETE SET NULL,
+  source_asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+  start_ms        INTEGER NOT NULL,
+  end_ms          INTEGER NOT NULL,
+  sequence_index  INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_export_sources_job ON export_sources(export_job_id, sequence_index ASC);
+CREATE INDEX IF NOT EXISTS idx_export_sources_clip ON export_sources(clip_id);
+
+-- ─── App Settings ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Default settings
+INSERT OR IGNORE INTO app_settings (key, value) VALUES
+  ('ai_provider',    '"cloudflare"'),
+  ('cf_model',       '"@cf/meta/llama-3.1-8b-instruct"'),
+  ('cf_whisper',     '"@cf/openai/whisper-large-v3-turbo"'),
+  ('max_clip_duration', '60');

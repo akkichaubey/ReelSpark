@@ -2,7 +2,7 @@ import { TranscriptWord } from './types';
 
 // High-impact emotional, motivational, and emphasis keywords across Hindi, Hinglish, and English
 const HIGH_IMPACT_KEYWORDS = new Set([
-  // Hindi & Hinglish Motivational / Emotional Keywords
+  // Hindi & Hinglish Motivational / Emotional Keywords (Latin script)
   'zindagi', 'jindagi', 'haar', 'jeet', 'sapna', 'sapne', 'manzil', 'himmat', 'junoon',
   'hausla', 'lakshya', 'kamyabi', 'safal', 'safalta', 'koshish', 'mehnat', 'vishwas',
   'bharosa', 'darr', 'khauf', 'shanti', 'dhyaan', 'prem', 'pyar', 'khushi', 'dard',
@@ -10,6 +10,15 @@ const HIGH_IMPACT_KEYWORDS = new Set([
   'shakti', 'taqat', 'aag', 'junooni', 'asli', 'pehchan', 'samman', 'izzat', 'ahankaar',
   'guroor', 'mukti', 'azadi', 'jazba', 'irada', 'fateh', 'veer', 'yodha', 'shunya',
   'anubhav', 'gyan', 'vidya', 'guru', 'roshni', 'ujala', 'andhera', 'toofan', 'parinaam',
+
+  // Hindi Motivational Keywords (Devanagari script)
+  'ज़िंदगी', 'जिंदगी', 'हार', 'जीत', 'सपना', 'सपने', 'मंज़िल', 'मंजिल', 'हिम्मत', 'जुनून',
+  'हौसला', 'लक्ष्य', 'कामयाबी', 'सफल', 'सफलता', 'कोशिश', 'मेहनत', 'विश्वास',
+  'भरोसा', 'डर', 'खौफ', 'शांति', 'ध्यान', 'प्रेम', 'प्यार', 'खुशी', 'दर्द',
+  'तकलीफ', 'सच', 'सत्य', 'झूठ', 'समय', 'वक्त', 'कर्म', 'भाग्य', 'किस्मत',
+  'शक्ति', 'ताकत', 'आग', 'असली', 'पहचान', 'सम्मान', 'इज्जत', 'मुक्ति', 'आजादी',
+  'जज्बा', 'इरादा', 'फतह', 'वीर', 'योद्धा', 'ज्ञान', 'विद्या', 'गुरु', 'रोशनी', 'उजाला',
+  'अंधेरा', 'तूफान', 'परिणाम',
 
   // English High-Impact & Action Keywords
   'success', 'failure', 'dream', 'dreams', 'fear', 'focus', 'discipline', 'respect',
@@ -27,7 +36,7 @@ export function isWordImportantHeuristic(rawText: string): boolean {
   if (!rawText) return false;
   // Clean punctuation from word (e.g. "haar!" -> "haar")
   const clean = rawText.toLowerCase().replace(/[^a-zA-Z\u0900-\u097F]/g, '');
-  if (!clean || clean.length <= 2) return false;
+  if (!clean || clean.length <= 1) return false;
 
   // Check dictionary
   if (HIGH_IMPACT_KEYWORDS.has(clean)) return true;
@@ -43,13 +52,17 @@ export function isWordImportantHeuristic(rawText: string): boolean {
 /**
  * Analyze an array of TranscriptWords and mark important words.
  * Avoids marking too many words in a row to maintain high visual impact.
+ * If forceRecompute is true, recalculates importance for all words ignoring previous values.
  */
-export function detectImportantWords(words: TranscriptWord[]): TranscriptWord[] {
+export function detectImportantWords(
+  words: TranscriptWord[],
+  forceRecompute = false
+): TranscriptWord[] {
   let consecutiveImportantCount = 0;
 
   return words.map((word) => {
-    // If user already manually toggled or assigned, preserve explicit true/false
-    if (word.isImportant !== undefined) {
+    // If user already manually toggled or assigned and not forcing recompute, preserve explicit true/false
+    if (!forceRecompute && word.isImportant !== undefined) {
       return word;
     }
 
