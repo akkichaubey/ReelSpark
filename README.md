@@ -34,9 +34,15 @@
 
 ## 🚀 Quick Start
 
+For Google authentication setup and verification, see [Google sign-in](GOOGLE_SIGN_IN.md). Email/password login is retained; demo access is disabled by default.
+
 ### 1. Prerequisites
-- **Node.js**: Latest LTS or current (`>=20`, e.g., Node.js 24+)
+- **Node.js**: `>=24.22.1 <25` (pinned to 24.22.1 via nvm).
 - **npm** package manager
+
+Windows: before npm commands, run `. .\scripts\use-project-node.ps1` in this
+project's PowerShell terminal. This avoids the installed standalone Node
+shadowing nvm. See [Node runtime setup and verification](NODE_RUNTIME.md).
 - **FFmpeg & FFprobe**: Included in `./bin/` or detected from system PATH.
 
 ### 2. Configuration
@@ -94,6 +100,14 @@ npm run media-service
 
 ## ☁️ Cloud Deployment on Render (Recommended)
 
+### Cloudflare deployment preparation (2026-10-23)
+
+- The production CSS loader now declares `type: 'css'` instead of renaming CSS output. A local production build completed successfully after this correction.
+- Docker copies the installation hook before `npm ci --include=dev`, requires the committed npm lockfile, and sets `NODE_ENV=production` after building. A Docker image build has not been verified on this workstation because Docker is unavailable.
+- Social-post generation requires a validated session in production unless demo login is explicitly enabled. A request-body `userId` alone does not authorize access.
+- Cloudflare account login, domain selection, and the Node host or Cloudflare Containers hosting choice are still pending. No cloud resources have been created or application deployed.
+- The existing `cf:deploy` / Pages `.next` upload is not a complete deployment path for this application. Native FFmpeg/Chromium processing and filesystem storage require a suitable server/container deployment and persistence strategy.
+
 ReelSpark is pre-configured for 1-click cloud deployment on [Render](https://render.com) using Docker:
 
 1. **Push your code to GitHub / GitLab**.
@@ -125,3 +139,8 @@ ReelSpark is intentionally **local-only by default**. All video processing, FFmp
 - Media uploads are checked against supported extensions and size bounds.
 - Subtitle rendering is executed using native local FFmpeg binaries (`bin/ffmpeg.exe`).
 - To expose the server remotely, set `REELSPARK_ALLOW_REMOTE=true` only behind your own reverse proxy with authentication and HTTPS.
+# Cloud persistence preparation
+
+See [CLOUD_PERSISTENCE.md](CLOUD_PERSISTENCE.md) for the metadata-only rollout,
+the additive D1 migration and outstanding private-media storage work. Metadata
+sync is off by default and is not a guarantee of restart-safe media persistence.

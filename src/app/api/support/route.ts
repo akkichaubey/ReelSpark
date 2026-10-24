@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
 import { APP_CONFIG } from '@/lib/config';
+import { requireMediaUser } from '@/lib/media-api-access';
 
 const SupportRequestSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100),
@@ -18,6 +19,8 @@ const SupportRequestSchema = z.object({
  */
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const parsed = SupportRequestSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest) {
 
     requests.push({
       id: `support_${randomUUID()}`,
+      userId: access.user.id,
       ...parsed.data,
       createdAt: new Date().toISOString(),
     });

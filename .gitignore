@@ -21,6 +21,7 @@
 .env.test.local
 .env.production.local
 # Explicitly keep example environment template tracked
+.env*
 !.env.example
 
 # Next.js Build & Outputs

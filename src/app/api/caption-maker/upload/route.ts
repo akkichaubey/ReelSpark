@@ -6,9 +6,16 @@ import { assertSafePath, sanitizeFilename } from '@/lib/storage';
 import { probeAudioDuration, extractAudioFromVideo } from '@/lib/caption-maker/ffmpeg-renderer';
 import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
 import { validateUpload } from '@/lib/media-validation';
+import { randomUUID } from 'node:crypto';
+import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
+import { recordMediaOwner } from '@/lib/media-access';
+import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getRequestUser(req);
+    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!isSameOriginAuthRequest(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const type = formData.get('type') as 'image' | 'video' | 'audio' | null;
@@ -54,17 +61,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare target storage directory
-    const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const assetId = `asset_${randomUUID()}`;
     const uploadDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', assetId);
     assertSafePath(uploadDir, APP_CONFIG.storageRoot);
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
+    await recordMediaOwner(uploadDir, user.id);
 
     const targetFilePath = path.join(uploadDir, safeName);
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.promises.writeFile(targetFilePath, buffer);
+    await backupPrivateMedia(user.id, targetFilePath);
 
     const relativePath = `caption-maker/${assetId}/${safeName}`;
     const fileUrl = `/api/files/${relativePath}`;
@@ -85,6 +94,7 @@ export async function POST(req: NextRequest) {
         const extractedAudioPath = path.join(uploadDir, extractedAudioName);
         const { duration: extractedDuration } = await extractAudioFromVideo(targetFilePath, extractedAudioPath);
         const extractedStat = fs.statSync(extractedAudioPath);
+        await backupPrivateMedia(user.id, extractedAudioPath);
         companionAudioPath = extractedAudioPath;
         companionAudioUrl = `/api/files/caption-maker/${assetId}/${extractedAudioName}`;
         companionFormat = 'MP3';

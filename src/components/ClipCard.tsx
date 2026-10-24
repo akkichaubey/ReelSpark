@@ -1,4 +1,5 @@
 'use client';
+import { accountCache } from '@/lib/account-cache';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -71,7 +72,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         language: lang,
         clipId: candidate.id,
       };
-      localStorage.setItem('reel_social_post_context', JSON.stringify(socialContext));
+      accountCache.setItem('reel_social_post_context', JSON.stringify(socialContext));
     } catch (e) {
       console.warn('Could not save social post context', e);
     }
@@ -127,8 +128,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         const { createCaptionProjectFromClip } = await import('@/lib/caption-maker/clip-to-reel');
         const reelProj = createCaptionProjectFromClip(candidate, null, lang);
         try {
-          localStorage.setItem('reel_caption_project_v2', JSON.stringify(reelProj));
-          localStorage.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
+          accountCache.setItem('reel_caption_project_v2', JSON.stringify(reelProj));
+          accountCache.setItem('reel_caption_project_v1', JSON.stringify(reelProj));
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('reel_project_updated', { detail: reelProj }));
           }

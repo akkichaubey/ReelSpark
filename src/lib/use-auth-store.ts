@@ -1,5 +1,20 @@
 import { create } from 'zustand';
-import { UserProfile } from './auth';
+import type { UserProfile } from './auth';
+import { announceAccountIdentity, getCacheAccount, setCacheAccount } from './account-cache';
+
+let authRequestVersion = 0;
+
+function prepareAccount(user: UserProfile | null, alreadyLoaded: boolean): boolean {
+  announceAccountIdentity(user?.id || null);
+  if (alreadyLoaded && getCacheAccount() !== (user?.id || null) && typeof window !== 'undefined') {
+    // A reload discards editor state, pending UI responses, autosave timers and
+    // Zustand singletons before the next account's cache namespace is selected.
+    window.location.reload();
+    return false;
+  }
+  setCacheAccount(user?.id || null);
+  return true;
+}
 
 interface AuthState {
   user: UserProfile | null;
@@ -15,7 +30,7 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   authModalOpen: false,
@@ -25,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   closeAuthModal: () => set({ authModalOpen: false }),
 
   checkAuth: async () => {
+    const version = ++authRequestVersion;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
@@ -32,7 +48,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       clearTimeout(timeout);
       if (res.ok) {
         const data = await res.json();
+        if (version !== authRequestVersion) return;
         if (data.authenticated && data.user) {
+          if (!prepareAccount(data.user, !get().isLoading)) return;
           set({ user: data.user, isLoading: false });
           return;
         }
@@ -40,10 +58,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Offline / timeout / error — fall through to unauthenticated state
     }
-    set({ user: null, isLoading: false });
+    if (version === authRequestVersion && prepareAccount(null, !get().isLoading)) set({ user: null, isLoading: false });
   },
 
   login: async (email, password) => {
+    ++authRequestVersion;
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -54,7 +73,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Login failed' };
       }
-      set({ user: data.user, authModalOpen: false });
+      if (prepareAccount(data.user, !get().isLoading)) set({ user: data.user, authModalOpen: false });
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Network error during login' };
@@ -62,6 +81,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   register: async (name, email, password) => {
+    ++authRequestVersion;
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -72,7 +92,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Registration failed' };
       }
-      set({ user: data.user, authModalOpen: false });
+      if (prepareAccount(data.user, !get().isLoading)) set({ user: data.user, authModalOpen: false });
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Network error during registration' };
@@ -80,11 +100,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    ++authRequestVersion;
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) return;
     } catch {
-      // Ignore
+      return;
     }
-    set({ user: null });
+    if (prepareAccount(null, true)) set({ user: null });
   },
 }));

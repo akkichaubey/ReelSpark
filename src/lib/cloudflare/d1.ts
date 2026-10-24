@@ -77,7 +77,9 @@ export async function d1Query<T = Record<string, unknown>>(
     throw new Error(`D1 error: ${JSON.stringify(data.errors)}`);
   }
 
-  return data.result?.[0] ?? { results: [], success: true };
+  const result = data.result?.[0];
+  if (!result || !result.success) throw new Error('D1 query did not confirm successful execution');
+  return result;
 }
 
 /**
@@ -120,7 +122,7 @@ export function getD1Status(): {
     databaseId,
     apiToken,
     message: configured
-      ? 'Cloudflare D1 is connected for project metadata sync.'
+      ? 'Cloudflare D1 credentials are configured; connectivity has not been verified.'
       : 'Cloudflare D1 credentials not configured. Local-only mode is active.',
   };
 }

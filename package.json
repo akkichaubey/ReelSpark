@@ -3,18 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=24.22.1 <25"
   },
   "scripts": {
+    "predev": "node scripts/check-node.cjs",
+    "prebuild": "node scripts/check-node.cjs",
+    "prestart": "node scripts/check-node.cjs",
     "dev": "next dev",
     "media-service": "tsx services/media-service/server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "verify:server": "node scripts/verify-server.cjs",
+    "deploy:preflight": "node scripts/deployment-preflight.cjs",
+    "verify:linux-render": "tsx scripts/smoke-linux-render.ts",
     "test": "tsx tests/test_suite.ts",
     "test:social": "tsx tests/smart_social_intelligence.test.ts",
     "test:social-platform": "tsx tests/social_post_platform_rules.test.ts",
+    "test:google-auth": "tsx tests/google_auth.test.ts",
     "test:safe-zone": "tsx tests/safe_zone_measurement_system.test.ts",
     "test:safe-sync": "tsx tests/safe_zone_caption_and_thumbnail_sync.test.ts",
     "test:presets": "tsx tests/presets_comprehensive_analysis.test.ts",
@@ -30,10 +37,12 @@
     "cf:dev": "wrangler pages dev .next --port 3001"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1156.0",
     "@remotion/bundler": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
     "archiver": "^8.0.0",
     "gsap": "^3.15.0",
+    "jose": "6.2.13",
     "lucide-react": "^1.54.0",
     "next": "16.4.2",
     "react": "19.3.0",
@@ -41,6 +50,14 @@
     "remotion": "^4.0.534",
     "zod": "^4.6.7",
     "zustand": "^5.0.15"
+  },
+  "overrides": {
+    "@remotion/studio": { "zod": "4.6.7" },
+    "@remotion/elevenlabs": { "zod": "4.6.7" },
+    "@remotion/media": { "zod": "4.6.7" },
+    "@remotion/openai-whisper": { "zod": "4.6.7" },
+    "@remotion/studio-protocol": { "zod": "4.6.7" },
+    "miniflare": { "undici": "7.30.1" }
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261019.1",

@@ -1,3 +1,4 @@
+import { requireProjectAccess } from '@/lib/project-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteProject, loadProject, saveProject } from '@/lib/storage';
 
@@ -7,6 +8,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const accessError = await requireProjectAccess(req, id);
+    if (accessError) return accessError;
     const project = await loadProject(id);
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
@@ -23,6 +26,8 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const accessError = await requireProjectAccess(req, id);
+    if (accessError) return accessError;
     const project = await loadProject(id);
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
@@ -47,6 +52,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const accessError = await requireProjectAccess(req, id);
+    if (accessError) return accessError;
     const success = await deleteProject(id);
     if (!success) {
       return NextResponse.json({ success: false, error: 'Failed to delete project or project not found' }, { status: 404 });

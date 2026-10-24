@@ -1,3 +1,4 @@
+import { requireProjectAccess } from '@/lib/project-access';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -12,6 +13,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const accessError = await requireProjectAccess(req, id);
+    if (accessError) return accessError;
     const project = await loadProject(id);
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });

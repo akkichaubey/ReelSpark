@@ -13,9 +13,14 @@ import {
 } from '@/lib/caption-maker/audio-trimmer';
 import { groupTranscriptWords } from '@/lib/caption-maker/caption-grouping';
 import { FillerSegment, SfxCue, SyncedPhraseSegment, TranscriptWord } from '@/lib/caption-maker/types';
+import { requireMediaUser } from '@/lib/media-api-access';
+import { canReadMedia, mediaUserNamespace } from '@/lib/media-access';
+import { backupPrivateMedia, restorePrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const body = await req.json();
     const {
       storagePath,
@@ -45,11 +50,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (targetPath && !fs.existsSync(/*turbopackIgnore: true*/ targetPath)) await restorePrivateMedia(access.user.id, targetPath);
     if (!targetPath || !fs.existsSync(/*turbopackIgnore: true*/ targetPath)) {
       return NextResponse.json(
         { error: 'Audio file not found on server for trimming' },
         { status: 400 }
       );
+    }
+
+    if (!(await canReadMedia(access.user.id, targetPath))) {
+      return NextResponse.json({ error: 'Media not found. Upload media to your account first.' }, { status: 404 });
     }
 
     if (!fillerSegments || fillerSegments.length === 0) {
@@ -94,15 +104,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Generate output file in temp directory
-    if (!fs.existsSync(APP_CONFIG.tempDir)) {
-      fs.mkdirSync(APP_CONFIG.tempDir, { recursive: true });
+    // Derived media must remain private and downloadable by its owner.
+    const outputDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'trimmed', mediaUserNamespace(access.user.id));
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
     const filename = `jumpcut-${Date.now()}-${path.basename(targetPath, path.extname(targetPath))}.mp3`;
-    const outputPath = path.join(APP_CONFIG.tempDir, filename);
+    const outputPath = path.join(outputDir, filename);
 
     // Perform FFmpeg trim & stitch
     await trimAudioWithFfmpeg(targetPath, outputPath, keepIntervals);
+    await backupPrivateMedia(access.user.id, outputPath);
 
     // Inspect newly generated audio duration
     const newMeta = await probeVideo(outputPath);

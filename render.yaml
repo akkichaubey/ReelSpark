@@ -8,23 +8,32 @@ services:
   - type: web
     name: reelspark
     runtime: docker
-    plan: starter
+    # Free preview only. Do not publish until auth and cloud storage are verified.
+    plan: free
     region: oregon
     dockerfilePath: ./Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
-      - key: GEMINI_MODEL
-        value: gemini-3.8-flash
-      - key: GEMINI_API_KEY
+      - key: ALLOW_DEMO_LOGIN
+        value: "false"
+      - key: CLOUD_PROJECT_METADATA_ENABLED
+        value: "false"
+      - key: CLOUD_PRIVATE_MEDIA_ENABLED
+        value: "false"
+      - key: CLOUD_MEDIA_LIFECYCLE_ENABLED
+        value: "false"
+      - key: AUTH_URL
         sync: false
-      - key: NEXT_PUBLIC_SUPABASE_URL
+      - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+      - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
-    disk:
-      name: reelspark-storage
-      mountPath: /app/storage
-      sizeGB: 10
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_D1_DATABASE_ID
+        sync: false
+    # No persistent disk: Render Free does not support one.
+    # Keep the remote-host guard enabled until multi-user authorization is audited.

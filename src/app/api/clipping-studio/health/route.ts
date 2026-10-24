@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { checkFfmpegStatus, checkFfprobeStatus } from '@/lib/config';
 import { MediaServiceHealthResponse } from '@/lib/clipping-studio/contracts';
+import { requireMediaUser } from '@/lib/media-api-access';
 
 const START_TIME = Date.now();
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const ffmpeg = await checkFfmpegStatus();
     const ffprobe = await checkFfprobeStatus();
 

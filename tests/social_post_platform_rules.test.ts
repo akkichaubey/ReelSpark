@@ -4,8 +4,10 @@ import { getPlatformConfig } from '../src/lib/social-intelligence/platform-rules
 import { SocialPlatformKey } from '../src/lib/social-intelligence/types';
 
 const originalFetch = globalThis.fetch;
+const originalDemoLogin = process.env.ALLOW_DEMO_LOGIN;
 
 async function runPlatformGenerationTests() {
+  process.env.ALLOW_DEMO_LOGIN = 'true';
   // Exercise fallback behavior deterministically, even when a local model is online.
   globalThis.fetch = async () => { throw new Error('Simulated offline model'); };
   const transcript = 'Most people wait for confidence before they start. Progress begins when you take the first small action today.';
@@ -120,10 +122,30 @@ async function runPlatformGenerationTests() {
   assert.strictEqual(aiData.bundle.hooks[0], 'Confidence follows action.', 'Preserve the AI-generated hook');
   assert.strictEqual(aiData.bundle.variations[0].caption, aiCaption, 'Preserve AI copy and list formatting');
   console.log('✓ AI style instructions and generated copy preservation verified');
+
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDemoLogin = process.env.ALLOW_DEMO_LOGIN;
+  try {
+    Object.assign(process.env, { NODE_ENV: 'production', ALLOW_DEMO_LOGIN: 'false' });
+    const unauthorized = await POST(new Request('http://localhost:3000/api/caption-maker/generate-social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript, userId: 'usr_admin', platform: 'instagram' }),
+    }) as any);
+    assert.strictEqual(unauthorized.status, 401, 'A supplied userId must not bypass production session authentication');
+    console.log('✓ Production generation rejects unauthenticated userId impersonation');
+  } finally {
+    if (previousNodeEnv === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV');
+    else Object.assign(process.env, { NODE_ENV: previousNodeEnv });
+    if (previousDemoLogin === undefined) delete process.env.ALLOW_DEMO_LOGIN;
+    else process.env.ALLOW_DEMO_LOGIN = previousDemoLogin;
+  }
 }
 
 runPlatformGenerationTests().finally(() => {
   globalThis.fetch = originalFetch;
+  if (originalDemoLogin === undefined) delete process.env.ALLOW_DEMO_LOGIN;
+  else process.env.ALLOW_DEMO_LOGIN = originalDemoLogin;
 }).catch((error) => {
   console.error(error);
   process.exit(1);

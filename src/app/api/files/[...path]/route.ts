@@ -3,18 +3,26 @@ import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath } from '@/lib/storage';
+import { getRequestUser } from '@/lib/auth';
+import { canReadMedia } from '@/lib/media-access';
+import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
+    const user = await getRequestUser(req);
+    if (!user) return new NextResponse('Authentication required', { status: 401 });
     const { path: pathSegments } = await params;
     const relativePath = pathSegments.join('/');
     const fullPath = path.join(APP_CONFIG.storageRoot, relativePath);
 
     // Security: Check path traversal
     const safePath = assertSafePath(fullPath, APP_CONFIG.storageRoot);
+    if (!(await canReadMedia(user.id, safePath)) && !(await restorePrivateMedia(user.id, safePath))) {
+      return new NextResponse('File not found', { status: 404 });
+    }
 
     // Security: Block sensitive internal configuration and auth files
     const basename = path.basename(safePath).toLowerCase();
@@ -70,8 +78,13 @@ export async function GET(
     const range = req.headers.get('range');
     if (range && (contentType.startsWith('video/') || contentType.startsWith('audio/'))) {
       const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      const suffix = !parts[0] && /^\d+$/.test(parts[1] || '');
+      const start = suffix ? Math.max(0, stat.size - Number(parts[1])) : Number(parts[0]);
+      const end = suffix || !parts[1] ? stat.size - 1 : Math.min(Number(parts[1]), stat.size - 1);
+      if (!/^bytes=\d*-\d*$/.test(range) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+          start < 0 || start >= stat.size || end < start || (suffix && Number(parts[1]) === 0)) {
+        return new NextResponse(null, { status: 416, headers: { 'Content-Range': `bytes */${stat.size}` } });
+      }
       const chunkSize = end - start + 1;
 
       const fileStream = fs.createReadStream(safePath, { start, end });
@@ -83,6 +96,7 @@ export async function GET(
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize.toString(),
           'Content-Type': contentType,
+          'Cache-Control': 'private, no-store',
         },
       });
     }
@@ -91,6 +105,7 @@ export async function GET(
     return new Response(fileStream as any, {
       headers: {
         'Content-Type': contentType,
+        'Cache-Control': 'private, no-store',
         'Content-Length': stat.size.toString(),
         'Accept-Ranges': 'bytes',
       },

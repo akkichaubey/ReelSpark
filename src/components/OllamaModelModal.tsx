@@ -1,4 +1,5 @@
 'use client';
+import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -159,7 +160,7 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
     setErrorMessage(null);
 
     // Read stored user key from localStorage if available
-    const localKey = typeof window !== 'undefined' ? localStorage.getItem('reelspark_user_gemini_key') : null;
+    const localKey = typeof window !== 'undefined' ? accountCache.getItem('reelspark_user_gemini_key') : null;
     if (localKey) {
       setApiKeyInput(localKey);
     }
@@ -168,6 +169,7 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
       try {
         const res = await fetch('/api/settings');
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load server settings');
         if (active && data.success) {
           if (data.provider) {
             setProvider(data.provider);
@@ -288,9 +290,9 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
       // Save user's personal key to client-side localStorage so it persists per browser
       if (typeof window !== 'undefined') {
         if (provider === 'gemini' && apiKeyInput.trim()) {
-          localStorage.setItem('reelspark_user_gemini_key', apiKeyInput.trim());
+          accountCache.setItem('reelspark_user_gemini_key', apiKeyInput.trim());
         } else if (provider === 'gemini' && !apiKeyInput.trim()) {
-          localStorage.removeItem('reelspark_user_gemini_key');
+          accountCache.removeItem('reelspark_user_gemini_key');
         }
       }
 

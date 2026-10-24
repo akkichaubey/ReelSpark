@@ -262,7 +262,10 @@ export async function renderRemotionReelVideo(
 
   // 6. Select Composition
   const { selectComposition, renderMedia } = await import('@remotion/renderer');
+  // Use the installed container Chromium rather than downloading a browser at runtime.
+  const browserExecutable = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
   const composition = await selectComposition({
+    browserExecutable,
     serveUrl: bundleLocation,
     id: 'CaptionReel',
     inputProps: inputProps as unknown as Record<string, unknown>,
@@ -275,13 +278,15 @@ export async function renderRemotionReelVideo(
 
   // 7. Render frames and encode to MP4 via Remotion Renderer
   await renderMedia({
+    browserExecutable,
     composition,
     serveUrl: bundleLocation,
     codec: 'h264',
     outputLocation: outputPath,
     inputProps: inputProps as unknown as Record<string, unknown>,
     imageFormat: 'jpeg',
-    binariesDirectory: path.resolve(process.cwd(), 'bin'),
+    // Windows uses the project's FFmpeg wrapper; Linux uses Remotion's native package.
+    binariesDirectory: process.platform === 'win32' ? path.resolve(process.cwd(), 'bin') : null,
     logLevel: 'warn',
     onProgress: ({ progress }) => {
       if (onProgress) {

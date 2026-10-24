@@ -1,9 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { X, Mail, Lock, User, Loader2, ArrowRight } from 'lucide-react';
 import { ReelSparkLogo } from './ReelSparkLogo';
+
+const GOOGLE_AUTH_ERRORS: Record<string, string> = {
+  google_not_configured: 'Google sign-in is not available yet. Please use email and password.',
+  google_invalid_state: 'Your sign-in request expired. Please try again.',
+  google_cancelled: 'Google sign-in was cancelled. You can try again or sign in with email.',
+  google_account_exists: 'This email already has an account. Please sign in with your existing password.',
+  google_storage_failed: 'We could not save your sign-in. Please try again shortly.',
+  google_failed: 'Google sign-in could not be completed. Please try again.',
+};
 
 export const AuthModal: React.FC = () => {
   const { authModalOpen, authModalMode, closeAuthModal, login, register, openAuthModal } = useAuthStore();
@@ -12,8 +21,41 @@ export const AuthModal: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const code = new URLSearchParams(window.location.search).get('auth_error');
+    return code ? GOOGLE_AUTH_ERRORS[code] || GOOGLE_AUTH_ERRORS.google_failed : null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [googleRedirecting, setGoogleRedirecting] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('auth_error');
+    if (!code) return;
+    openAuthModal('login');
+    url.searchParams.delete('auth_error');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [openAuthModal]);
+
+  useEffect(() => {
+    if (!authModalOpen) return;
+    const controller = new AbortController();
+    fetch('/api/auth/providers', { cache: 'no-store', signal: controller.signal })
+      .then(response => response.ok ? response.json() : { google: false })
+      .then(data => { if (!controller.signal.aborted) setGoogleReady(data.google === true); })
+      .catch(() => { if (!controller.signal.aborted) setGoogleReady(false); })
+      .finally(() => { if (!controller.signal.aborted) setProvidersLoading(false); });
+    return () => controller.abort();
+  }, [authModalOpen]);
+
+  useEffect(() => {
+    const restore = () => setGoogleRedirecting(false);
+    window.addEventListener('pageshow', restore);
+    return () => window.removeEventListener('pageshow', restore);
+  }, []);
 
   if (!authModalOpen) return null;
 
@@ -86,12 +128,17 @@ export const AuthModal: React.FC = () => {
         </div>
 
         {/* Google Sign In Button */}
+        <form action="/api/auth/google" method="get" onSubmit={(event) => {
+          setError(null);
+          setGoogleRedirecting(true);
+          const nextInput = event.currentTarget.elements.namedItem('next') as HTMLInputElement;
+          nextInput.value = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        }}>
+        <input type="hidden" name="next" defaultValue="/" />
         <button
-          type="button"
-          onClick={() => {
-            setError('Google Sign-In ready for Client ID integration. For instant access, use username: admin, password: admin below!');
-          }}
-          className="w-full mb-3 py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs border border-white/10 hover:border-white/20 flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-sm group"
+          type="submit"
+          disabled={!googleReady || providersLoading || isSubmitting || googleRedirecting}
+          className="w-full mb-3 py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs border border-white/10 hover:border-white/20 flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
             <path
@@ -111,8 +158,11 @@ export const AuthModal: React.FC = () => {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          <span className="group-hover:text-white transition-colors">Continue with Google</span>
+          {googleRedirecting && <Loader2 className="w-4 h-4 animate-spin" />}
+          <span className="group-hover:text-white transition-colors">{googleRedirecting ? 'Opening Google…' : 'Continue with Google'}</span>
         </button>
+        </form>
+        {!providersLoading && !googleReady && <p className="mb-3 text-center text-[11px] text-zinc-500">Google sign-in is not available yet. You can use email below.</p>}
 
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 h-px bg-white/10" />
@@ -152,26 +202,6 @@ export const AuthModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Quick-Fill Admin Helper Banner */}
-        {mode === 'login' && (
-          <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-center justify-between shadow-sm">
-            <span>
-              Admin: <strong className="text-white">admin</strong> / Password: <strong className="text-white">admin</strong>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('admin');
-                setPassword('admin');
-                setError(null);
-              }}
-              className="px-2 py-0.5 rounded-lg bg-amber-400 text-zinc-950 font-bold hover:bg-amber-300 text-[10px] transition-all cursor-pointer shadow-sm active:scale-95"
-            >
-              Auto Fill
-            </button>
-          </div>
-        )}
-
         {/* Error message */}
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
@@ -203,16 +233,17 @@ export const AuthModal: React.FC = () => {
 
           <div>
             <label htmlFor="auth-email" className="block text-zinc-300 font-medium mb-1.5">
-              {mode === 'login' ? 'Username or Email' : 'Email Address'}
+              Email Address
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
               <input
                 id="auth-email"
                 name="email"
-                type={mode === 'login' ? 'text' : 'email'}
+                type="email"
                 required
-                placeholder={mode === 'login' ? 'admin or you@example.com' : 'you@example.com'}
+                placeholder="you@example.com"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 bg-zinc-900/90 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-white/40 transition-colors"
@@ -229,7 +260,8 @@ export const AuthModal: React.FC = () => {
                 name="password"
                 type="password"
                 required
-                placeholder={mode === 'login' ? 'admin' : 'At least 6 characters'}
+                placeholder={mode === 'login' ? 'Your password' : 'At least 6 characters'}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 bg-zinc-900/90 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-white/40 transition-colors"
@@ -239,7 +271,7 @@ export const AuthModal: React.FC = () => {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || googleRedirecting}
             className="w-full mt-2 py-3 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
           >
             {isSubmitting ? (

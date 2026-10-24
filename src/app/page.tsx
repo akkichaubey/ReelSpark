@@ -1,4 +1,5 @@
 'use client';
+import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -404,7 +405,7 @@ function DashboardPageContent() {
         lang,
         audioOverride
       );
-      localStorage.setItem('reel_caption_project_v2', JSON.stringify(captionProject));
+      accountCache.setItem('reel_caption_project_v2', JSON.stringify(captionProject));
       router.push(`/reel-maker?${projIdParam}clipId=${encodeURIComponent(candidate.id)}&lang=${lang}`);
     } catch (err: any) {
       console.error('Failed to create caption project:', err);
@@ -467,12 +468,12 @@ function DashboardPageContent() {
           setActiveProject(remaining.length > 0 ? remaining[0] : null);
         }
         try {
-          const cached = localStorage.getItem('reel_caption_project_v2');
+          const cached = accountCache.getItem('reel_caption_project_v2');
           if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed?.sourceProjectId === projectId || parsed?.id === projectId) {
-              localStorage.removeItem('reel_caption_project_v2');
-              localStorage.removeItem('reel_caption_project_v1');
+              accountCache.removeItem('reel_caption_project_v2');
+              accountCache.removeItem('reel_caption_project_v1');
               window.dispatchEvent(new CustomEvent('reel_project_updated'));
             }
           }

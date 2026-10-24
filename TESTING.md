@@ -6,6 +6,8 @@ This document describes the automated test matrix, verification procedures, and 
 
 ## 1. Automated Test Execution
 
+Google sign-in regression coverage: `npm run test:google-auth` (Google and D1 are mocked; no real accounts are created). See [GOOGLE_SIGN_IN.md](GOOGLE_SIGN_IN.md) for the configuration and live verification steps.
+
 Run the complete 60-suite test runner:
 
 ```bash
@@ -100,6 +102,146 @@ npm run build
 ---
 
 ## 3. Production Verification Checkpoints
+
+Server media preparation regression check:
+
+```bash
+npx tsx tests/server_media_client.test.ts
+npx tsx tests/export_fallback_routes.test.ts
+npx tsx tests/project_access.test.ts
+npx tsx tests/media_access.test.ts
+npx tsx tests/clipping_media_security.test.ts
+npx tsx tests/server_export_plan.test.ts
+npx tsx tests/settings_account_cache.test.ts
+npx tsx tests/cloud_project_documents.test.ts
+npx tsx tests/private_media_cloud.test.ts
+npx tsx tests/media_lifecycle.test.ts
+# Optional real local FFmpeg/FFprobe verification:
+npx tsx tests/server_export_plan.test.ts --real
+```
+
+Passed locally on Windows: same-origin default, explicitly configured standalone
+fallback, failed HTTP response handling, invalid health payload rejection and
+request timeout. `npm run typecheck` and `node --check scripts/patch-remotion.js`
+also passed. These checks do not verify Linux Chromium or actual video rendering.
+
+Export fallback route checks passed locally with mocked daemon/process handles:
+offline status/list, daemon recovery merge, successful cancellation, terminal-job
+conflict, unsupported retry and missing job. This does not verify a real FFmpeg
+process cancellation or durable job recovery after restart.
+
+Project access checks cover the owner/other-user/ownerless policy and anonymous
+list/create/read/update/delete rejection. Actual two-account browser testing and
+all remaining API families are still pending.
+
+Media access regression checks passed locally using temporary fixtures: user
+ownership, write-once owner records, project and per-user render file isolation,
+anonymous upload/download rejection, cross-origin upload rejection, and media
+range responses (partial, suffix, invalid and out-of-bounds). TypeScript passed.
+Real two-account browser sessions, legacy ownership migration, Linux rendering
+and the remaining Clipping Studio/transcription/trim APIs are not verified here.
+
+Clipping/transcription security checks subsequently passed locally with temporary
+fixtures and the explicit development demo identity: anonymous API rejection,
+project owner/other-user/legacy/traversal rules, other-user media rejection for
+probe/transcribe/trim/bridge/relink, protected deletion, owned no-op trimming,
+cross-origin rejection and the public raw-FFmpeg export gate. Export fallback tests
+now also confirm another owner's jobs and unregistered daemon jobs are hidden.
+Actual Google sessions, real transcription/FFmpeg execution, production command
+planning and durable owner/job storage remain untested or unfinished.
+
+Server export planning tests now cover strict structured options, ownership,
+unique server-owned output directories, duration checks, rejection of raw args,
+custom paths/invalid formats/remote sources, single-clip and video/audio merge
+plans. Real local Windows FFmpeg single-clip and two-segment video merge exports
+passed with nonempty audio/video output and duration checks. Normalized MP3
+merge also passed with audio-only and duration verification. Linux Docker and
+browser end-to-end flows remain untested. Crossfade and separate audio/video
+files are explicitly unsupported. Production no longer uses the blanket 503
+gate: raw command submissions are rejected with 400 instead.
+
+After the structured export integration, `npm run typecheck`, the server planner
+lint check and `npm run build` passed locally. A dynamic runtime-output tracing
+warning in the first build was corrected; the repeated build passed without
+that warning. Existing clipping security and export fallback suites also passed.
+
+Settings/account-cache checks passed with mocked D1 sessions and browser storage:
+Alice/Bob draft and clipping-project separation, guest isolation, preservation of
+legacy keys, anonymous settings/system/health/support rejection, ordinary-member
+settings/test/system rejection, admin input validation and cross-origin denial.
+No real settings or support records were written by this suite. Real multi-tab,
+BFCache, OAuth redirect and account-switch editor testing remain pending.
+
+After account-cache integration, production build and TypeScript passed. Targeted
+lint checks for the cache/admin/auth/boundary modules passed. Media-access,
+Clipping Studio security and Google-auth regression suites passed again locally.
+
+D1 project-document checks passed using in-memory SQLite with the actual additive
+migration and mocked HTTP transport: owner-scoped lists, atomic conflict denial,
+owner-scoped deletion, metadata API saves, disabled mode, anonymous rejection and
+503 on cloud failure. TypeScript and targeted metadata API/repository/client lint
+checks passed. No live database, R2 object or local user project was modified.
+Production build, settings/account-cache tests and Clipping Studio security
+regressions passed again after this metadata integration.
+
+Private media checks passed using SQLite + a fake object store: full local-cache
+loss and ownership restoration, other-user denial, checksum failure, temporary
+file cleanup, traversal rejection, disabled mode and failed-catalog rollback.
+Media-access and clipping-security regressions, TypeScript, targeted private
+storage lint and production build passed. No live R2 request was made.
+`npm audit` reports 11 alerts (9 high, 2 moderate) in Remotion/Wrangler chains;
+the AWS SDK was added without running unrelated force fixes.
+
+Subsequent lifecycle/security work: SQLite and fake-object tests passed for
+superseded uploads, dry-run, active-object protection, retry after storage
+failure, owner/shared-reference checks, tombstones and durable project deletion.
+Targeted lifecycle lint and TypeScript passed. Scoped Zod/Undici overrides give
+`npm audit`: 0 vulnerabilities. Real local FFmpeg single/video-merge/normalized
+MP3 tests and Remotion composition bundling passed after these overrides.
+Wrangler still reports 4.152.0. Node remains 24.21.0 with bundled Undici 7.29.1;
+that runtime security issue is not fixed by npm overrides. No live cloud
+deletion or existing local user-media deletion was performed.
+The production build, settings/admin-cleanup authorization, private-media,
+cloud-document and Google-auth suites also passed after lifecycle integration.
+Full and production-only npm audits both report 0 vulnerabilities; the Node
+runtime gate described in DEPENDENCY_SECURITY.md was still open at that stage.
+
+## Approved nvm Node 24.22.1 upgrade
+
+Verified runtime: Node v24.22.1, npm 11.19.1, built-in Undici 7.30.1. All commands
+below ran after `. .\scripts\use-project-node.ps1` to avoid the standalone PATH
+conflict. nvm default is 24.22.1; old installations were not removed.
+
+- `npm ci`: passed (616 packages; 0 audit vulnerabilities). Remotion postinstall
+  patches reapplied. Warnings remain for ESLint support, the patch script's
+  unspecified module type and npm allowScripts coverage; no broad approval or
+  unrelated dependency change was made to suppress them.
+- `npm run build`: passed, including TypeScript and all route compilation.
+- Twelve regression/export suites passed: Google auth, social platform rules,
+  media client, project/media access, clipping security, export fallback,
+  account/settings, cloud documents, private media, lifecycle, server export plan.
+- Real local FFmpeg single-clip, video merge and normalized MP3 exports passed.
+- Remotion composition bundling passed after the clean install.
+- Runtime guard tests reject 24.21.0, 24.22.0 and 25.x; accept 24.22.1 and later 24.x.
+- Local production smoke: `/` 200, `/api/auth/providers` 200, `/api/projects` 401
+  without login. The temporary test server was stopped afterward.
+- npm audit: 0 vulnerabilities. Package/lock engines match `>=24.22.1 <25`.
+
+Linux Docker image, real Google OAuth, live cloud media and full browser QA were
+not tested here. The unmodified standalone Windows Node still wins in a terminal
+without the helper; project pre-dev/build/start checks intentionally reject it.
+
+## Portable storage and Linux verification preparation
+
+Storage-reference tests passed: changed root, default Windows-path rebinding,
+portable save/load and traversal rejection. Cloud document and lifecycle tests
+passed with portable payloads. `npm run verify:server -- --real` passed all 13
+suites, including real local FFmpeg exports. TypeScript and production build
+passed. The manual workflow YAML was parsed and its manual trigger/read-only
+permissions checked. Linux execution remains NOT TESTED (no local container/WSL
+runtime); no workflow was pushed or dispatched. No live D1 writes/R2 uploads ran.
+Read-only D1 schema verification confirmed that migrations 0001–0003 have not
+been applied. Missing Google/R2 credentials and AUTH_URL remain deployment gates.
 
 Before releasing or deploying changes:
 1. **Automated Unit & Integration Tests**:

@@ -1,4 +1,5 @@
 'use client';
+import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -148,9 +149,9 @@ function CaptionMakerPageContent() {
 
     let restoredParsed: CaptionProject | null = null;
     try {
-      let saved = localStorage.getItem('reel_caption_project_v2');
+      let saved = accountCache.getItem('reel_caption_project_v2');
       if (!saved) {
-        saved = localStorage.getItem('reel_caption_project_v1');
+        saved = accountCache.getItem('reel_caption_project_v1');
       }
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -240,7 +241,7 @@ function CaptionMakerPageContent() {
         restoredParsed.captionGroups = groupTranscriptWords(restoredParsed.transcript, 4);
       }
       try {
-        localStorage.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
+        accountCache.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
       } catch {}
       setProject(restoredParsed);
       setHistory([restoredParsed]);
@@ -317,7 +318,7 @@ function CaptionMakerPageContent() {
               audioOverride
             );
             try {
-              localStorage.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
+              accountCache.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
             } catch {}
             setProject(dynamicReelProj);
             setHistory([dynamicReelProj]);
@@ -386,7 +387,7 @@ function CaptionMakerPageContent() {
     updateProjectWithHistory((prev) => {
       const switched = switchProjectLanguage(prev, lang);
       try {
-        localStorage.setItem('reel_caption_project_v2', JSON.stringify(switched));
+        accountCache.setItem('reel_caption_project_v2', JSON.stringify(switched));
       } catch {}
       return switched;
     });
@@ -686,8 +687,8 @@ function CaptionMakerPageContent() {
       setCenterViewMode('video');
       setLeftTab('assets');
       try {
-        localStorage.setItem('reel_caption_project_v2', JSON.stringify(fresh));
-        localStorage.removeItem('reel_caption_project_v1');
+        accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
+        accountCache.removeItem('reel_caption_project_v1');
       } catch {}
     }
   };
@@ -1005,7 +1006,7 @@ function CaptionMakerPageContent() {
 
         setProject(healed);
         try {
-          localStorage.setItem('reel_caption_project_v2', JSON.stringify(healed));
+          accountCache.setItem('reel_caption_project_v2', JSON.stringify(healed));
         } catch {}
         setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
         setHistoryIndex((prevIdx) => prevIdx + 1);
@@ -1117,7 +1118,7 @@ function CaptionMakerPageContent() {
     }
 
     try {
-      localStorage.setItem('reel_caption_project_v2', JSON.stringify(nextProject));
+      accountCache.setItem('reel_caption_project_v2', JSON.stringify(nextProject));
     } catch {}
 
     setAudioDuration(audio.duration);
@@ -1178,8 +1179,8 @@ function CaptionMakerPageContent() {
     setLeftTab('assets');
 
     try {
-      localStorage.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
-      localStorage.removeItem('reel_caption_project_v1');
+      accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
+      accountCache.removeItem('reel_caption_project_v1');
     } catch (e) {
       console.warn('Failed to update storage on audio removal:', e);
     }
@@ -1211,7 +1212,7 @@ function CaptionMakerPageContent() {
     setCenterViewMode('video');
 
     try {
-      localStorage.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
+      accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
     } catch {}
   };
 

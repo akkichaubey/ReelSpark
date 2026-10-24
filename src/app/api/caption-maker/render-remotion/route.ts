@@ -1,3 +1,7 @@
+import { requireProjectAccess } from '@/lib/project-access';
+import { backupPrivateMedia, restorePrivateMedia } from '@/lib/cloudflare/private-media';
+import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
+import { mediaUserNamespace, canUseRenderMedia } from '@/lib/media-access';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -14,6 +18,10 @@ import { validateCaptionRenderRequest } from '@/lib/media-validation';
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getRequestUser(req);
+    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!isSameOriginAuthRequest(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+    const userNamespace = mediaUserNamespace(user.id);
     const isStream =
       req.nextUrl.searchParams.get('stream') === 'true' ||
       req.headers.get('accept')?.includes('text/event-stream');
@@ -89,6 +97,8 @@ export async function POST(req: NextRequest) {
 
         if (match && clipId) {
           const projId = match[1];
+          const accessError = await requireProjectAccess(req, projId);
+          if (accessError) return accessError;
           const clipSafeId = sanitizeFilename(clipId);
           const candidatePath = path.join(APP_CONFIG.storageRoot, 'projects', projId, 'clips', `${clipSafeId}_audio.mp3`);
 
@@ -125,6 +135,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (imagePath && !fs.existsSync(/*turbopackIgnore: true*/ imagePath)) await restorePrivateMedia(user.id, imagePath);
+    if (audioPath && !fs.existsSync(/*turbopackIgnore: true*/ audioPath)) await restorePrivateMedia(user.id, audioPath);
     if (!imagePath || !fs.existsSync(/*turbopackIgnore: true*/ imagePath)) {
       const fallbackSample = path.join(process.cwd(), 'public', 'sample-image.jpg');
       if (fs.existsSync(/*turbopackIgnore: true*/ fallbackSample)) {
@@ -148,6 +160,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!(await canUseRenderMedia(user.id, imagePath)) || !(await canUseRenderMedia(user.id, audioPath))) {
+      return NextResponse.json({ error: 'Media not found' }, { status: 404 });
+    }
+
     // 3. Resolve transcript words and groups
     const resolvedGroups: CaptionGroup[] = captionGroups || [];
     const resolvedTranscript: TranscriptWord[] =
@@ -162,8 +178,11 @@ export async function POST(req: NextRequest) {
 
     // 4. Prepare project render directory
     const safeProjectId = sanitizeFilename(projectId);
-    const renderDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'renders', safeProjectId);
-    assertSafePath(renderDir, APP_CONFIG.storageRoot);
+    const renderDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'renders', userNamespace, safeProjectId);
+    assertSafePath(renderDir, path.join(APP_CONFIG.storageRoot, 'caption-maker', 'renders', userNamespace));
+    if (!safeProjectId || safeProjectId === '.' || safeProjectId === '..') {
+      return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
+    }
 
     if (!fs.existsSync(renderDir)) {
       fs.mkdirSync(renderDir, { recursive: true });
@@ -203,8 +222,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const videoRel = `caption-maker/renders/${safeProjectId}/${safeProjectId}_remotion.mp4`;
-    const srtRel = `caption-maker/renders/${safeProjectId}/${safeProjectId}_captions.srt`;
+    const videoRel = `caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_remotion.mp4`;
+    const srtRel = `caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_captions.srt`;
+
+    if ((bgMusicPath && !(await canUseRenderMedia(user.id, bgMusicPath))) ||
+        (rawThumbnailPath && !(await canUseRenderMedia(user.id, rawThumbnailPath)))) {
+      return NextResponse.json({ error: 'Media not found' }, { status: 404 });
+    }
 
     const resolvedOutputSettings: OutputSettings = outputSettings || DEFAULT_OUTPUT_SETTINGS;
 
@@ -268,11 +292,11 @@ export async function POST(req: NextRequest) {
               if (thumbnailDataUrl) {
                 resolvedThumb = path.join(renderDir, `${safeProjectId}_cover.png`);
                 await saveBase64Image(thumbnailDataUrl, resolvedThumb);
-                thumbnailWebUrl = `/api/files/caption-maker/renders/${safeProjectId}/${safeProjectId}_cover.png`;
+                thumbnailWebUrl = `/api/files/caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_cover.png`;
               } else if (!resolvedThumb && body.thumbnailUrl?.startsWith('data:image')) {
                 resolvedThumb = path.join(renderDir, `${safeProjectId}_cover.png`);
                 await saveBase64Image(body.thumbnailUrl, resolvedThumb);
-                thumbnailWebUrl = `/api/files/caption-maker/renders/${safeProjectId}/${safeProjectId}_cover.png`;
+                thumbnailWebUrl = `/api/files/caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_cover.png`;
               } else if (body.thumbnailUrl && !body.thumbnailUrl.startsWith('data:image')) {
                 thumbnailWebUrl = body.thumbnailUrl;
               }
@@ -294,6 +318,9 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            await backupPrivateMedia(user.id, outputMp4Path);
+            await backupPrivateMedia(user.id, outputSrtPath);
+            if (resolvedThumb && path.dirname(resolvedThumb) === renderDir) await backupPrivateMedia(user.id, resolvedThumb);
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -375,11 +402,11 @@ export async function POST(req: NextRequest) {
       if (thumbnailDataUrl) {
         resolvedThumb = path.join(renderDir, `${safeProjectId}_cover.png`);
         await saveBase64Image(thumbnailDataUrl, resolvedThumb);
-        thumbnailWebUrl = `/api/files/caption-maker/renders/${safeProjectId}/${safeProjectId}_cover.png`;
+        thumbnailWebUrl = `/api/files/caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_cover.png`;
       } else if (!resolvedThumb && body.thumbnailUrl?.startsWith('data:image')) {
         resolvedThumb = path.join(renderDir, `${safeProjectId}_cover.png`);
         await saveBase64Image(body.thumbnailUrl, resolvedThumb);
-        thumbnailWebUrl = `/api/files/caption-maker/renders/${safeProjectId}/${safeProjectId}_cover.png`;
+        thumbnailWebUrl = `/api/files/caption-maker/renders/${userNamespace}/${safeProjectId}/${safeProjectId}_cover.png`;
       } else if (body.thumbnailUrl && !body.thumbnailUrl.startsWith('data:image')) {
         thumbnailWebUrl = body.thumbnailUrl;
       }
@@ -401,6 +428,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    await backupPrivateMedia(user.id, outputMp4Path);
+    await backupPrivateMedia(user.id, outputSrtPath);
+    if (resolvedThumb && path.dirname(resolvedThumb) === renderDir) await backupPrivateMedia(user.id, resolvedThumb);
     return NextResponse.json({
       success: true,
       videoUrl: `/api/files/${videoRel}`,

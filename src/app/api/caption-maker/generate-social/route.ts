@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithOllama } from '@/lib/ollama';
 import { getOllamaModel } from '@/lib/config';
-import { validateSession } from '@/lib/auth';
+import { getRequestUser } from '@/lib/auth';
 import {
   getSocialAccounts,
   getSocialLinkPreferences,
@@ -500,17 +500,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve authenticated user for profile & social account integration
-    const cookieHeader = req.headers?.get?.('cookie');
-    const token =
-      req.cookies?.get?.('reelspark_session')?.value ||
-      cookieHeader?.match(/reelspark_session=([^;]+)/)?.[1] ||
-      req.headers?.get?.('authorization')?.replace('Bearer ', '');
-    let user = token ? await validateSession(token) : null;
-    if (!user && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_LOGIN === 'true')) {
-      user = { id: body.userId || 'usr_admin', name: 'Administrator', email: 'admin@reelspark.ai', role: 'admin', createdAt: new Date().toISOString() };
+    const user = await getRequestUser(req);
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = user?.id || body.userId;
+    // Production identity must come from a validated session, never request JSON.
+    const userId = user.id;
     const accounts = userId ? await getSocialAccounts(userId) : [];
     const preferences = userId ? await getSocialLinkPreferences(userId) : {
       userId: '',

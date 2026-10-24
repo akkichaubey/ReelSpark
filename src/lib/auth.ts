@@ -11,6 +11,28 @@ import { d1Query, getD1Status } from './cloudflare/d1';
 import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from './config';
+import { createHash, randomBytes } from 'node:crypto';
+
+export function isDemoLoginAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEMO_LOGIN === 'true';
+}
+
+export function isSameOriginAuthRequest(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  if (!origin) return true;
+  try { return origin === new URL(process.env.AUTH_URL || req.url).origin; }
+  catch { return false; }
+}
+
+export async function getRequestUser(req: Request): Promise<UserProfile | null> {
+  const cookie = req.headers.get('cookie')?.match(/(?:^|;\s*)reelspark_session=([^;]+)/)?.[1];
+  const bearer = req.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const token = cookie || bearer;
+  if (token) return validateSession(token);
+  return isDemoLoginAllowed()
+    ? { id: 'usr_admin', name: 'Administrator', email: 'admin@reelspark.ai', role: 'admin', createdAt: new Date().toISOString() }
+    : null;
+}
 
 export interface UserProfile {
   id: string;
@@ -128,6 +150,7 @@ function writeLocalAuthStore(data: LocalAuthStore): void {
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {
     console.error('[Auth] Failed to write local auth store:', err);
+    throw new Error('Could not save authentication data');
   }
 }
 
@@ -231,11 +254,7 @@ export async function loginUser(input: {
   const d1Status = getD1Status();
 
   // Instant demo login support for username 'admin' and password 'admin' (Development & Demo only)
-  const isDemoLoginAllowed =
-    process.env.NODE_ENV !== 'production' ||
-    process.env.ALLOW_DEMO_LOGIN === 'true';
-
-  if (isDemoLoginAllowed && (email === 'admin' || email === 'admin@reelspark.ai') && password === 'admin') {
+  if (isDemoLoginAllowed() && (email === 'admin' || email === 'admin@reelspark.ai') && password === 'admin') {
     const adminUser: UserProfile = {
       id: 'usr_admin',
       name: 'Administrator',
@@ -260,6 +279,7 @@ export async function loginUser(input: {
         );
       } catch (err: any) {
         console.warn('[Auth D1 Admin Warning]', err.message);
+        return { error: 'Failed to create login session' };
       }
     } else {
       const store = readLocalAuthStore();
@@ -328,31 +348,18 @@ export async function loginUser(input: {
     return { error: 'Invalid email or password' };
   }
 
+  if (!/^[a-f0-9]{64}$/i.test(userRow.password_hash) || !/^[a-f0-9]{32}$/i.test(userRow.salt)) {
+    return { error: userRow.password_hash === '!google' ? 'Please use Continue with Google for this account.' : 'Invalid email or password' };
+  }
+
   const isValid = await verifyPassword(password, userRow.password_hash, userRow.salt);
   if (!isValid) {
     return { error: 'Invalid email or password' };
   }
 
-  // Create session (valid for 30 days)
-  const token = `sess_${crypto.randomUUID()}_${Date.now()}`;
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const now = new Date().toISOString();
-
-  if (d1Status.configured) {
-    try {
-      await d1Query(
-        'INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
-        [token, userRow.id, expiresAt, now]
-      );
-    } catch (err: any) {
-      console.error('[Auth D1 Session Error]', err);
-      return { error: 'Failed to create login session' };
-    }
-  } else {
-    const store = readLocalAuthStore();
-    store.sessions.push({ token, userId: userRow.id, expiresAt, createdAt: now });
-    writeLocalAuthStore(store);
-  }
+  let token: string;
+  try { token = await createUserSession(userRow.id); }
+  catch { return { error: 'Failed to create login session' }; }
 
   return {
     token,
@@ -364,6 +371,66 @@ export async function loginUser(input: {
       createdAt: userRow.created_at,
     },
   };
+}
+
+async function createUserSession(userId: string): Promise<string> {
+  const token = `sess_${crypto.randomUUID()}_${Date.now()}`;
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  if (getD1Status().configured) {
+    await d1Query(
+      'INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
+      [token, userId, expiresAt, now]
+    );
+  } else {
+    const store = readLocalAuthStore();
+    store.sessions.push({ token, userId, expiresAt, createdAt: now });
+    writeLocalAuthStore(store);
+  }
+  return token;
+}
+
+/** Called only with a Google identity verified server-side by the OAuth callback. */
+export async function signInGoogleUser(identity: { sub: string; email: string; name: string }): Promise<{ user?: UserProfile; token?: string; error?: string }> {
+  // The provider subject, not an email address, is the stable Google identity.
+  const id = `usr_google_${createHash('sha256').update(identity.sub).digest('hex')}`;
+  const now = new Date().toISOString();
+  let user: UserProfile;
+  try {
+    if (getD1Status().configured) {
+      const existing = await d1Query<{ id: string; name: string; email: string; role: 'user' | 'admin'; created_at: string }>(
+        'SELECT id, name, email, role, created_at FROM users WHERE id = ? LIMIT 1', [id]
+      );
+      const row = existing.results[0];
+      if (row) user = { id: row.id, name: row.name, email: row.email, role: row.role, createdAt: row.created_at };
+      else {
+        const collision = await d1Query('SELECT id FROM users WHERE email = ? LIMIT 1', [identity.email]);
+        // Do not silently link a password account merely because its email matches.
+        if (collision.results.length) return { error: 'google_account_exists' };
+        await d1Query(
+          `INSERT INTO users (id, name, email, password_hash, salt, role, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'user', ?, ?)`,
+          [id, identity.name, identity.email, '!google', randomBytes(16).toString('hex'), now, now]
+        );
+        user = { id, name: identity.name, email: identity.email, role: 'user', createdAt: now };
+      }
+    } else {
+      const store = readLocalAuthStore();
+      const existing = store.users.find(row => row.id === id);
+      if (existing) user = { id, name: existing.name, email: existing.email, role: existing.role, createdAt: existing.createdAt };
+      else {
+        if (store.users.some(row => row.email === identity.email)) return { error: 'google_account_exists' };
+        user = { id, name: identity.name, email: identity.email, role: 'user', createdAt: now };
+        store.users.push({ ...user, passwordHash: '!google', salt: randomBytes(16).toString('hex'), updatedAt: now });
+        writeLocalAuthStore(store);
+      }
+    }
+    return { user, token: await createUserSession(user.id) };
+  } catch {
+    // Never create a local fallback identity after a configured cloud database fails.
+    return { error: 'google_storage_failed' };
+  }
 }
 
 /**
@@ -392,6 +459,7 @@ export async function validateSession(token: string): Promise<UserProfile | null
       );
       if (res.results.length === 0) return null;
       const u = res.results[0];
+      if (u.id === 'usr_admin' && !isDemoLoginAllowed()) return null;
       return { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.created_at };
     } catch (err) {
       console.error('[Auth D1 Validate Session Error]', err);
@@ -403,6 +471,7 @@ export async function validateSession(token: string): Promise<UserProfile | null
     if (!session) return null;
     const local = store.users.find((u) => u.id === session.userId);
     if (!local) return null;
+    if (local.id === 'usr_admin' && !isDemoLoginAllowed()) return null;
     return {
       id: local.id,
       name: local.name,

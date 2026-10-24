@@ -1,3 +1,4 @@
+import { accountCache } from '@/lib/account-cache';
 import {
   ClippingProject,
   ClippingProjectSchema,
@@ -26,7 +27,7 @@ export function createBlankClippingProject(name: string, description?: string): 
 }
 
 /**
- * Saves project locally. Works in browser localStorage.
+ * Saves project locally. Works in browser accountCache.
  */
 export function saveProjectLocally(project: ClippingProject): boolean {
   if (typeof window === 'undefined') return false;
@@ -43,7 +44,7 @@ export function saveProjectLocally(project: ClippingProject): boolean {
 
   try {
     // Save project data
-    window.localStorage.setItem(
+    accountCache.setItem(
       `${STORAGE_KEY_PREFIX}${project.id}`,
       JSON.stringify(updatedProject)
     );
@@ -67,7 +68,7 @@ export function saveProjectLocally(project: ClippingProject): boolean {
 export function loadProjectIndex(): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(INDEX_KEY);
+    const raw = accountCache.getItem(INDEX_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -77,7 +78,7 @@ export function loadProjectIndex(): string[] {
 function saveProjectIndex(index: string[]): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(INDEX_KEY, JSON.stringify(index));
+    accountCache.setItem(INDEX_KEY, JSON.stringify(index));
   } catch (err) {
     console.error('[Clipping Persistence] Failed to save project index:', err);
   }
@@ -109,7 +110,7 @@ export function loadProjectByIdLocally(id: string): ClippingProject | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(`${STORAGE_KEY_PREFIX}${id}`);
+    const raw = accountCache.getItem(`${STORAGE_KEY_PREFIX}${id}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed as ClippingProject;
@@ -126,7 +127,7 @@ export function deleteProjectLocally(id: string): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    window.localStorage.removeItem(`${STORAGE_KEY_PREFIX}${id}`);
+    accountCache.removeItem(`${STORAGE_KEY_PREFIX}${id}`);
     const index = loadProjectIndex().filter((item) => item !== id);
     saveProjectIndex(index);
     return true;
@@ -182,7 +183,7 @@ export function saveCrashRecoverySnapshot(project: ClippingProject): void {
       snapshot: project,
       savedAt: new Date().toISOString(),
     };
-    window.localStorage.setItem(`${CRASH_KEY_PREFIX}${project.id}`, JSON.stringify(payload));
+    accountCache.setItem(`${CRASH_KEY_PREFIX}${project.id}`, JSON.stringify(payload));
   } catch (err) {
     // Non-fatal if localStorage is full
   }
@@ -194,7 +195,7 @@ export function saveCrashRecoverySnapshot(project: ClippingProject): void {
 export function loadCrashRecoverySnapshot(projectId: string): { snapshot: ClippingProject; savedAt: string } | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(`${CRASH_KEY_PREFIX}${projectId}`);
+    const raw = accountCache.getItem(`${CRASH_KEY_PREFIX}${projectId}`);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -208,7 +209,7 @@ export function loadCrashRecoverySnapshot(projectId: string): { snapshot: Clippi
 export function clearCrashRecoverySnapshot(projectId: string): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.removeItem(`${CRASH_KEY_PREFIX}${projectId}`);
+    accountCache.removeItem(`${CRASH_KEY_PREFIX}${projectId}`);
   } catch {}
 }
 
@@ -217,5 +218,5 @@ export function clearCrashRecoverySnapshot(projectId: string): void {
  */
 export function checkHasCrashRecoverySnapshot(projectId: string): boolean {
   if (typeof window === 'undefined') return false;
-  return Boolean(window.localStorage.getItem(`${CRASH_KEY_PREFIX}${projectId}`));
+  return Boolean(accountCache.getItem(`${CRASH_KEY_PREFIX}${projectId}`));
 }

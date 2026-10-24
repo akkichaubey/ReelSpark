@@ -1,41 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeExportProcess, cancelActiveExportJob } from '@/lib/clipping-studio/export-engine';
+import { executeExportProcess } from '@/lib/clipping-studio/export-engine';
+import { fallbackJobs, daemonJobOwners, type FallbackExportJob } from '@/lib/clipping-studio/export-job-registry';
+import { requireMediaUser } from '@/lib/media-api-access';
+import { createServerExportPlan, ExportPlanError } from '@/lib/clipping-studio/server-export-plan';
+import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://127.0.0.1:4000';
 
-interface FallbackExportJob {
-  id: string;
-  projectId: string;
-  jobType: string;
-  targetId: string;
-  status: string;
-  progressPercent: number;
-  outputPath: string;
-  args: string[];
-  totalDurationMs: number;
-  sourceMappings: any[];
-  outputSettings: any;
-  logs: string[];
-  createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  fileSizeBytes?: number;
-  errorMessage?: string;
-}
-
-// In-process fallback cache if standalone media service is unreachable
-const fallbackJobs = new Map<string, FallbackExportJob>();
-
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const access = await requireMediaUser(req);
+  if (access.error) return access.error;
   try {
     const res = await fetch(`${MEDIA_SERVICE_URL}/api/jobs`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
     });
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json(data);
+      const jobs = new Map((data.jobs || []).filter((job: FallbackExportJob) => daemonJobOwners.get(job.id) === access.user.id).map((job: FallbackExportJob) => [job.id, job]));
+      for (const job of fallbackJobs.values()) if (job.ownerUserId === access.user.id) jobs.set(job.id, job);
+      return NextResponse.json({ ...data, jobs: Array.from(jobs.values()) });
     }
   } catch (err) {
     // Media service offline, fallback to in-memory list
@@ -43,13 +29,15 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
-    jobs: Array.from(fallbackJobs.values()),
+    jobs: Array.from(fallbackJobs.values()).filter(job => job.ownerUserId === access.user.id),
     source: 'nextjs_in_process_fallback',
   });
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const body = await req.json();
     const {
       jobId,
@@ -61,7 +49,7 @@ export async function POST(req: NextRequest) {
       totalDurationMs,
       sourceMappings,
       outputSettings,
-    } = body;
+    } = await createServerExportPlan(access.user.id, body);
 
     if (!jobId || !projectId || !outputPath || !Array.isArray(args)) {
       return NextResponse.json(
@@ -70,24 +58,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Try forwarding to standalone local media service
-    try {
-      const forwardRes = await fetch(`${MEDIA_SERVICE_URL}/api/export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (forwardRes.ok) {
-        const data = await forwardRes.json();
-        return NextResponse.json(data, { status: 202 });
-      }
-    } catch (err) {
-      // Standalone media service daemon not answering, continue to local in-process execution
+    // Reserve accepted IDs in the in-process registry; do not reuse existing jobs.
+    if (fallbackJobs.has(jobId) || daemonJobOwners.has(jobId)) {
+      return NextResponse.json({ success: false, error: 'Job ID already exists' }, { status: 409 });
     }
+    // Execute only this validated server plan, not raw commands on a local daemon.
 
     // 2. Next.js in-process fallback execution
     const fallbackJob: FallbackExportJob = {
+      ownerUserId: access.user.id,
       id: jobId,
       projectId,
       jobType: jobType || 'single_clip',
@@ -113,14 +92,16 @@ export async function POST(req: NextRequest) {
       totalDurationMs || 0,
       outputPath,
       (percent) => {
-        fallbackJob.progressPercent = percent;
+        if (fallbackJob.status === 'running') fallbackJob.progressPercent = percent;
       },
       (log) => {
         fallbackJob.logs.push(log);
         if (fallbackJob.logs.length > 200) fallbackJob.logs.shift();
       }
-    ).then((result) => {
+    ).then(async (result) => {
+      if (fallbackJob.status === 'cancelled') return;
       if (result.success) {
+        await backupPrivateMedia(access.user.id, outputPath);
         fallbackJob.status = 'completed';
         fallbackJob.progressPercent = 100;
         fallbackJob.fileSizeBytes = result.fileSizeBytes;
@@ -130,10 +111,17 @@ export async function POST(req: NextRequest) {
         fallbackJob.errorMessage = result.error;
         fallbackJob.completedAt = new Date().toISOString();
       }
+    }).catch((error: unknown) => {
+      if (fallbackJob.status === 'cancelled') return;
+      fallbackJob.status = 'failed';
+      fallbackJob.errorMessage = error instanceof Error ? error.message : 'Export execution failed';
+      fallbackJob.completedAt = new Date().toISOString();
     });
 
     return NextResponse.json({ success: true, job: fallbackJob, source: 'nextjs_in_process' }, { status: 202 });
   } catch (err: any) {
+    if (err instanceof ExportPlanError) return NextResponse.json({ success: false, error: err.message }, { status: err.status });
+    if (err instanceof SyntaxError) return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
     return NextResponse.json(
       { success: false, error: err.message || 'Failed to submit export job' },
       { status: 500 }

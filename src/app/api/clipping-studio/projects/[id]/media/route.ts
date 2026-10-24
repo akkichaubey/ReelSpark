@@ -8,6 +8,9 @@ import { APP_CONFIG } from '@/lib/config';
 import { sanitizeFilename, assertSafePath } from '@/lib/storage';
 import { MAX_UPLOAD_BYTES, validateUpload } from '@/lib/media-validation';
 import { MediaAsset } from '@/lib/clipping-studio/contracts';
+import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
+import { canReadMedia } from '@/lib/media-access';
+import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 // Permitted media extensions
 const ALLOWED_EXTS = new Set([
@@ -43,7 +46,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const { id: projectId } = await params;
+    if (!(await clippingProjectAccess(access.user.id, projectId, true))) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
     const contentType = req.headers.get('content-type') || '';
 
     let targetFilePath = '';
@@ -73,7 +81,7 @@ export async function POST(
 
       const safeName = sanitizeFilename(file.name);
       const mediaDir = getProjectMediaDir(projectId);
-      targetFilePath = path.join(mediaDir, safeName);
+      targetFilePath = getAvailableManagedPath(mediaDir, safeName);
       originalFilename = file.name;
       fileSizeBytes = file.size;
 
@@ -85,6 +93,9 @@ export async function POST(
       // JSON body with localFilePath
       const body = await req.json();
       const { localFilePath } = body;
+      if (typeof localFilePath !== 'string' || !(await canReadMedia(access.user.id, localFilePath))) {
+        return NextResponse.json({ error: 'Media not found. Upload the file instead of supplying a PC path.' }, { status: 404 });
+      }
 
       if (!localFilePath || typeof localFilePath !== 'string') {
         return NextResponse.json({ success: false, error: 'localFilePath must be provided' }, { status: 400 });
@@ -118,6 +129,7 @@ export async function POST(
     }
 
     // Inspect media with FFprobe
+    await backupPrivateMedia(access.user.id, targetFilePath);
     const meta = await probeVideo(targetFilePath);
     const assetId = `asset_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date().toISOString();
@@ -161,9 +173,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const { id: projectId } = await params;
+    if (!(await clippingProjectAccess(access.user.id, projectId))) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
     const body = await req.json();
     const { assetId, newPath } = body;
+    if (typeof newPath !== 'string' || !(await canReadMedia(access.user.id, newPath))) {
+      return NextResponse.json({ error: 'Media not found' }, { status: 404 });
+    }
 
     if (!assetId || !newPath) {
       return NextResponse.json({ success: false, error: 'assetId and newPath are required' }, { status: 400 });
@@ -185,6 +205,7 @@ export async function PUT(
     const mediaDir = getProjectMediaDir(projectId);
     const managedPath = getAvailableManagedPath(mediaDir, `${sanitizeFilename(assetId)}_${path.basename(newPath)}`);
     fs.copyFileSync(newPath, managedPath);
+    await backupPrivateMedia(access.user.id, managedPath);
     const meta = await probeVideo(managedPath);
 
     return NextResponse.json({

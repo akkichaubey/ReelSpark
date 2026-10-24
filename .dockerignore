@@ -3,6 +3,8 @@ node_modules
 .git
 .github
 .env
+.env*
+!.env.example
 .env*.local
 .env.local
 storage/*

@@ -120,7 +120,7 @@ function patchFfmpegArgs(args) {
     const cwd = path_1.default.dirname(executablePath);
     const task = (0, execa_1.default)(executablePath, args.filter(truthy_1.truthy), {`,
     `    const defaultBin = path_1.default.resolve(process.cwd(), 'bin');
-    const resolvedBinariesDir = binariesDirectory || (node_fs_1.default.existsSync(defaultBin) ? defaultBin : null);
+    const resolvedBinariesDir = binariesDirectory || (process.platform === 'win32' && node_fs_1.default.existsSync(defaultBin) ? defaultBin : null);
     const executablePath = (0, get_executable_path_1.getExecutablePath)({
         type: bin,
         indent,
@@ -145,7 +145,7 @@ function patchFfmpegArgs(args) {
     const cwd = path_1.default.dirname(executablePath);
     const task = (0, node_child_process_1.spawn)(executablePath, args.filter(truthy_1.truthy), {`,
     `    const defaultBin = path_1.default.resolve(process.cwd(), 'bin');
-    const resolvedBinariesDir = binariesDirectory || (node_fs_1.default.existsSync(defaultBin) ? defaultBin : null);
+    const resolvedBinariesDir = binariesDirectory || (process.platform === 'win32' && node_fs_1.default.existsSync(defaultBin) ? defaultBin : null);
     const executablePath = (0, get_executable_path_1.getExecutablePath)({
         type: bin,
         indent,
@@ -253,7 +253,7 @@ function patchFfmpegArgsEsm(args) {
   // Update callFf in ESM: Add resolvedBinariesDir and patchedArgs
   esmContent = esmContent.replace(
     /(var callFf = \(\{[\s\S]*?\}\) => \{\r?\n)/,
-    `$1  const defaultBin = path5.resolve(process.cwd(), 'bin');\n  const resolvedBinariesDir = binariesDirectory || (fs_node.existsSync(defaultBin) ? defaultBin : null);\n`
+    `$1  const defaultBin = path5.resolve(process.cwd(), 'bin');\n  const resolvedBinariesDir = binariesDirectory || (process.platform === 'win32' && fs_node.existsSync(defaultBin) ? defaultBin : null);\n`
   );
   esmContent = esmContent.replace(
     /binariesDirectory\r?\n\s*\}\);\r?\n\s*makeFileExecutableIfItIsNot\(executablePath\);\r?\n\s*const cwd = path5\.dirname\(executablePath\);\r?\n\s*const task = execa\(executablePath, args\.filter\(truthy\), \{/,
@@ -268,7 +268,7 @@ function patchFfmpegArgsEsm(args) {
   // Update callFfNative in ESM: Add resolvedBinariesDir and patchedArgs
   esmContent = esmContent.replace(
     /(var callFfNative = \(\{[\s\S]*?\}\) => \{\r?\n)/,
-    `$1  const defaultBin = path5.resolve(process.cwd(), 'bin');\n  const resolvedBinariesDir = binariesDirectory || (fs_node.existsSync(defaultBin) ? defaultBin : null);\n`
+    `$1  const defaultBin = path5.resolve(process.cwd(), 'bin');\n  const resolvedBinariesDir = binariesDirectory || (process.platform === 'win32' && fs_node.existsSync(defaultBin) ? defaultBin : null);\n`
   );
   esmContent = esmContent.replace(
     /binariesDirectory\r?\n\s*\}\);\r?\n\s*makeFileExecutableIfItIsNot\(executablePath\);\r?\n\s*const cwd = path5\.dirname\(executablePath\);\r?\n\s*const task = spawn2\(executablePath, args\.filter\(truthy\), \{/,

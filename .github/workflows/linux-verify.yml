@@ -1,0 +1,34 @@
+name: Linux deployment verification
+
+# Only this verification branch runs automatically; no deployment is triggered.
+on:
+  push:
+    branches: [codex/server-readiness]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build the actual production image
+        run: docker build --tag reelspark-verify .
+      - name: Verify runtime and regression suites
+        run: >-
+          docker run --rm --entrypoint sh
+          --mount type=bind,source="$PWD/tests",target=/app/tests,readonly
+          -e CLOUD_PROJECT_METADATA_ENABLED=false
+          -e CLOUD_PRIVATE_MEDIA_ENABLED=false
+          -e CLOUD_MEDIA_LIFECYCLE_ENABLED=false
+          reelspark-verify -c
+          'node scripts/check-node.cjs && node scripts/verify-server.cjs --real && npm audit --omit=dev'
+      - name: Render a Hindi-captioned reel with Linux Chromium
+        run: >-
+          docker run --rm --entrypoint node
+          reelspark-verify node_modules/tsx/dist/cli.mjs scripts/smoke-linux-render.ts

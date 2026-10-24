@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-access';
 import { checkFfmpegStatus, checkOllamaStatus, checkGeminiStatus, getAiProvider, loadAppSettings } from '@/lib/config';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const denied = await requireAdmin(req);
+    if (denied) return denied;
     const ffmpeg = await checkFfmpegStatus();
     const ollama = await checkOllamaStatus();
     const gemini = checkGeminiStatus();

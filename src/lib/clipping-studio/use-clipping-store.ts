@@ -12,10 +12,9 @@ import {
   MediaServiceHealthResponse,
   formatMsToTimestamp,
 } from './contracts';
-import { planMergeRecipe, buildMergeFfmpegArgs } from './merge-planner';
+import { planMergeRecipe } from './merge-planner';
 import {
   formatFilenameTemplate,
-  buildSingleClipExportFfmpegArgs,
 } from './export-planner';
 import {
   createBlankClippingProject,
@@ -30,6 +29,8 @@ import {
 import {
   getCloudflareStatus,
   syncProjectToCloudflare,
+  loadProjectsFromCloudflare,
+  getDeletedCloudProjectIds,
 } from './cloudflare-sync';
 
 export type CloudflareConfigStatus = ReturnType<typeof getCloudflareStatus>;
@@ -194,15 +195,27 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
     // 2. Load local projects
     const rawLocalProjects = loadProjectsLocally();
-    // Clean up any legacy "My First Clipping Project" from localStorage and disk
-    const localProjects: ClippingProject[] = [];
-    for (const p of rawLocalProjects) {
-      if (p.name === 'My First Clipping Project') {
-        deleteProjectLocally(p.id);
-        fetch(`/api/clipping-studio/projects/${p.id}`, { method: 'DELETE' }).catch(() => {});
-      } else {
-        localProjects.push(p);
+    // Never delete a user's project automatically based on its display name.
+    const localProjects: ClippingProject[] = [...rawLocalProjects];
+
+    try {
+      const cloudProjects = await loadProjectsFromCloudflare();
+      const deletedCloudIds = getDeletedCloudProjectIds();
+      for (let index = localProjects.length - 1; index >= 0; index--) {
+        if (deletedCloudIds.has(localProjects[index].id)) {
+          deleteProjectLocally(localProjects[index].id);
+          clearCrashRecoverySnapshot(localProjects[index].id);
+          localProjects.splice(index, 1);
+        }
       }
+      for (const remote of cloudProjects) {
+        const index = localProjects.findIndex(project => project.id === remote.id);
+        if (index < 0) localProjects.push(remote);
+        else if (Date.parse(remote.updatedAt) > Date.parse(localProjects[index].updatedAt)) localProjects[index] = remote;
+      }
+      set({ cloudflareStatus: getCloudflareStatus() });
+    } catch (error) {
+      console.warn('Cloud project metadata unavailable; retaining local cache.', error);
     }
 
     const currentActive = localProjects[0] || null;
@@ -395,9 +408,14 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     });
   },
 
-  deleteProject: (projectId: string) => {
+  deleteProject: async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/clipping-studio/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) { set({ saveStatus: 'error' }); return; }
+    } catch { set({ saveStatus: 'error' }); return; }
     deleteProjectLocally(projectId);
-    fetch(`/api/clipping-studio/projects/${projectId}`, { method: 'DELETE' }).catch(() => {});
+    clearCrashRecoverySnapshot(projectId);
     set((state) => {
       const remaining = state.projects.filter((p) => p.id !== projectId);
       const nextActive = state.activeProject?.id === projectId ? remaining[0] || null : state.activeProject;
@@ -965,17 +983,6 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
     const outputPath = `${outDir}/${baseName}.${outputFormat}`;
 
-    const args = buildSingleClipExportFfmpegArgs({
-      clip,
-      mediaAsset,
-      outputFormat,
-      outputType,
-      qualityProfile,
-      targetResolution,
-      normalizeAudio,
-      outputPath,
-    });
-
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     const sourceMapping: ExportSourceMapping = {
@@ -1015,7 +1022,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
     // Trigger local media service
     try {
-      await fetch('/api/clipping-studio/export', {
+      const response = await fetch('/api/clipping-studio/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1023,14 +1030,18 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
           projectId: activeProject.id,
           jobType: 'single_clip',
           targetId: clip.id,
-          args,
-          outputPath,
-          totalDurationMs: clip.durationMs,
-          sourceMappings: [sourceMapping],
+          sources: [{ localPath: mediaAsset.localPath, startMs: clip.startMs, endMs: clip.endMs, clipId: clip.id, sourceAssetId: mediaAsset.id }],
+          filename: baseName,
           outputSettings: newJob.outputSettings,
         }),
       });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Export rejected');
+      Object.assign(newJob, result.job);
+      get().updateActiveProject(prev => ({ ...prev, exportJobs: prev.exportJobs.map(job => job.id === jobId ? { ...job, ...result.job } : job) }));
     } catch (err) {
+      get().updateActiveProject(prev => ({ ...prev, exportJobs: prev.exportJobs.map(job => job.id === jobId ? { ...job, status: 'failed', errorMessage: err instanceof Error ? err.message : 'Export failed' } : job) }));
+      Object.assign(newJob, { status: 'failed', errorMessage: err instanceof Error ? err.message : 'Export failed' });
       console.warn('Failed to dispatch export job to API:', err);
     }
 
@@ -1067,14 +1078,6 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
     const outputPath = `${outDir}/${baseName}.${outputFormat}`;
 
-    // Build concat list or filter complex
-    const tempConcatPath = `${outputPath}.concat.txt`;
-    if (plan.strategy === 'concat_demuxer_copy') {
-      // In local node environment, build list file lines
-      // Note: for safety, args are generated cleanly
-    }
-
-    const args = buildMergeFfmpegArgs(plan, tempConcatPath, outputPath);
     const jobId = `job_recipe_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     const sourceMappings: ExportSourceMapping[] = plan.items.map((resolved, idx) => ({
@@ -1097,7 +1100,6 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
       outputPath,
       outputSettings: {
         outputFormat,
-        strategy: plan.strategy,
         normalizeAudio: recipe.normalizeAudio,
         targetResolution: recipe.targetResolution,
       },
@@ -1111,7 +1113,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     }));
 
     try {
-      await fetch('/api/clipping-studio/export', {
+      const response = await fetch('/api/clipping-studio/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1119,14 +1121,18 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
           projectId: activeProject.id,
           jobType: 'merge_recipe',
           targetId: recipe.id,
-          args,
-          outputPath,
-          totalDurationMs: plan.totalDurationMs,
-          sourceMappings,
+          sources: plan.items.map(item => ({ localPath: item.mediaAsset.localPath, startMs: item.clip.startMs, endMs: item.clip.endMs, clipId: item.clip.id, sourceAssetId: item.mediaAsset.id, transition: item.item.transition })),
+          filename: baseName,
           outputSettings: newJob.outputSettings,
         }),
       });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Export rejected');
+      Object.assign(newJob, result.job);
+      get().updateActiveProject(prev => ({ ...prev, exportJobs: prev.exportJobs.map(job => job.id === jobId ? { ...job, ...result.job } : job) }));
     } catch (err) {
+      get().updateActiveProject(prev => ({ ...prev, exportJobs: prev.exportJobs.map(job => job.id === jobId ? { ...job, status: 'failed', errorMessage: err instanceof Error ? err.message : 'Export failed' } : job) }));
+      Object.assign(newJob, { status: 'failed', errorMessage: err instanceof Error ? err.message : 'Export failed' });
       console.warn('Failed to dispatch recipe export to API:', err);
     }
 
@@ -1135,8 +1141,9 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
   cancelExportJob: async (jobId: string) => {
     try {
-      await fetch(`/api/clipping-studio/export/${jobId}?action=cancel`, { method: 'POST' });
-    } catch {}
+      const response = await fetch(`/api/clipping-studio/export/${jobId}?action=cancel`, { method: 'POST' });
+      if (!response.ok || !(await response.json()).success) return false;
+    } catch { return false; }
 
     get().updateActiveProject((prev) => ({
       ...prev,
@@ -1147,8 +1154,9 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
 
   retryExportJob: async (jobId: string) => {
     try {
-      await fetch(`/api/clipping-studio/export/${jobId}?action=retry`, { method: 'POST' });
-    } catch {}
+      const response = await fetch(`/api/clipping-studio/export/${jobId}?action=retry`, { method: 'POST' });
+      if (!response.ok || !(await response.json()).success) return false;
+    } catch { return false; }
 
     get().updateActiveProject((prev) => ({
       ...prev,
@@ -1177,6 +1185,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
               return {
                 ...localJob,
                 status: remote.status,
+                outputPath: remote.outputPath ?? localJob.outputPath,
                 progressPercent: remote.progressPercent ?? localJob.progressPercent,
                 errorMessage: remote.errorMessage ?? localJob.errorMessage,
                 completedAt: remote.completedAt ?? localJob.completedAt,

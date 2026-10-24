@@ -56,7 +56,10 @@ export interface RunningProcessHandle {
 }
 
 // Active background execution map
-const activeProcessMap = new Map<string, RunningProcessHandle>();
+const processRegistry = globalThis as typeof globalThis & {
+  reelsparkExportProcesses?: Map<string, RunningProcessHandle>;
+};
+const activeProcessMap = processRegistry.reelsparkExportProcesses ??= new Map<string, RunningProcessHandle>();
 
 export function cancelActiveExportJob(jobId: string): boolean {
   const handle = activeProcessMap.get(jobId);

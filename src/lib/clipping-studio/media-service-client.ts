@@ -5,7 +5,7 @@ import {
 } from './contracts';
 
 const STANDALONE_SERVICE_URL =
-  process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || 'http://127.0.0.1:4000';
+  process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || '';
 
 export interface MediaServiceClientOptions {
   serviceUrl?: string;
@@ -43,11 +43,11 @@ export class MediaServiceClient {
   }
 
   /**
-   * Health Check: Checks standalone service (127.0.0.1:4000), falls back to Next.js API route.
+   * Use same-origin APIs by default; a standalone service must be explicitly configured.
    */
   async checkHealth(): Promise<MediaServiceHealthResponse & { source: 'standalone' | 'internal' }> {
     // 1. Try standalone service first
-    try {
+    if (this.serviceUrl) try {
       const res = await this.fetchWithTimeout(`${this.serviceUrl}/health`);
       if (res.ok) {
         const data = await res.json();
@@ -61,12 +61,12 @@ export class MediaServiceClient {
     }
 
     // 2. Fall back to Next.js internal route
-    const internalRes = await fetch('/api/clipping-studio/health');
+    const internalRes = await this.fetchWithTimeout('/api/clipping-studio/health');
     if (!internalRes.ok) {
       throw new Error(`Media service health check failed with status ${internalRes.status}`);
     }
     const internalData = await internalRes.json();
-    return { ...internalData, source: 'internal' };
+    return { ...MediaServiceHealthResponseSchema.parse(internalData), source: 'internal' };
   }
 
   /**
@@ -74,7 +74,7 @@ export class MediaServiceClient {
    */
   async probeMedia(filePath: string): Promise<MediaMetadata> {
     // 1. Try standalone service
-    try {
+    if (this.serviceUrl) try {
       const res = await this.fetchWithTimeout(`${this.serviceUrl}/api/probe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,13 +91,13 @@ export class MediaServiceClient {
     }
 
     // 2. Fall back to internal API
-    const internalRes = await fetch('/api/clipping-studio/probe', {
+    const internalRes = await this.fetchWithTimeout('/api/clipping-studio/probe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filePath }),
     });
     const internalData = await internalRes.json();
-    if (!internalData.success || !internalData.metadata) {
+    if (!internalRes.ok || !internalData.success || !internalData.metadata) {
       throw new Error(internalData.error || 'Failed to probe media');
     }
     return internalData.metadata;

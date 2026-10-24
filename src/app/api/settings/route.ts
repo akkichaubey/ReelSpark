@@ -11,10 +11,21 @@ import {
 } from '@/lib/config';
 import { testOllamaConnection } from '@/lib/ollama';
 import { testGeminiConnection } from '@/lib/gemini';
-import { validateSession } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-access';
+import { z } from 'zod';
 
-export async function GET() {
+const SettingsRequest = z.object({
+  action: z.enum(['test', 'save']).optional(),
+  provider: z.enum(['ollama', 'gemini']).default('ollama'),
+  model: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.:/-]+$/).optional(),
+  baseUrl: z.string().url().max(2048).optional(),
+  apiKey: z.string().max(512).optional(),
+}).strict();
+
+export async function GET(req: NextRequest) {
   try {
+    const denied = await requireAdmin(req);
+    if (denied) return denied;
     const status = await checkOllamaStatus();
     const settings = loadAppSettings();
     const provider = getAiProvider();
@@ -43,7 +54,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const denied = await requireAdmin(req);
+    if (denied) return denied;
+    const parsed = SettingsRequest.safeParse(await req.json());
+    if (!parsed.success) return NextResponse.json({ success: false, error: 'Invalid settings' }, { status: 400 });
+    const body = parsed.data;
     const { action, provider = 'ollama', model, baseUrl, apiKey } = body;
 
     if (action === 'test') {
@@ -53,18 +68,6 @@ export async function POST(req: NextRequest) {
       } else {
         const testResult = await testOllamaConnection(model, baseUrl);
         return NextResponse.json(testResult);
-      }
-    }
-
-    // Security: Require active session in production when saving system settings
-    if (process.env.NODE_ENV === 'production') {
-      const sessionToken = req.cookies.get('reelspark_session')?.value;
-      const user = sessionToken ? await validateSession(sessionToken) : null;
-      if (!user) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized: Sign in required to update settings' },
-          { status: 401 }
-        );
       }
     }
 

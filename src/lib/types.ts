@@ -124,6 +124,7 @@ export interface ProjectSettings {
 }
 
 export interface Project {
+  ownerUserId?: string;
   id: string;
   title: string;
   sourceType: VideoSourceType;

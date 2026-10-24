@@ -1,3 +1,4 @@
+import { accountCache } from '@/lib/account-cache';
 import { BgMusicTrack } from './types';
 
 export const CUSTOM_BGM_STORAGE_KEY = 'reel_custom_bgm_tracks';
@@ -35,15 +36,15 @@ export function validateBgmFile(file: { name: string; size?: number; type?: stri
 }
 
 /**
- * Safely retrieve custom uploaded BGM tracks from localStorage.
+ * Safely retrieve custom uploaded BGM tracks from accountCache.
  */
 export function getCustomBgmTracks(): BgMusicTrack[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [];
   }
 
   try {
-    const raw = window.localStorage.getItem(CUSTOM_BGM_STORAGE_KEY);
+    const raw = accountCache.getItem(CUSTOM_BGM_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -59,10 +60,10 @@ export function getCustomBgmTracks(): BgMusicTrack[] {
 }
 
 /**
- * Save a new or updated custom BGM track to localStorage.
+ * Save a new or updated custom BGM track to accountCache.
  */
 export function saveCustomBgmTrack(track: BgMusicTrack): BgMusicTrack[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [track];
   }
 
@@ -70,7 +71,7 @@ export function saveCustomBgmTrack(track: BgMusicTrack): BgMusicTrack[] {
     const existing = getCustomBgmTracks();
     const filtered = existing.filter((t) => t.id !== track.id && t.fileUrl !== track.fileUrl);
     const updated = [track, ...filtered];
-    window.localStorage.setItem(CUSTOM_BGM_STORAGE_KEY, JSON.stringify(updated));
+    accountCache.setItem(CUSTOM_BGM_STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to save custom BGM track:', err);
@@ -79,17 +80,17 @@ export function saveCustomBgmTrack(track: BgMusicTrack): BgMusicTrack[] {
 }
 
 /**
- * Delete a custom BGM track by ID from localStorage.
+ * Delete a custom BGM track by ID from accountCache.
  */
 export function deleteCustomBgmTrack(id: string): BgMusicTrack[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [];
   }
 
   try {
     const existing = getCustomBgmTracks();
     const updated = existing.filter((t) => t.id !== id);
-    window.localStorage.setItem(CUSTOM_BGM_STORAGE_KEY, JSON.stringify(updated));
+    accountCache.setItem(CUSTOM_BGM_STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to delete custom BGM track:', err);

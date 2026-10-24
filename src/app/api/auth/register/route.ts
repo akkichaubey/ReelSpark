@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { registerUser, loginUser } from '@/lib/auth';
+import { registerUser, loginUser, isSameOriginAuthRequest } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
+  if (!isSameOriginAuthRequest(req)) return NextResponse.json({ success: false, error: 'Invalid request origin' }, { status: 403 });
   try {
     const body = await req.json();
     const { name, email, password } = body;
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      return NextResponse.json({ success: false, error: 'Name, email, and password are required' }, { status: 400 });
+    }
 
     const result = await registerUser({ name, email, password });
     if (result.error || !result.user) {
@@ -13,6 +17,9 @@ export async function POST(req: NextRequest) {
 
     // Auto-login after registration
     const loginResult = await loginUser({ email, password });
+    if (!loginResult.token) {
+      return NextResponse.json({ success: false, error: 'Account created, but sign-in failed. Please sign in again.' }, { status: 503 });
+    }
 
     const response = NextResponse.json({
       success: true,

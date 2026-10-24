@@ -8,11 +8,16 @@ import { assertSafePath, sanitizeFilename } from '@/lib/storage';
 import { extractClipAudio } from '@/lib/ffmpeg';
 import { probeAudioDuration } from '@/lib/caption-maker/ffmpeg-renderer';
 import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
+import { requireMediaUser } from '@/lib/media-api-access';
+import { canReadMedia, mediaUserNamespace } from '@/lib/media-access';
+import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 const execFileAsync = promisify(execFile);
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const body = await req.json();
     const {
       clipId,
@@ -61,8 +66,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!(await canReadMedia(access.user.id, resolvedSourcePath))) {
+      return NextResponse.json({ error: 'Media not found' }, { status: 404 });
+    }
+
     // 2. Prepare target storage directory inside caption-maker
-    const targetDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'clips');
+    const userNamespace = mediaUserNamespace(access.user.id);
+    const targetDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'clips', userNamespace);
     assertSafePath(targetDir, APP_CONFIG.storageRoot);
 
     if (!fs.existsSync(/*turbopackIgnore: true*/ targetDir)) {
@@ -111,8 +121,9 @@ export async function POST(req: NextRequest) {
     }
 
     const audioDuration = await probeAudioDuration(outputAudioPath);
+    await backupPrivateMedia(access.user.id, outputAudioPath);
     const audioStat = await fs.promises.stat(/*turbopackIgnore: true*/ outputAudioPath);
-    const relativeAudioPath = `caption-maker/clips/${clipSafeId}_audio.mp3`;
+    const relativeAudioPath = `caption-maker/clips/${userNamespace}/${clipSafeId}_audio.mp3`;
     const audioUrl = `/api/files/${relativeAudioPath}`;
 
     const cleanTitle = (clipName || 'Clip').trim();
@@ -175,8 +186,9 @@ export async function POST(req: NextRequest) {
       }
 
       if (fs.existsSync(/*turbopackIgnore: true*/ outputVideoPath)) {
+        await backupPrivateMedia(access.user.id, outputVideoPath);
         const videoStat = await fs.promises.stat(/*turbopackIgnore: true*/ outputVideoPath);
-        const relativeVideoPath = `caption-maker/clips/${clipSafeId}_video.mp4`;
+        const relativeVideoPath = `caption-maker/clips/${userNamespace}/${clipSafeId}_video.mp4`;
         const videoUrl = `/api/files/${relativeVideoPath}`;
 
         videoAsset = {

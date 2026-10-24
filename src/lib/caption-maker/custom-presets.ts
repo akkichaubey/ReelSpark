@@ -1,3 +1,4 @@
+import { accountCache } from '@/lib/account-cache';
 import { CaptionStyle } from './types';
 
 export interface CustomStylePreset {
@@ -12,16 +13,16 @@ export interface CustomStylePreset {
 export const CUSTOM_PRESETS_STORAGE_KEY = 'reel_custom_style_presets';
 
 /**
- * Safely retrieves custom style presets from localStorage.
+ * Safely retrieves custom style presets from accountCache.
  * Handles SSR and corrupted JSON safely.
  */
 export function getCustomPresets(): CustomStylePreset[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [];
   }
 
   try {
-    const raw = window.localStorage.getItem(CUSTOM_PRESETS_STORAGE_KEY);
+    const raw = accountCache.getItem(CUSTOM_PRESETS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -99,11 +100,11 @@ export function saveCustomPreset(
     createdAt: new Date().toISOString(),
   };
 
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined' && accountCache) {
     const existing = getCustomPresets();
     const updated = [newPreset, ...existing];
     try {
-      window.localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
+      accountCache.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
       console.error('Failed to save custom preset to localStorage:', err);
     }
@@ -113,17 +114,17 @@ export function saveCustomPreset(
 }
 
 /**
- * Deletes a custom preset by ID from localStorage.
+ * Deletes a custom preset by ID from accountCache.
  */
 export function deleteCustomPreset(id: string): CustomStylePreset[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [];
   }
 
   try {
     const existing = getCustomPresets();
     const updated = existing.filter((p) => p.id !== id);
-    window.localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
+    accountCache.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to delete custom preset:', err);
@@ -135,7 +136,7 @@ export function deleteCustomPreset(id: string): CustomStylePreset[] {
  * Renames an existing custom preset.
  */
 export function renameCustomPreset(id: string, newName: string): CustomStylePreset[] {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !accountCache) {
     return [];
   }
 
@@ -144,7 +145,7 @@ export function renameCustomPreset(id: string, newName: string): CustomStylePres
     const updated = existing.map((p) =>
       p.id === id ? { ...p, name: newName.trim() || p.name } : p
     );
-    window.localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
+    accountCache.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to rename custom preset:', err);

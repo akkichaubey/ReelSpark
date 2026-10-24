@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { probeVideo } from '@/lib/ffmpeg';
 import { ProbeRequestSchema } from '@/lib/clipping-studio/contracts';
 import fs from 'fs';
+import { requireMediaUser } from '@/lib/media-api-access';
+import { canReadMedia } from '@/lib/media-access';
+import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const body = await req.json();
     const parsed = ProbeRequestSchema.safeParse(body);
     if (!parsed.success) {
@@ -15,6 +20,10 @@ export async function POST(req: NextRequest) {
     }
 
     const { filePath } = parsed.data;
+    if (!(await canReadMedia(access.user.id, filePath))) await restorePrivateMedia(access.user.id, filePath);
+    if (!(await canReadMedia(access.user.id, filePath))) {
+      return NextResponse.json({ success: false, error: 'Media not found' }, { status: 404 });
+    }
     if (!fs.existsSync(filePath)) {
       return NextResponse.json(
         { success: false, error: `Media file does not exist: ${filePath}` },

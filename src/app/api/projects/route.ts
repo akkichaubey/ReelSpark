@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listProjects, saveProject } from '@/lib/storage';
 import { Project } from '@/lib/types';
+import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
+import { ownsProject } from '@/lib/project-access';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const user = await getRequestUser(req);
+    if (!user) return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     const projects = await listProjects();
-    return NextResponse.json({ success: true, projects });
+    return NextResponse.json({ success: true, projects: projects.filter(project => ownsProject(user, project)) });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
@@ -13,10 +17,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getRequestUser(req);
+    if (!user) return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+    if (!isSameOriginAuthRequest(req)) return NextResponse.json({ success: false, error: 'Invalid request origin' }, { status: 403 });
     const body = await req.json();
     const projectId = `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const newProject: Project = {
+      ownerUserId: user.id,
       id: projectId,
       title: body.title?.trim() || 'Untitled Project',
       sourceType: body.sourceType || 'upload',

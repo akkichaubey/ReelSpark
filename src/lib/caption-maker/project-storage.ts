@@ -1,3 +1,4 @@
+import { accountCache } from '@/lib/account-cache';
 import { CaptionProject } from './types';
 
 export const LOCAL_STORAGE_PROJECT_KEY = 'reel_caption_project_v2';
@@ -24,7 +25,7 @@ export function saveProjectToLocalStorage(project: CaptionProject): boolean {
       ...project,
       updatedAt: new Date().toISOString(),
     };
-    window.localStorage.setItem(LOCAL_STORAGE_PROJECT_KEY, JSON.stringify(toSave));
+    accountCache.setItem(LOCAL_STORAGE_PROJECT_KEY, JSON.stringify(toSave));
     return true;
   } catch (err) {
     console.warn('Failed to save project to localStorage:', err);
@@ -38,7 +39,7 @@ export function saveProjectToLocalStorage(project: CaptionProject): boolean {
 export function loadProjectFromLocalStorage(): CaptionProject | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_PROJECT_KEY);
+    const raw = accountCache.getItem(LOCAL_STORAGE_PROJECT_KEY);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch (err) {
@@ -53,7 +54,7 @@ export function loadProjectFromLocalStorage(): CaptionProject | null {
 export function clearProjectFromLocalStorage(): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.removeItem(LOCAL_STORAGE_PROJECT_KEY);
+    accountCache.removeItem(LOCAL_STORAGE_PROJECT_KEY);
   } catch {}
 }
 
@@ -63,7 +64,7 @@ export function clearProjectFromLocalStorage(): void {
 export function getProjectSnapshots(): ProjectSnapshot[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_SNAPSHOTS_KEY);
+    const raw = accountCache.getItem(LOCAL_STORAGE_SNAPSHOTS_KEY);
     if (!raw) return [];
     const list: ProjectSnapshot[] = JSON.parse(raw);
     return Array.isArray(list) ? list : [];
@@ -95,7 +96,7 @@ export function saveProjectSnapshot(
 
     // Prepend latest snapshot and trim to MAX_SNAPSHOTS
     const updated = [newSnapshot, ...snapshots].slice(0, MAX_SNAPSHOTS);
-    window.localStorage.setItem(LOCAL_STORAGE_SNAPSHOTS_KEY, JSON.stringify(updated));
+    accountCache.setItem(LOCAL_STORAGE_SNAPSHOTS_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.warn('Failed to create project snapshot:', err);
@@ -121,7 +122,7 @@ export function deleteProjectSnapshot(snapshotId: string): ProjectSnapshot[] {
   try {
     const snapshots = getProjectSnapshots();
     const filtered = snapshots.filter((s) => s.id !== snapshotId);
-    window.localStorage.setItem(LOCAL_STORAGE_SNAPSHOTS_KEY, JSON.stringify(filtered));
+    accountCache.setItem(LOCAL_STORAGE_SNAPSHOTS_KEY, JSON.stringify(filtered));
     return filtered;
   } catch (err) {
     console.warn('Failed to delete snapshot:', err);
@@ -135,7 +136,7 @@ export function deleteProjectSnapshot(snapshotId: string): ProjectSnapshot[] {
 export function clearAllSnapshots(): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.removeItem(LOCAL_STORAGE_SNAPSHOTS_KEY);
+    accountCache.removeItem(LOCAL_STORAGE_SNAPSHOTS_KEY);
   } catch {}
 }
 

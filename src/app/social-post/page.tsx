@@ -1,4 +1,5 @@
 'use client';
+import { accountCache } from '@/lib/account-cache';
 
 // ReelSpark Smart Social Intelligence Studio — Updated 2026-10-22
 import React, { useState, useEffect, useCallback } from 'react';
@@ -134,7 +135,7 @@ function SocialPostPageContent() {
 
     // 1. Check if temporary clip session was stored from ClipCard
     try {
-      const storedContextRaw = localStorage.getItem('reel_social_post_context');
+      const storedContextRaw = accountCache.getItem('reel_social_post_context');
       if (storedContextRaw) {
         const storedContext = JSON.parse(storedContextRaw);
         if (storedContext?.transcript) {

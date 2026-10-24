@@ -8,9 +8,14 @@ import { groupTranscriptWords } from '@/lib/caption-maker/caption-grouping';
 import { buildWordsFromSyncedSegments } from '@/lib/caption-maker/clip-to-reel';
 import { devanagariToHinglish, enrichWordsWithEmojis } from '@/lib/caption-maker/hinglish-and-emoji';
 import { extractAudioFromVideo } from '@/lib/caption-maker/ffmpeg-renderer';
+import { requireMediaUser } from '@/lib/media-api-access';
+import { canReadMedia } from '@/lib/media-access';
+import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireMediaUser(req);
+    if (access.error) return access.error;
     const body = await req.json();
     const { storagePath, fileUrl, preferredLanguage, fallbackHint: rawHint, clipId, audioTitle } = body;
     const lang: 'hi' | 'en' | 'hinglish' =
@@ -47,11 +52,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (targetPath && !fs.existsSync(/*turbopackIgnore: true*/ targetPath)) await restorePrivateMedia(access.user.id, targetPath);
     if (!targetPath || !fs.existsSync(/*turbopackIgnore: true*/ targetPath)) {
       return NextResponse.json(
         { error: 'Audio file not found on server for transcription' },
         { status: 400 }
       );
+    }
+
+    if (!(await canReadMedia(access.user.id, targetPath))) {
+      return NextResponse.json({ error: 'Media not found. Upload media to your account first.' }, { status: 404 });
     }
 
     // 1. If targetPath is a video file (.mp4, .mov, .webm, etc.), ensure audio is extracted to MP3
@@ -101,8 +111,9 @@ export async function POST(req: NextRequest) {
       const manifestPath = path.join(APP_CONFIG.projectsDir, projectId, 'manifest.json');
       if (fs.existsSync(manifestPath)) {
         try {
-          projectManifestPath = manifestPath;
           const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          if (manifest.ownerUserId !== access.user.id) throw new Error('Project ownership mismatch');
+          projectManifestPath = manifestPath;
           const candidates: any[] = Array.isArray(manifest.candidates) ? manifest.candidates : [];
 
           // Match candidate by clipId or rendered video path or filename
