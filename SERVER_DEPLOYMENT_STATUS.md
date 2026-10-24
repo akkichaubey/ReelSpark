@@ -95,7 +95,8 @@ GitHub auto-deploy will be configured after the security and persistence gates p
    each project terminal. See NODE_RUNTIME.md and DEPENDENCY_SECURITY.md.
 4. Linux Remotion now uses packaged native binaries, and both CJS/ESM patch
    templates only auto-select project `bin/` on Windows. Chromium is explicitly
-   passed to composition selection and rendering. Linux execution remains untested.
+   passed to composition selection and rendering. GitHub-hosted Linux execution
+   passed for the production Docker build and a short Hindi-captioned audio/video render.
 5. Browser media health/probe now default to same-origin APIs with timeouts;
    explicit standalone configuration remains supported. Export routes now share
    a process-wide fallback job registry and process handles; local status/cancel
@@ -105,8 +106,8 @@ GitHub auto-deploy will be configured after the security and persistence gates p
 6. Choose a server-reachable AI provider. Local Ollama is not deployed by this Dockerfile.
 7. Build the Linux image and render a short Hindi-captioned video with audio;
    measure memory and concurrency before declaring Free adequate.
-   A manual GitHub Actions Docker/regression/Hindi-render workflow is prepared,
-   not executed. No local Docker/Podman/WSL runtime is installed. Portable clipping
+   GitHub Actions Docker/regression/Hindi-render verification passed on commit
+   d350832 (run 40069044763). No local Docker/Podman/WSL runtime is installed. Portable clipping
    snapshot paths and cloud-deleted cache reconciliation are now implemented.
 8. Set the real HTTPS AUTH_URL and Google callback once a service URL is assigned.
    Latest read-only check: D1 is reachable but new migration tables are missing;
@@ -115,7 +116,9 @@ GitHub auto-deploy will be configured after the security and persistence gates p
 ## Verification
 
 - Earlier focused Google auth and social platform suites passed locally on Windows.
-- Linux Docker build, Chromium launch, Hindi rendering, cloud persistence and
-  real Google OAuth remain untested. No end-to-end server-readiness claim is made.
+- Linux Docker build, all 13 regression suites, Chromium launch and short Hindi
+  rendering passed: https://github.com/akkichaubey/ReelSpark/actions/runs/40069044763.
+  Cloud persistence and real Google OAuth remain untested. Render Free resource
+  capacity and Hindi visual quality remain unverified. No end-to-end server-readiness claim is made.
 - Free services sleep after inactivity and lose local runtime files on restart,
   redeploy or sleep. See https://render.com/docs/free.

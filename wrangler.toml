@@ -20,7 +20,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding  = "DB"
 database_name = "reelspark-db"
-database_id   = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id   = "152aa7d7-9733-4c09-bd23-5f1697932cb8"
 # Create with: npx wrangler d1 create reelspark-db
 
 # ─── R2 Storage (Media Files) ────────────────────────────────────────────────
