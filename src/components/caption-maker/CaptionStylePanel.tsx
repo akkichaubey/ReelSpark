@@ -141,9 +141,9 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full min-h-0 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="p-3.5 bg-zinc-950/70 border-b border-zinc-800 flex items-center justify-between">
+      <div className="p-3.5 bg-zinc-950/70 border-b border-zinc-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Palette className="w-4 h-4 text-amber-400" />
           <h3 className="font-semibold text-zinc-100 text-sm tracking-wide">
@@ -156,7 +156,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
       </div>
 
       {/* Modern Navigation Tabs (Inspired by VN / CapCut / Instagram) */}
-      <div className="flex items-center border-b border-zinc-800 bg-zinc-950/50 p-1 text-[11px]">
+      <div className="flex items-center border-b border-zinc-800 bg-zinc-950/50 p-1 text-[11px] shrink-0 overflow-x-auto">
         {[
           { id: 'presets', label: 'Presets', icon: Wand2 },
           { id: 'typography', label: 'Text', icon: Type },
@@ -184,7 +184,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar text-xs">
+      <div role="region" aria-label="Caption style options" tabIndex={0} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-5 custom-scrollbar text-xs">
         {/* ========================================================================= */}
         {/* TAB 1: 1-CLICK VIRAL PRESETS (VN / Instagram / CapCut templates)          */}
         {/* ========================================================================= */}

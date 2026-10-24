@@ -9,6 +9,7 @@ import { GET as health } from '../src/app/api/clipping-studio/health/route';
 import { POST as cleanup } from '../src/app/api/admin/media-cleanup/route';
 import { createDefaultCaptionProject, createEmptyCaptionProject } from '../src/lib/caption-maker/sample-data';
 import { cleanBundledSampleProject } from '../src/lib/caption-maker/clean-sample-project';
+import { saveProjectToLocalStorage, loadProjectFromLocalStorage } from '../src/lib/caption-maker/project-storage';
 import { createDefaultThumbnailSettings } from '../src/lib/caption-maker/thumbnail-presets';
 
 async function main() {
@@ -70,6 +71,16 @@ async function main() {
     assert.equal(accountCache.getItem('reel_caption_project_v2'), 'alice-draft');
     assert.equal(loadProjectsLocally()[0].name, 'Alice private');
     assert.equal(storage.getItem('reel_caption_project_v2'), 'legacy-private-data');
+    const uploadedReel = createEmptyCaptionProject('uploaded-alice-reel');
+    uploadedReel.audio = { id: 'alice-upload', fileName: 'my-voice.mp3', fileUrl: '/api/files/alice/voice.mp3', storagePath: '/owned/alice/voice.mp3', fileSize: 1234, duration: 42.5, format: 'audio/mp3' };
+    saveProjectToLocalStorage(uploadedReel);
+    setCacheAccount(null);
+    assert.equal(loadProjectFromLocalStorage(), null);
+    setCacheAccount('bob');
+    saveProjectToLocalStorage(createEmptyCaptionProject('bob-empty'));
+    assert.equal(loadProjectFromLocalStorage()?.audio, undefined);
+    setCacheAccount('alice');
+    assert.deepEqual(loadProjectFromLocalStorage()?.audio, uploadedReel.audio, 'Own upload metadata survives logout and login');
 
     process.env.ALLOW_DEMO_LOGIN = 'false';
     assert.equal((await settingsGet(req())).status, 401);

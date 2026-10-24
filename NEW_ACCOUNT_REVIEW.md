@@ -40,3 +40,14 @@ and Re-analyze explicitly bypasses cache. Failed manual analysis removes the
 verified flag while preserving the user's draft. Existing inaccurate text is not
 silently deleted from uploaded projects. Real audio recognition on Render still
 requires a configured, working Gemini API key; OAuth credentials do not supply it.
+
+With explicit user approval, the existing local Gemini key was saved to the
+Render environment (no key value committed). Actual provider checks passed:
+Gemini returned a successful response, and a generated English voice recording
+was transcribed as the correct 15-word sentence through the updated transcription
+pipeline with forceRefresh=true. This was a local-to-Gemini audio smoke test,
+not a claim that the user's uploaded recording has been re-tested on Render.
+
+The requested initial layout uses Assets & Audio, Video Reel, Hinglish and
+Thumbnail Style > Position. Fresh projects have no media/BGM/transcript, 0s
+duration and Safe Mode OFF. New Reel resets playback and previous render result.

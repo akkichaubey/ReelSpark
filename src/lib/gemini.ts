@@ -18,6 +18,14 @@ import { ClipCandidate, TranscriptSegment } from './types';
 
 export type ChunkAnalysisInput = OllamaChunkInput;
 
+export class GeminiApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
+export function isTemporaryGeminiError(error: unknown): boolean {
+  return error instanceof GeminiApiError && [408, 429, 500, 502, 503, 504].includes(error.status);
+}
+
 export const ANALYSIS_SYSTEM_INSTRUCTION = `You are a master video editor, philosopher, and AI clip curator specializing in identifying viral, deeply meaningful, motivational, and thought-provoking short clips from long-form speeches, podcasts, and talks.`;
 
 /**
@@ -72,6 +80,7 @@ export async function generateWithGemini(params: {
     },
   };
 
+  for (let attempt = 0; attempt < 3; attempt++) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -81,16 +90,29 @@ export async function generateWithGemini(params: {
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60000),
     }
   );
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error?.message || `Google Gemini API error (${res.status})`);
+    const error = new GeminiApiError(data.error?.message || `Google Gemini API error (${res.status})`, res.status);
+    if (attempt < 2 && isTemporaryGeminiError(error)) {
+      const retryAfter = res.headers.get('retry-after');
+      const requestedWait = retryAfter ? (Number.isFinite(Number(retryAfter))
+        ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : 0;
+      // Long provider cooldowns need an explicit later retry, not a hanging request.
+      if (requestedWait > 10000) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.max(1000 * 2 ** attempt, requestedWait || 0)));
+      continue;
+    }
+    throw error;
   }
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   return text.trim();
+  }
+  throw new Error('Google Gemini did not return a response.');
 }
 
 /**

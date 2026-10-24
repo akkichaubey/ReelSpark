@@ -11,6 +11,7 @@ import { extractAudioFromVideo } from '@/lib/caption-maker/ffmpeg-renderer';
 import { requireMediaUser } from '@/lib/media-api-access';
 import { canReadMedia } from '@/lib/media-access';
 import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
+import { isTemporaryGeminiError } from '@/lib/gemini';
 
 export async function POST(req: NextRequest) {
   try {
@@ -244,9 +245,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Transcription API error:', err);
+    const retryable = isTemporaryGeminiError(err);
     return NextResponse.json(
-      { error: err.message || 'Audio transcription failed' },
-      { status: /not configured|GEMINI_API_KEY/.test(err.message || '') ? 503 : 500 }
+      { error: retryable ? 'Google speech recognition is temporarily busy. Automatic retries did not complete. Your audio is unchanged; please retry shortly.' : err.message || 'Audio transcription failed', retryable },
+      { status: retryable || /not configured|GEMINI_API_KEY/.test(err.message || '') ? 503 : 500 }
     );
   }
 }

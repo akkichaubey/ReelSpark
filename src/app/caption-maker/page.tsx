@@ -1,5 +1,5 @@
 'use client';
-import { accountCache } from '@/lib/account-cache';
+import { accountCache, ACCOUNT_WORKSPACE_FLUSH_EVENT } from '@/lib/account-cache';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -127,6 +127,7 @@ function CaptionMakerPageContent() {
   const isInitialMount = useRef<boolean>(true);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
 
   // Rendering state
   const [isRendering, setIsRendering] = useState<boolean>(false);
@@ -634,6 +635,21 @@ function CaptionMakerPageContent() {
   }, [project]);
 
   // Save project to localStorage and generate manual snapshot
+  useEffect(() => {
+    const flush = () => {
+      if (saveProjectToLocalStorage(project)) setAutosaveStatus('saved');
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener(ACCOUNT_WORKSPACE_FLUSH_EVENT, flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener(ACCOUNT_WORKSPACE_FLUSH_EVENT, flush);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [project]);
+
   const handleSaveProject = () => {
     try {
       saveProjectToLocalStorage(project);
@@ -690,6 +706,7 @@ function CaptionMakerPageContent() {
       setThumbnailSubTab('position');
       setIsPlaying(false);
       setRenderResult(null);
+      setTranscriptionError(null);
       setCrashRecoverySnapshot(null);
       try {
         accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
@@ -934,6 +951,7 @@ function CaptionMakerPageContent() {
       if (!targetProj.audio || isTranscribingRef.current) return null;
       isTranscribingRef.current = true;
       setIsTranscribing(true);
+      setTranscriptionError(null);
       try {
         const isSampleQuote = (t?: string) =>
           Boolean(
@@ -1019,10 +1037,10 @@ function CaptionMakerPageContent() {
         setLeftTab('transcript');
         return healed;
       } catch (err: any) {
+        setTranscriptionError(err.message || 'Failed to re-analyze audio. Please retry.');
+        setProject((current) => ({ ...current, isAudioSynced: false }));
         if (!silent) {
-          setProject((current) => ({ ...current, isAudioSynced: false }));
           console.error('Audio transcription error:', err);
-          alert(`Transcription error: ${err.message || 'Failed to re-analyze audio'}`);
         } else {
           console.warn('Auto audio sync failed:', err);
         }
@@ -1979,6 +1997,16 @@ function CaptionMakerPageContent() {
           </div>
 
           {/* Left Tab Body (Scrollable for assets, flex pinned for transcript) */}
+          {transcriptionError && (
+            <div role="alert" className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <p>{transcriptionError}</p>
+              <button type="button" disabled={isTranscribing || !project.audio}
+                onClick={() => void syncAudioWithTranscript(project)}
+                className="mt-2 rounded bg-amber-400 px-3 py-1 font-semibold text-black disabled:opacity-50">
+                {isTranscribing ? 'Retrying speech recognition…' : 'Retry transcription'}
+              </button>
+            </div>
+          )}
           <div
             className={`flex-1 min-h-0 ${
               leftTab === 'transcript' ? 'overflow-hidden flex flex-col p-3' : 'overflow-y-auto p-3'
@@ -2236,7 +2264,7 @@ function CaptionMakerPageContent() {
           </div>
 
           {/* Right Tab Body (Scrollable Box) */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-3">
+          <div className={`flex-1 min-h-0 p-3 ${rightTab === 'canvas' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
             {rightTab === 'canvas' ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-zinc-800">

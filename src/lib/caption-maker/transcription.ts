@@ -778,7 +778,7 @@ export async function transcribeAudio(
       const geminiProvider = new GeminiTranscriptionProvider();
       return await geminiProvider.transcribe(audioFilePath, preferredLanguage, fallbackHint, forceRefresh);
     } catch (err: any) {
-      throw new Error(`Audio transcription unavailable: ${err.message || 'Speech recognition failed'}`);
+      throw err;
     }
   }
 

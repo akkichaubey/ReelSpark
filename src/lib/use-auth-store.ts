@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { UserProfile } from './auth';
-import { announceAccountIdentity, getCacheAccount, setCacheAccount } from './account-cache';
+import { announceAccountIdentity, getCacheAccount, setCacheAccount, ACCOUNT_WORKSPACE_FLUSH_EVENT } from './account-cache';
 
 let authRequestVersion = 0;
 
@@ -100,6 +100,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event(ACCOUNT_WORKSPACE_FLUSH_EVENT));
+    }
     ++authRequestVersion;
     try {
       const response = await fetch('/api/auth/logout', { method: 'POST' });

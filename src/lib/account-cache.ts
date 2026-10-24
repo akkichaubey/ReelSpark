@@ -3,6 +3,7 @@ let accountId: string | null = null;
 export function setCacheAccount(id: string | null): void { accountId = id; }
 export function getCacheAccount(): string | null { return accountId; }
 export const ACCOUNT_IDENTITY_EVENT_KEY = 'reelspark_session_identity';
+export const ACCOUNT_WORKSPACE_FLUSH_EVENT = 'reelspark_flush_workspace';
 export function announceAccountIdentity(id: string | null): void {
   if (typeof window === 'undefined') return;
   try { window.localStorage.setItem(ACCOUNT_IDENTITY_EVENT_KEY, id || 'signed-out'); } catch { /* Storage may be blocked. */ }
