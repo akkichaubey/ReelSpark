@@ -321,14 +321,14 @@ export function formatSocialLinksBlock(
 ): string {
   if (!eligibleLinks || eligibleLinks.length === 0) return '';
 
-  const heading = preferences.customHeading?.trim() || '🔗 Connect with us:';
+  const heading = preferences.customHeading?.trim() || '';
   const separateLines = preferences.displaySeparateLines !== false;
 
   const linkLines = eligibleLinks.map((l) => l.formattedText);
 
   if (separateLines) {
-    return `${heading}\n${linkLines.join('\n')}`;
+    return [heading, ...linkLines].filter(Boolean).join('\n');
   } else {
-    return `${heading} ${linkLines.join(' • ')}`;
+    return [heading, linkLines.join(' • ')].filter(Boolean).join(' ');
   }
 }

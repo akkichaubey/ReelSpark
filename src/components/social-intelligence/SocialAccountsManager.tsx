@@ -49,17 +49,14 @@ export const SocialAccountsManager: React.FC = () => {
     includeWebsite: true,
     includeOtherSocials: true,
     excludeTargetPlatform: true,
-    customHeading: 'Follow us',
+    customHeading: '',
     displaySeparateLines: true,
     linkOrder: ['website', 'youtube', 'instagram', 'threads', 'facebook'],
     eligibleAccountIds: [],
-    fixedHashtags: [
-      { id: 'tag_1', tag: '#truevoiceclub', enabled: true },
-      { id: 'tag_2', tag: '#reelspark', enabled: true },
-    ],
+    fixedHashtags: [],
     updatedAt: new Date().toISOString(),
   });
-  const [customHeading, setCustomHeading] = useState('Follow us');
+  const [customHeading, setCustomHeading] = useState('');
   const [savingHeading, setSavingHeading] = useState(false);
   const [previewPlatform, setPreviewPlatform] = useState<SocialPlatformKey>('youtube');
   const [copiedPreview, setCopiedPreview] = useState(false);
@@ -118,7 +115,7 @@ export const SocialAccountsManager: React.FC = () => {
 
       if (prefData.success && prefData.preferences) {
         setPreferences(prefData.preferences);
-        setCustomHeading(prefData.preferences.customHeading || 'Follow us');
+        setCustomHeading(prefData.preferences.customHeading || '');
         if (Array.isArray(prefData.preferences.linkOrder) && prefData.preferences.linkOrder.length > 0) {
           loadedAccounts = sortAccountsByOrder(loadedAccounts, prefData.preferences.linkOrder);
         }
@@ -747,7 +744,7 @@ export const SocialAccountsManager: React.FC = () => {
           </div>
 
           <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
-            Save fixed hashtags like <strong className="text-zinc-300 font-mono">#truevoiceclub</strong>. Tick (✓) to include in reels.
+            Add your own fixed hashtags. Tick (✓) to include them in reels.
           </p>
 
           {/* Quick Add Tag Form */}
@@ -760,7 +757,7 @@ export const SocialAccountsManager: React.FC = () => {
                 type="text"
                 value={newTagInput}
                 onChange={(e) => setNewTagInput(e.target.value)}
-                placeholder="Add tag (e.g. truevoiceclub)..."
+                placeholder="Enter your hashtag..."
                 className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
               />
             </div>
@@ -777,7 +774,7 @@ export const SocialAccountsManager: React.FC = () => {
           <div className="space-y-2 max-h-[290px] overflow-y-auto pr-1">
             {(preferences.fixedHashtags || []).length === 0 ? (
               <div className="text-center py-6 border border-dashed border-zinc-800 rounded-xl p-4 text-xs text-zinc-500">
-                No fixed hashtags added yet. Type <strong className="text-zinc-400 font-mono">#truevoiceclub</strong> above and click Add!
+                No fixed hashtags yet. Enter your own hashtag above and click Add.
               </div>
             ) : (
               (preferences.fixedHashtags || []).map((ht) => (

@@ -30,6 +30,17 @@ async function runSocialIntelligenceTests() {
   console.log('======================================================\n');
 
   const testUserId = `test_user_${Date.now()}`;
+  const freshPreferences = await getSocialLinkPreferences(testUserId);
+  assert.deepStrictEqual(freshPreferences.fixedHashtags, [], 'New users must have no fixed hashtags');
+  assert.strictEqual(freshPreferences.customHeading, '', 'New users must have no custom heading');
+  assert.deepStrictEqual(await getSocialAccounts(testUserId), [], 'New users must have no social accounts');
+  const ownTags = [{ id: 'user-tag', tag: '#myownbrand', enabled: true }];
+  await saveSocialLinkPreferences(testUserId, { fixedHashtags: ownTags });
+  assert.deepStrictEqual((await getSocialLinkPreferences(testUserId)).fixedHashtags, ownTags,
+    'User-added hashtags must survive reload');
+  await saveSocialLinkPreferences(testUserId, { fixedHashtags: [] });
+  assert.deepStrictEqual((await getSocialLinkPreferences(testUserId)).fixedHashtags, [],
+    'Deleting all fixed hashtags must not restore defaults');
 
   // ─── SECTION 1: URL Normalization & Domain Validation ───────────────────────
   console.log('▶ Section 1: URL Normalization & Validation');
@@ -197,9 +208,11 @@ async function runSocialIntelligenceTests() {
   assert.strictEqual(disabledIgPresent, false, 'Disabled account must be excluded');
 
   // Case 4.5: Format social links block
-  const block = formatSocialLinksBlock(linksForYouTube, prefs);
+  const block = formatSocialLinksBlock(linksForYouTube, { ...prefs, customHeading: '🔗 Connect with us:' });
   assert.ok(block.includes('🔗 Connect with us:'), 'Must include custom heading');
   assert.ok(block.includes('https://instagram.com/reelspark_ai'), 'Must include eligible formatted link');
+  const noHeadingBlock = formatSocialLinksBlock(linksForYouTube, { ...prefs, customHeading: '' });
+  assert.ok(!noHeadingBlock.includes('Connect with us'), 'An empty heading must remain omitted');
   console.log('  ✓ Deterministic target platform exclusion and link formatting verified');
 
   // ─── SECTION 5: Platform Intelligence Engine Rules ──────────────────────────

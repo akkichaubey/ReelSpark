@@ -431,14 +431,11 @@ export const DEFAULT_LINK_PREFERENCES: Omit<SocialLinkPreferences, 'userId' | 'u
   includeWebsite: true,
   includeOtherSocials: true,
   excludeTargetPlatform: true, // Target platform excluded by default per specification!
-  customHeading: '🔗 Connect with us:',
+  customHeading: '',
   displaySeparateLines: true,
   linkOrder: ['youtube', 'instagram', 'threads', 'facebook', 'website'],
   eligibleAccountIds: [],
-  fixedHashtags: [
-    { id: 'tag_1', tag: '#truevoiceclub', enabled: true },
-    { id: 'tag_2', tag: '#reelspark', enabled: true },
-  ],
+  fixedHashtags: [],
 };
 
 export async function getSocialLinkPreferences(userId: string): Promise<SocialLinkPreferences> {
