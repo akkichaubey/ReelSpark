@@ -6,7 +6,7 @@ const suites = [
   'clipping_media_security.test.ts', 'export_fallback_routes.test.ts',
   'settings_account_cache.test.ts', 'cloud_project_documents.test.ts',
   'private_media_cloud.test.ts', 'media_lifecycle.test.ts', 'storage_references.test.ts',
-  'server_export_plan.test.ts',
+  'server_export_plan.test.ts', 'transcription_truthfulness.test.ts',
 ];
 for (const suite of suites) {
   const args = ['node_modules/tsx/dist/cli.mjs', `tests/${suite}`];

@@ -145,7 +145,7 @@ export function getGeminiClient(customApiKey?: string): any {
 export async function generateContentWithFallback(
   _ai: any,
   preferredModel: string | undefined,
-  params: { contents: any; config?: any }
+  params: { contents: any; config?: any; allowTextFallback?: boolean }
 ): Promise<any> {
   const apiKey = (
     process.env.GEMINI_API_KEY ||
@@ -154,6 +154,9 @@ export async function generateContentWithFallback(
   ).trim();
 
   let responseText = '';
+  if (!apiKey && params.allowTextFallback === false) {
+    throw new Error('GEMINI_API_KEY is required for audio transcription.');
+  }
   if (apiKey) {
     try {
       const contents = Array.isArray(params.contents)
@@ -170,6 +173,7 @@ export async function generateContentWithFallback(
         temperature: params.config?.temperature,
       });
     } catch (err: any) {
+      if (params.allowTextFallback === false) throw err;
       console.warn('Gemini generate note, checking Ollama fallback:', err.message);
       // Fallback to Ollama text if possible
       let prompt = '';

@@ -202,9 +202,8 @@ function CaptionMakerPageContent() {
           if (parsed.captionStyle.customX === undefined) {
             parsed.captionStyle.customX = 50;
           }
-          if (parsed.captionStyle.showSafeArea === undefined) {
-            parsed.captionStyle.showSafeArea = false;
-          }
+          parsed.captionStyle.showSafeArea = false;
+          if (parsed.thumbnailSettings) parsed.thumbnailSettings.showSafeArea = false;
           if (!parsed.captionStyle.fontFamily || parsed.captionStyle.fontFamily.includes('Inter')) {
             parsed.captionStyle.fontFamily = 'Montserrat, sans-serif';
             parsed.captionStyle.fontWeight = 'medium';
@@ -950,6 +949,7 @@ function CaptionMakerPageContent() {
             preferredLanguage: targetProj.preferredLanguage || 'en',
             clipId: targetProj.sourceClipId,
             audioTitle: targetProj.audio.fileName || targetProj.title,
+            forceRefresh: true,
             fallbackHint: {
               textHindi: isCustomAudio && isSampleQuote(targetProj.rawTranscriptHindi) ? undefined : targetProj.rawTranscriptHindi,
               textEnglish: isCustomAudio && isSampleQuote(targetProj.rawTranscriptEnglish) ? undefined : targetProj.rawTranscriptEnglish,
@@ -1015,6 +1015,7 @@ function CaptionMakerPageContent() {
         return healed;
       } catch (err: any) {
         if (!silent) {
+          setProject((current) => ({ ...current, isAudioSynced: false }));
           console.error('Audio transcription error:', err);
           alert(`Transcription error: ${err.message || 'Failed to re-analyze audio'}`);
         } else {

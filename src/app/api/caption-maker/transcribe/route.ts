@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const access = await requireMediaUser(req);
     if (access.error) return access.error;
     const body = await req.json();
-    const { storagePath, fileUrl, preferredLanguage, fallbackHint: rawHint, clipId, audioTitle } = body;
+    const { storagePath, fileUrl, preferredLanguage, fallbackHint: rawHint, clipId, audioTitle, forceRefresh } = body;
     const lang: 'hi' | 'en' | 'hinglish' =
       preferredLanguage === 'hinglish' ? 'hinglish' : preferredLanguage === 'hi' ? 'hi' : 'en';
 
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Run transcription with hardware acoustic-locked word-level timestamps
     const baseLang = lang === 'hinglish' ? 'hi' : lang;
-    const result = await transcribeAudio(audioTargetPath, baseLang, fallbackHint);
+    const result = await transcribeAudio(audioTargetPath, baseLang, fallbackHint, forceRefresh === true);
 
     let finalTranscript = result.transcript;
     const rawTranscriptHinglish =
@@ -192,6 +192,7 @@ export async function POST(req: NextRequest) {
     // 6. Dual-cache sync metadata so both original video path and extracted audio path hit instant cache
     if (result.syncedSegments && result.syncedSegments.length > 0) {
       const cacheData = {
+        provider: 'gemini',
         titleHindi: result.titleHindi,
         titleEnglish: result.titleEnglish,
         acousticLocked: true,
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
     console.error('Transcription API error:', err);
     return NextResponse.json(
       { error: err.message || 'Audio transcription failed' },
-      { status: 500 }
+      { status: /not configured|GEMINI_API_KEY/.test(err.message || '') ? 503 : 500 }
     );
   }
 }

@@ -265,15 +265,16 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
   async transcribe(
     audioFilePath: string,
     preferredLanguage: 'hi' | 'en' = 'en',
-    fallbackHint?: TranscriptionFallbackHint
+    fallbackHint?: TranscriptionFallbackHint,
+    forceRefresh = false
   ): Promise<TranscriptionResult> {
     const syncCachePath = `${audioFilePath}.sync.json`;
 
     // 1. Check disk sync cache first
-    if (fs.existsSync(syncCachePath)) {
+    if (!forceRefresh && fs.existsSync(syncCachePath)) {
       try {
         const cached = JSON.parse(fs.readFileSync(syncCachePath, 'utf8'));
-        if (cached && Array.isArray(cached.segments) && cached.segments.length > 0) {
+        if (cached?.provider === 'gemini' && Array.isArray(cached.segments) && cached.segments.length > 0) {
           let segments: SyncedPhraseSegment[] = cached.segments.map((s: any) => ({
             start: Number(s.start) || 0,
             end: Number(s.end) || 0,
@@ -331,6 +332,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       }
     }
 
+    if (!checkGeminiStatus().configured) throw new Error('GEMINI_API_KEY is not configured on this server.');
     // 2. Run FFmpeg hardware silencedetect on the audio file to extract exact voice activity windows
     const { totalDuration, intervals: speechIntervals } = await detectSpeechIntervals(audioFilePath);
 
@@ -441,6 +443,7 @@ Output ONLY the raw JSON object.
     if (stat.size < 15 * 1024 * 1024) {
       const b64 = fs.readFileSync(audioFilePath).toString('base64');
       const response = await generateContentWithFallback(ai, model, {
+        allowTextFallback: false,
         contents: [
           {
             role: 'user',
@@ -462,6 +465,7 @@ Output ONLY the raw JSON object.
       });
       try {
         const response = await generateContentWithFallback(ai, model, {
+          allowTextFallback: false,
           contents: [
             {
               role: 'user',
@@ -555,6 +559,7 @@ Output ONLY the raw JSON object.
         syncCachePath,
         JSON.stringify(
           {
+            provider: 'gemini',
             titleHindi: parsed.titleHindi || fallbackHint?.titleHindi || '',
             titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish || '',
             acousticLocked: true,
@@ -762,7 +767,8 @@ export class LocalHeuristicTranscriptionProvider implements TranscriptionProvide
 export async function transcribeAudio(
   audioFilePath: string,
   preferredLanguage: 'hi' | 'en' = 'en',
-  fallbackHint?: TranscriptionFallbackHint
+  fallbackHint?: TranscriptionFallbackHint,
+  forceRefresh = false
 ): Promise<TranscriptionResult> {
   const syncCachePath = `${audioFilePath}.sync.json`;
   const companionCache = `${audioFilePath}.audio.mp3.sync.json`;
@@ -770,12 +776,11 @@ export async function transcribeAudio(
   if (fs.existsSync(syncCachePath) || fs.existsSync(companionCache) || checkGeminiStatus().configured) {
     try {
       const geminiProvider = new GeminiTranscriptionProvider();
-      return await geminiProvider.transcribe(audioFilePath, preferredLanguage, fallbackHint);
+      return await geminiProvider.transcribe(audioFilePath, preferredLanguage, fallbackHint, forceRefresh);
     } catch (err: any) {
-      console.warn('Gemini transcription note, falling back to acoustic alignment:', err.message);
+      throw new Error(`Audio transcription unavailable: ${err.message || 'Speech recognition failed'}`);
     }
   }
 
-  const fallback = new LocalHeuristicTranscriptionProvider();
-  return await fallback.transcribe(audioFilePath, preferredLanguage, fallbackHint);
+  throw new Error('Audio transcription is not configured on this server. Configure a Gemini API key to recognize speech. Project titles cannot be used as transcripts.');
 }

@@ -17,7 +17,7 @@ Existing user work is not deleted on login.
 | Account changes | Existing workspace boundary reloads on identity changes and BFCache restore; cross-tab notifications trigger session refresh. Automated cache tests pass; exhaustive real multi-browser switching has not been performed. |
 | Demo login message | Removed hardcoded admin/admin landing-page callout. Production demo login remains disabled. |
 | Brand logo | Restored original ReelSpark SVG wordmark at the user's request. Reel Maker remains the editor feature name. |
-| Safe Mode | Caption/thumbnail defaults and missing-value fallbacks are OFF; users can still toggle guides ON. Explicit saved preferences on genuine user projects are preserved. |
+| Safe Mode | Caption/thumbnail defaults and restore fallbacks are OFF; guides start OFF when reopening cached projects. Users can still toggle guides ON during editing. |
 | Legacy demo draft | Restore removes only the bundled sample's exact default audio/title/word timestamps, unchanged raw transcripts and known sample cover copy. Uploaded media, renamed/edited reels and custom cover text are preserved. |
 
 ## Persistence boundaries still requiring deployment work
@@ -28,3 +28,15 @@ fields have not been saved. R2, metadata/lifecycle activation, cloud migrations,
 complete Reel Maker/Clip Finder cloud recovery and restart-safe exports remain
 unfinished. Do not describe the whole application as durable or production-ready.
 No existing account, project, tag list or cloud object was purged by this cleanup.
+
+## Transcription correction
+
+The reported "Untitled Reel" transcript was traced to the acoustic heuristic
+fallback generating fictional clauses from a project title. The production
+transcription router no longer uses that fallback. Speech recognition errors
+propagate; missing Gemini configuration returns HTTP 503. Audio requests cannot
+fall back to a text-only Ollama prompt. Only Gemini-provenance caches are accepted,
+and Re-analyze explicitly bypasses cache. Failed manual analysis removes the
+verified flag while preserving the user's draft. Existing inaccurate text is not
+silently deleted from uploaded projects. Real audio recognition on Render still
+requires a configured, working Gemini API key; OAuth credentials do not supply it.
