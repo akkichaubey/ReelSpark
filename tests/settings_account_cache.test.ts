@@ -7,7 +7,8 @@ import { GET as systemGet } from '../src/app/api/system/route';
 import { POST as support } from '../src/app/api/support/route';
 import { GET as health } from '../src/app/api/clipping-studio/health/route';
 import { POST as cleanup } from '../src/app/api/admin/media-cleanup/route';
-import { createEmptyCaptionProject } from '../src/lib/caption-maker/sample-data';
+import { createDefaultCaptionProject, createEmptyCaptionProject } from '../src/lib/caption-maker/sample-data';
+import { cleanBundledSampleProject } from '../src/lib/caption-maker/clean-sample-project';
 import { createDefaultThumbnailSettings } from '../src/lib/caption-maker/thumbnail-presets';
 
 async function main() {
@@ -36,6 +37,15 @@ async function main() {
     assert.equal(blankCover.subtitle, '');
     assert.equal(blankCover.badgeText, '');
     assert.equal(blankCover.badgeEnabled, false);
+    assert.equal(blankReel.captionStyle.showSafeArea, false);
+    assert.equal(blankCover.showSafeArea, false);
+    const demo = createDefaultCaptionProject();
+    assert.deepEqual(cleanBundledSampleProject(demo).transcript, []);
+    assert.equal(cleanBundledSampleProject(demo).audio, undefined);
+    const uploaded = { ...demo, audio: { ...demo.audio!, id: 'uploaded', fileUrl: '/api/files/my-audio.mp3' } };
+    assert.equal(cleanBundledSampleProject(uploaded), uploaded);
+    const edited = { ...demo, title: 'My own reel' };
+    assert.equal(cleanBundledSampleProject(edited), edited);
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage } });
     storage.setItem('reel_caption_project_v2', 'legacy-private-data');
     setCacheAccount(null);

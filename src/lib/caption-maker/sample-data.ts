@@ -489,7 +489,7 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   animationPreset: 'clean',
   highlightAnimation: 'color-change',
   uppercase: false,
-  showSafeArea: true,
+  showSafeArea: false,
   backgroundStyle: 'none',
   backgroundOpacity: 0,
   backgroundRadius: 0,

@@ -17,6 +17,8 @@ Existing user work is not deleted on login.
 | Account changes | Existing workspace boundary reloads on identity changes and BFCache restore; cross-tab notifications trigger session refresh. Automated cache tests pass; exhaustive real multi-browser switching has not been performed. |
 | Demo login message | Removed hardcoded admin/admin landing-page callout. Production demo login remains disabled. |
 | Brand logo | Restored original ReelSpark SVG wordmark at the user's request. Reel Maker remains the editor feature name. |
+| Safe Mode | Caption/thumbnail defaults and missing-value fallbacks are OFF; users can still toggle guides ON. Explicit saved preferences on genuine user projects are preserved. |
+| Legacy demo draft | Restore removes only the bundled sample's exact default audio/title/word timestamps, unchanged raw transcripts and known sample cover copy. Uploaded media, renamed/edited reels and custom cover text are preserved. |
 
 ## Persistence boundaries still requiring deployment work
 

@@ -351,7 +351,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                   aspectRatio={settings.aspectRatio}
                   preset={settings.safeZoneOverrides?.platform}
                   mode="thumbnail"
-                  showGuides={settings.showSafeArea !== false}
+                  showGuides={settings.showSafeArea === true}
                   customOverrides={settings.safeZoneOverrides}
                   onSelectPlatform={(p) => {
                     setSettings((prev) => ({

@@ -1,5 +1,6 @@
 import { accountCache } from '@/lib/account-cache';
 import { CaptionProject } from './types';
+import { cleanBundledSampleProject } from './clean-sample-project';
 
 export const LOCAL_STORAGE_PROJECT_KEY = 'reel_caption_project_v2';
 export const LOCAL_STORAGE_SNAPSHOTS_KEY = 'reel_project_snapshots_v1';
@@ -41,7 +42,7 @@ export function loadProjectFromLocalStorage(): CaptionProject | null {
   try {
     const raw = accountCache.getItem(LOCAL_STORAGE_PROJECT_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    return cleanBundledSampleProject(JSON.parse(raw));
   } catch (err) {
     console.warn('Failed to load project from localStorage:', err);
     return null;

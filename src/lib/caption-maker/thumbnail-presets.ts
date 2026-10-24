@@ -329,7 +329,7 @@ export function createDefaultThumbnailSettings(
     aspectRatio: initialAspectRatio,
     backgroundType: 'project',
     gradientPreset: 'dark-vignette',
-    showSafeArea: true,
+    showSafeArea: false,
   };
 }
 

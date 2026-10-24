@@ -18,6 +18,7 @@ import {
   BgMusicTrack,
 } from '@/lib/caption-maker/types';
 import { createEmptyCaptionProject, PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
+import { cleanBundledSampleProject } from '@/lib/caption-maker/clean-sample-project';
 import { createCaptionProjectFromClip, switchProjectLanguage } from '@/lib/caption-maker/clip-to-reel';
 import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
 import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSection';
@@ -154,7 +155,7 @@ function CaptionMakerPageContent() {
         saved = accountCache.getItem('reel_caption_project_v1');
       }
       if (saved) {
-        const parsed = JSON.parse(saved);
+        const parsed = cleanBundledSampleProject(JSON.parse(saved));
         if (parsed && parsed.captionStyle && parsed.outputSettings) {
           // Strip out default sample image so empty upload card is shown by default
           if (
@@ -202,7 +203,7 @@ function CaptionMakerPageContent() {
             parsed.captionStyle.customX = 50;
           }
           if (parsed.captionStyle.showSafeArea === undefined) {
-            parsed.captionStyle.showSafeArea = true;
+            parsed.captionStyle.showSafeArea = false;
           }
           if (!parsed.captionStyle.fontFamily || parsed.captionStyle.fontFamily.includes('Inter')) {
             parsed.captionStyle.fontFamily = 'Montserrat, sans-serif';
@@ -796,7 +797,7 @@ function CaptionMakerPageContent() {
 
     return {
       ...defaults,
-      showSafeArea: project.captionStyle?.showSafeArea ?? true,
+      showSafeArea: project.captionStyle?.showSafeArea ?? false,
       safeZoneOverrides: project.captionStyle?.safeZoneOverrides,
     };
   }, [
@@ -819,7 +820,7 @@ function CaptionMakerPageContent() {
       const syncedStyle: CaptionStyle = newSettings.safeZoneOverrides
         ? {
             ...currentStyle,
-            showSafeArea: newSettings.showSafeArea !== false,
+            showSafeArea: newSettings.showSafeArea === true,
             safeZoneOverrides: {
               ...currentStyle.safeZoneOverrides,
               ...newSettings.safeZoneOverrides,
@@ -1278,7 +1279,7 @@ function CaptionMakerPageContent() {
     }));
   };
 
-  const isSafeAreaOn = project.captionStyle?.showSafeArea !== false;
+  const isSafeAreaOn = project.captionStyle?.showSafeArea === true;
 
   const handleToggleSafeArea = () => {
     const nextState = !isSafeAreaOn;
