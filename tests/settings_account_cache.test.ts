@@ -32,6 +32,9 @@ async function main() {
     assert.deepEqual(blankReel.captionGroups, []);
     assert.equal(blankReel.audio, undefined);
     assert.equal(blankReel.image, undefined);
+    assert.equal(blankReel.preferredLanguage, 'hinglish');
+    assert.equal(blankReel.bgMusic, undefined);
+    assert.equal(blankReel.isAudioSynced, false);
     const blankCover = createDefaultThumbnailSettings(blankReel.title);
     assert.equal(blankCover.title, '');
     assert.equal(blankCover.subtitle, '');

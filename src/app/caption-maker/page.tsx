@@ -114,7 +114,7 @@ function CaptionMakerPageContent() {
   // UI Panels & Tabs
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
   const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('thumbnail');
-  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('thumbnail');
+  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
   // Modals & History
@@ -686,6 +686,11 @@ function CaptionMakerPageContent() {
       setAudioDuration(0);
       setCenterViewMode('video');
       setLeftTab('assets');
+      setRightTab('thumbnail');
+      setThumbnailSubTab('position');
+      setIsPlaying(false);
+      setRenderResult(null);
+      setCrashRecoverySnapshot(null);
       try {
         accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
         accountCache.removeItem('reel_caption_project_v1');

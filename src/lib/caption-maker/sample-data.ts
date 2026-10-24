@@ -633,6 +633,7 @@ export function createEmptyCaptionProject(id = `proj_${Date.now()}`): CaptionPro
   return {
     id,
     title: 'Untitled Reel',
+    preferredLanguage: 'hinglish',
     image: undefined,
     audio: undefined,
     transcript: [],
