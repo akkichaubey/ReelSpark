@@ -514,7 +514,7 @@ export async function POST(req: NextRequest) {
       includeWebsite: true,
       includeOtherSocials: true,
       excludeTargetPlatform: true,
-      customHeading: '🔗 Connect with us:',
+      customHeading: '',
       displaySeparateLines: true,
       linkOrder: [],
       eligibleAccountIds: [],

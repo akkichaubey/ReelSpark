@@ -17,7 +17,7 @@ import {
   ThumbnailSettings,
   BgMusicTrack,
 } from '@/lib/caption-maker/types';
-import { createDefaultCaptionProject, createEmptyCaptionProject, PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
+import { createEmptyCaptionProject, PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
 import { createCaptionProjectFromClip, switchProjectLanguage } from '@/lib/caption-maker/clip-to-reel';
 import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
 import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSection';
@@ -98,7 +98,7 @@ function CaptionMakerPageContent() {
 
   // --- Project State & Undo/Redo History ---
   const [project, setProject] = useState<CaptionProject>(() =>
-    createDefaultCaptionProject()
+    createEmptyCaptionProject()
   );
   const [history, setHistory] = useState<CaptionProject[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -108,7 +108,7 @@ function CaptionMakerPageContent() {
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [audioDuration, setAudioDuration] = useState<number>(10);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
 
   // UI Panels & Tabs
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
@@ -337,7 +337,7 @@ function CaptionMakerPageContent() {
       } catch {}
     }
 
-    const fallbackProj = restoredParsed || createDefaultCaptionProject();
+    const fallbackProj = restoredParsed || createEmptyCaptionProject();
     if (
       fallbackProj.transcript &&
       fallbackProj.transcript.length > 0 &&

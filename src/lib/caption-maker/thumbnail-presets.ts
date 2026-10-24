@@ -281,14 +281,14 @@ export function createDefaultThumbnailSettings(
   highlightColor: string = '#FCD905'
 ): ThumbnailSettings {
   const isDefaultOrEmpty = !projectTitle || projectTitle === 'Untitled Reel' || projectTitle === 'Motivational Reel Captions';
-  const title = isDefaultOrEmpty ? 'CREATE VIRAL REELS IN SECONDS' : projectTitle.trim();
+  const title = isDefaultOrEmpty ? '' : projectTitle.trim();
   return {
     title,
-    subtitle: isDefaultOrEmpty ? 'Hook viewers in the first 3 seconds' : 'Step-by-step masterclass with AI subtitles',
-    badgeText: 'MUST WATCH',
+    subtitle: '',
+    badgeText: '',
     badgeStyle: 'solid',
     badgeColor: '#FCD905',
-    badgeEnabled: true,
+    badgeEnabled: false,
     badgeSpacing: 38,
     badgeShape: 'pill',
     badgeBorderRadius: 10,

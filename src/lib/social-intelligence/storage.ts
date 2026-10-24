@@ -103,7 +103,7 @@ export async function getUserProfile(userId: string): Promise<ExtendedUserProfil
   // Generate initial default profile from auth_store if exists
   return {
     userId,
-    name: 'ReelMaker Creator',
+    name: '',
     email: '',
     preferences: {
       defaultTone: 'motivational',
@@ -120,7 +120,7 @@ export async function saveUserProfile(
 ): Promise<ExtendedUserProfile> {
   const existing = (await getUserProfile(userId)) || {
     userId,
-    name: updates.name || 'ReelMaker Creator',
+    name: updates.name || '',
     email: updates.email || '',
     preferences: {},
     updatedAt: new Date().toISOString(),
@@ -129,6 +129,7 @@ export async function saveUserProfile(
   const updated: ExtendedUserProfile = {
     ...existing,
     ...updates,
+    userId,
     preferences: {
       ...existing.preferences,
       ...(updates.preferences || {}),

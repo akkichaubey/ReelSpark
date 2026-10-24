@@ -112,13 +112,6 @@ export const LandingHero: React.FC = () => {
           </button>
         </div>
 
-        {/* Demo Credentials Quick Callout */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-zinc-900/50 border border-white/5 text-[11px] text-zinc-400">
-          <span>⚡ Instant Demo Access:</span>
-          <span className="text-white font-mono bg-zinc-800 px-1.5 py-0.5 rounded border border-white/10">username: admin</span>
-          <span className="text-white font-mono bg-zinc-800 px-1.5 py-0.5 rounded border border-white/10">password: admin</span>
-        </div>
-
         {/* Feature Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-12 text-left">
           {/* Card 1 */}

@@ -26,7 +26,7 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
     includeWebsite: true,
     includeOtherSocials: true,
     excludeTargetPlatform: true,
-    customHeading: 'Connect with me:',
+    customHeading: '',
     displaySeparateLines: true,
     linkOrder: ['website', 'youtube', 'instagram', 'threads', 'facebook'],
     eligibleAccountIds: [],

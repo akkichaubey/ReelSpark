@@ -71,8 +71,8 @@ function SocialPostPageContent() {
 
   // Core content states
   const [transcript, setTranscript] = useState<string>('');
-  const [clipTitle, setClipTitle] = useState<string>('Viral Reel Clip');
-  const [clipDuration, setClipDuration] = useState<number>(30);
+  const [clipTitle, setClipTitle] = useState<string>('');
+  const [clipDuration, setClipDuration] = useState<number>(0);
   const [sourceClipId, setSourceClipId] = useState<string | null>(null);
   const [showSourceTranscript, setShowSourceTranscript] = useState<boolean>(false);
 
@@ -129,8 +129,8 @@ function SocialPostPageContent() {
     const paramTranscript = params.get('transcript');
 
     let initialTranscript = '';
-    let initialTitle = 'Viral Reel Clip';
-    let initialDuration = 30;
+    let initialTitle = '';
+    let initialDuration = 0;
     let initialLang: 'en' | 'hi' | 'hinglish' = paramLang || 'en';
 
     // 1. Check if temporary clip session was stored from ClipCard

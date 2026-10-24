@@ -7,6 +7,8 @@ import { GET as systemGet } from '../src/app/api/system/route';
 import { POST as support } from '../src/app/api/support/route';
 import { GET as health } from '../src/app/api/clipping-studio/health/route';
 import { POST as cleanup } from '../src/app/api/admin/media-cleanup/route';
+import { createEmptyCaptionProject } from '../src/lib/caption-maker/sample-data';
+import { createDefaultThumbnailSettings } from '../src/lib/caption-maker/thumbnail-presets';
 
 async function main() {
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -24,20 +26,34 @@ async function main() {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   try {
+    const blankReel = createEmptyCaptionProject();
+    assert.deepEqual(blankReel.transcript, []);
+    assert.deepEqual(blankReel.captionGroups, []);
+    assert.equal(blankReel.audio, undefined);
+    assert.equal(blankReel.image, undefined);
+    const blankCover = createDefaultThumbnailSettings(blankReel.title);
+    assert.equal(blankCover.title, '');
+    assert.equal(blankCover.subtitle, '');
+    assert.equal(blankCover.badgeText, '');
+    assert.equal(blankCover.badgeEnabled, false);
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage } });
     storage.setItem('reel_caption_project_v2', 'legacy-private-data');
     setCacheAccount(null);
     assert.equal(accountCache.getItem('reel_caption_project_v2'), null);
     setCacheAccount('alice');
     accountCache.setItem('reel_caption_project_v2', 'alice-draft');
+    const privateKeys = ['reel_custom_bgm_tracks', 'reel_custom_style_presets', 'reel_social_post_context', 'reelspark_user_gemini_key'];
+    for (const privateKey of privateKeys) accountCache.setItem(privateKey, 'alice-only');
     const project = createBlankClippingProject('Alice private');
     assert.equal(saveProjectLocally(project), true);
     assert.equal(loadProjectsLocally().length, 1);
     setCacheAccount('bob');
+    for (const privateKey of privateKeys) assert.equal(accountCache.getItem(privateKey), null);
     assert.equal(accountCache.getItem('reel_caption_project_v2'), null);
     assert.equal(loadProjectsLocally().length, 0);
     accountCache.setItem('reel_caption_project_v2', 'bob-draft');
     setCacheAccount('alice');
+    for (const privateKey of privateKeys) assert.equal(accountCache.getItem(privateKey), 'alice-only');
     assert.equal(accountCache.getItem('reel_caption_project_v2'), 'alice-draft');
     assert.equal(loadProjectsLocally()[0].name, 'Alice private');
     assert.equal(storage.getItem('reel_caption_project_v2'), 'legacy-private-data');

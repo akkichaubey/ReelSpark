@@ -130,7 +130,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
     if (isOpen && !project.thumbnailSettings) {
       setSettings((prev) => ({
         ...prev,
-        title: prev.title || project.title || 'CREATE VIRAL REELS IN SECONDS',
+        title: prev.title || createDefaultThumbnailSettings(project.title).title,
         aspectRatio: initialAspect,
       }));
     }
