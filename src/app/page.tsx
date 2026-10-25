@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { Navbar } from '@/components/Navbar';
+import { SiteLoader } from '@/components/SiteLoader';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { DashboardView } from '@/components/DashboardView';
 import { ProjectCreator } from '@/components/ProjectCreator';
@@ -39,6 +40,29 @@ import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-clie
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
+async function fetchJsonWithTimeout(url: string, timeoutMs = 10_000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`The server returned ${response.status}.`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('The request took too long. Check your connection and try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function DashboardPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,6 +73,8 @@ function DashboardPageContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
+  const [workspaceRetry, setWorkspaceRetry] = useState(0);
 
   // Modals & Active Selections
   const [showCreatorModal, setShowCreatorModal] = useState(false);
@@ -132,33 +158,39 @@ function DashboardPageContent() {
     let active = true;
 
     const bootstrap = async () => {
-      // Always resolve auth first so the loading screen clears quickly
-      await checkAuth();
-
-      if (!active) return;
-
       try {
-        const sysRes = await fetch('/api/system');
-        const sysData = await sysRes.json();
-        if (active && sysData.status === 'ok') {
-          setSystemStatus(sysData);
-          const currentModel = sysData.ollama?.model || sysData.gemini?.model;
-          if (currentModel) {
-            setSelectedOllamaModel(currentModel);
-          }
+        setLoading(true);
+        setWorkspaceLoadError(null);
+
+        // Resolve auth first, then let system status load without blocking the workspace.
+        await checkAuth();
+        if (!active) return;
+
+        void fetchJsonWithTimeout('/api/system')
+          .then((sysData) => {
+            if (!active || sysData.status !== 'ok') return;
+            setSystemStatus(sysData);
+            const currentModel = sysData.ollama?.model || sysData.gemini?.model;
+            if (currentModel) {
+              setSelectedOllamaModel(currentModel);
+            }
+          })
+          .catch((err) => console.error('Failed to fetch system status:', err));
+
+        const projData = await fetchJsonWithTimeout('/api/projects');
+        if (!projData.success) {
+          throw new Error(projData.error || 'Could not load your projects.');
         }
-      } catch (err) {
-        console.error('Failed to fetch system status:', err);
-      }
-
-      try {
-        const projRes = await fetch('/api/projects');
-        const projData = await projRes.json();
-        if (active && projData.success) {
+        if (active) {
           setProjects(projData.projects || []);
         }
       } catch (err) {
         console.error('Failed to fetch projects:', err);
+        if (active) {
+          setWorkspaceLoadError(
+            err instanceof Error ? err.message : 'Could not load your workspace.'
+          );
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -168,7 +200,7 @@ function DashboardPageContent() {
     return () => {
       active = false;
     };
-  }, [checkAuth]);
+  }, [checkAuth, workspaceRetry]);
 
   // The legacy My Projects screen has been removed; keep old bookmarks usable.
   useEffect(() => {
@@ -551,11 +583,7 @@ function DashboardPageContent() {
 
   // 1. Unauthenticated Visitor Flow -> Public Website Landing Page
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
-        <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <SiteLoader label="Checking your session…" />;
   }
 
   if (!user) {
@@ -635,9 +663,27 @@ function DashboardPageContent() {
       )}
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 space-y-4">
-          <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-zinc-400 text-sm">Loading studio workspace...</p>
+        <SiteLoader
+          label="Loading your workspace…"
+          fullScreen={false}
+          showBrand={false}
+          className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40"
+        />
+      ) : workspaceLoadError ? (
+        <div
+          role="alert"
+          className="mx-auto flex min-h-56 max-w-xl flex-col items-center justify-center gap-3 rounded-2xl border border-red-500/25 bg-zinc-900/70 p-6 text-center"
+        >
+          <AlertCircle className="h-8 w-8 text-red-400" aria-hidden="true" />
+          <h2 className="text-base font-semibold text-zinc-100">Workspace didn’t load</h2>
+          <p className="max-w-md text-sm text-zinc-400">{workspaceLoadError}</p>
+          <button
+            type="button"
+            onClick={() => setWorkspaceRetry((attempt) => attempt + 1)}
+            className="mt-1 rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+          >
+            Try again
+          </button>
         </div>
       ) : isClipFinder && activeProject ? (
         /* ─── Active Project Studio (Clip Finder View) ──────────────────────── */
@@ -1045,12 +1091,7 @@ function DashboardPageContent() {
 export default function DashboardPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-zinc-400 text-xs">Loading ReelMaker...</p>
-        </div>
-      }
+      fallback={<SiteLoader label="Opening your workspace…" />}
     >
       <DashboardPageContent />
     </Suspense>

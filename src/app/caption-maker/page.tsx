@@ -77,6 +77,7 @@ import {
 import { useAuthStore } from '@/lib/use-auth-store';
 import { AuthModal } from '@/components/AuthModal';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { SiteLoader } from '@/components/SiteLoader';
 import { Suspense } from 'react';
 
 function CaptionMakerPageContent() {
@@ -2474,12 +2475,7 @@ function CaptionMakerPageContent() {
 export default function CaptionMakerPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-zinc-400 text-xs">Loading Caption Studio...</p>
-        </div>
-      }
+      fallback={<SiteLoader label="Loading Reel Maker…" />}
     >
       <CaptionMakerPageContent />
     </Suspense>

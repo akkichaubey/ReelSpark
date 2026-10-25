@@ -3,6 +3,7 @@
 import React, { useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { StudioShell } from '@/components/clipping-studio/StudioShell';
+import { SiteLoader } from '@/components/SiteLoader';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { AuthModal } from '@/components/AuthModal';
 import { Scissors } from 'lucide-react';
@@ -69,12 +70,7 @@ function ClippingStudioPageContent() {
 export default function ClippingStudioPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center py-32 space-y-3">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-zinc-400 text-xs">Loading Clipping Studio...</p>
-        </div>
-      }
+      fallback={<SiteLoader label="Loading Clipping Studio…" />}
     >
       <ClippingStudioPageContent />
     </Suspense>
