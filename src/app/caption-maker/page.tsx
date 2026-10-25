@@ -128,7 +128,10 @@ function CaptionMakerPageContent() {
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const [crashRecoverySnapshot, setCrashRecoverySnapshot] = useState<ProjectSnapshot | null>(null);
   const isInitialMount = useRef<boolean>(true);
-  const [saveSuccessNotice, setSaveSuccessNotice] = useState<boolean>(false);
+  const [cloudSaveState, setCloudSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
+  const cloudSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cloudAutosaveTimerRef = useRef<number | null>(null);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
 
@@ -143,6 +146,24 @@ function CaptionMakerPageContent() {
     thumbnailMerged?: boolean;
     thumbnailUrl?: string;
   } | null>(null);
+
+  const persistProjectToCloud = useCallback((projectToSave: CaptionProject): Promise<void> => {
+    // Serialize writes so a slower older save can never replace a newer edit.
+    const request = cloudSaveQueueRef.current.then(async () => {
+      const response = await fetch('/api/caption-maker/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(projectToSave),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.synced) {
+        throw new Error(result?.error || 'Cloud save failed. This project is saved only in this browser.');
+      }
+    });
+    cloudSaveQueueRef.current = request.catch(() => undefined);
+    return request;
+  }, []);
 
   // Load project from LocalStorage or dynamically resolve from URL / Server Projects
   const loadProjectFromStorage = useCallback(async () => {
@@ -235,8 +256,37 @@ function CaptionMakerPageContent() {
       console.warn('Failed to restore project from localStorage', e);
     }
 
+    // Manual Save syncs this account's latest Reel Maker project to D1. On a
+    // different device there is no local cache, so restore that cloud copy.
+    // Prefer a newer local cache to avoid replacing edits that were not saved.
+    if (!urlClipId) {
+      try {
+        const cloudUrl = urlProjectId
+          ? `/api/caption-maker/projects?id=${encodeURIComponent(urlProjectId)}`
+          : '/api/caption-maker/projects';
+        const response = await fetch(cloudUrl, { cache: 'no-store', credentials: 'same-origin' });
+        if (response.ok) {
+          const data = await response.json();
+          const cloudProject = data?.project || (Array.isArray(data?.projects) ? data.projects[0] : null);
+          if (data?.enabled && cloudProject && typeof cloudProject.id === 'string') {
+            const localUpdatedAt = Date.parse(restoredParsed?.updatedAt || '') || 0;
+            const cloudUpdatedAt = Date.parse(cloudProject.updatedAt || '') || 0;
+            const requestedProjectMissingLocally = Boolean(urlProjectId && restoredParsed?.id !== urlProjectId);
+            if (!restoredParsed || requestedProjectMissingLocally || cloudUpdatedAt > localUpdatedAt) {
+              restoredParsed = cleanBundledSampleProject(cloudProject);
+            }
+          }
+        }
+      } catch (error) {
+        // The local editor remains usable when cloud metadata is temporarily unavailable.
+        console.warn('Could not restore Reel Maker project from cloud storage', error);
+      }
+    }
+
+    if (urlProjectId && restoredParsed?.id !== urlProjectId) restoredParsed = null;
+
     // If localStorage matches the requested clipId (or no specific clipId is in the URL), apply it immediately
-    if (restoredParsed && (!urlClipId || restoredParsed.sourceClipId === urlClipId)) {
+    if (restoredParsed && (!urlClipId || restoredParsed.sourceClipId === urlClipId) && (!urlProjectId || restoredParsed.id === urlProjectId)) {
       if (
         restoredParsed.transcript &&
         restoredParsed.transcript.length > 0 &&
@@ -368,7 +418,10 @@ function CaptionMakerPageContent() {
 
   // Initialize from LocalStorage / Server and listen for clip updates from Clip Finder
   useEffect(() => {
-    loadProjectFromStorage();
+    // accountCache is keyed by the authenticated user, so wait until the auth
+    // check has selected that account before reading its local project cache.
+    if (authLoading) return;
+    void loadProjectFromStorage();
 
     const handleReelProjectUpdated = () => {
       loadProjectFromStorage();
@@ -383,7 +436,7 @@ function CaptionMakerPageContent() {
       window.removeEventListener('storage', handleReelProjectUpdated);
       window.removeEventListener('popstate', handleReelProjectUpdated);
     };
-  }, [loadProjectFromStorage]);
+  }, [authLoading, loadProjectFromStorage, user?.id]);
 
   // Switch project transcript between English, Hindi, and Hinglish
   const handleSwitchLanguage = (lang: 'en' | 'hi' | 'hinglish') => {
@@ -623,19 +676,49 @@ function CaptionMakerPageContent() {
     }
   }, [project.bgMusic]);
 
-  // Debounced Autosave to localStorage
+  // Keep the fast local recovery save, then sync completed edits to the account
+  // so the same project opens on another device after the user signs in.
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
     setAutosaveStatus('saving');
-    const timer = setTimeout(() => {
+    setCloudSaveState('idle');
+    setCloudSaveError(null);
+    const localTimer = window.setTimeout(() => {
       saveProjectToLocalStorage(project);
       setAutosaveStatus('saved');
     }, 1200);
-    return () => clearTimeout(timer);
-  }, [project]);
+    const hasUserContent = Boolean(
+      project.image || project.mediaAssets?.length ||
+      (project.audio?.fileUrl && project.audio.fileUrl !== '/sample-audio.mp3') ||
+      project.transcript.length || project.title !== 'Untitled Reel'
+    );
+    if (!user?.id || !hasUserContent) {
+      return () => window.clearTimeout(localTimer);
+    }
+    const cloudTimer = window.setTimeout(() => {
+      setCloudSaveState('saving');
+      void persistProjectToCloud(project)
+        .then(() => {
+          setCloudSaveError(null);
+          setCloudSaveState('saved');
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'Cloud sync failed. Project is saved on this device only.';
+          console.error('Reel Maker cloud autosave failed:', error);
+          setCloudSaveError(message);
+          setCloudSaveState('error');
+        });
+    }, 6000);
+    cloudAutosaveTimerRef.current = cloudTimer;
+    return () => {
+      window.clearTimeout(localTimer);
+      window.clearTimeout(cloudTimer);
+      if (cloudAutosaveTimerRef.current === cloudTimer) cloudAutosaveTimerRef.current = null;
+    };
+  }, [persistProjectToCloud, project, user?.id]);
 
   // The project itself lives in the user's browser cache. Keep a server-side
   // inventory of every asset reachable from the current project, undo history,
@@ -664,15 +747,24 @@ function CaptionMakerPageContent() {
     };
   }, [project]);
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
+    if (cloudAutosaveTimerRef.current !== null) {
+      window.clearTimeout(cloudAutosaveTimerRef.current);
+      cloudAutosaveTimerRef.current = null;
+    }
+    setCloudSaveState('saving');
+    setCloudSaveError(null);
     try {
       saveProjectToLocalStorage(project);
       saveProjectSnapshot(project, 'Manual Save');
+      await persistProjectToCloud(project);
       setAutosaveStatus('saved');
-      setSaveSuccessNotice(true);
-      setTimeout(() => setSaveSuccessNotice(false), 2500);
+      setCloudSaveState('saved');
     } catch (e) {
-      console.error('Save failed:', e);
+      const message = e instanceof Error ? e.message : 'Cloud save failed. This project remains saved locally.';
+      console.error('Reel Maker cloud save failed:', e);
+      setCloudSaveState('error');
+      setCloudSaveError(message);
     }
   };
 
@@ -1954,27 +2046,52 @@ function CaptionMakerPageContent() {
             <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/60 border border-zinc-700/50 text-[11px] text-zinc-400">
               <span
                 className={`w-2 h-2 rounded-full transition-colors ${
-                  autosaveStatus === 'saving'
+                  cloudSaveState === 'saving' || autosaveStatus === 'saving'
                     ? 'bg-amber-400 animate-pulse'
-                    : 'bg-emerald-400'
+                    : cloudSaveState === 'error'
+                      ? 'bg-red-400'
+                      : 'bg-emerald-400'
                 }`}
               />
-              <span>{autosaveStatus === 'saving' ? 'Saving...' : 'Autosaved'}</span>
+              <span>
+                {cloudSaveState === 'saving'
+                  ? 'Syncing...'
+                  : cloudSaveState === 'saved'
+                    ? 'Cloud Synced'
+                    : cloudSaveState === 'error'
+                      ? 'Local only'
+                      : autosaveStatus === 'saving' ? 'Saving locally...' : 'Local autosave'}
+              </span>
             </div>
 
             {/* Save */}
             <button
               onClick={handleSaveProject}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
-                saveSuccessNotice
+              disabled={cloudSaveState === 'saving'}
+              aria-label={cloudSaveState === 'error' ? `Saved locally only. ${cloudSaveError || ''}` : cloudSaveState === 'saved' ? 'Project saved to your account' : 'Save project to your account'}
+              title={cloudSaveState === 'error' ? cloudSaveError || 'Cloud save failed; project remains on this device.' : cloudSaveState === 'saved' ? 'Project is saved to your account and can be opened on another device' : 'Save project to your account so it can be opened on another device'}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer disabled:cursor-wait disabled:opacity-70 ${
+                cloudSaveState === 'error'
+                  ? 'bg-red-950/60 border-red-500/60 text-red-200'
+                  : cloudSaveState === 'saved'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                   : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200'
               }`}
             >
-              {saveSuccessNotice ? (
+              {cloudSaveState === 'saving' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Syncing</span>
+                </>
+              ) : cloudSaveState === 'error' ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-red-300" />
+                  <span className="hidden sm:inline">Local only</span>
+                </>
+              ) : cloudSaveState === 'saved' ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Saved!</span>
+                  <span>Cloud Saved</span>
                 </>
               ) : (
                 <>

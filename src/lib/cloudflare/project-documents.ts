@@ -3,6 +3,7 @@ import { ClippingProjectSchema, type ClippingProject } from '../clipping-studio/
 import { mediaLifecycleEnabled } from './media-lifecycle-state';
 import { mapClippingStorage } from './storage-references';
 import type { Project } from '../types';
+import type { CaptionProject } from '../caption-maker/types';
 
 export function projectCloudEnabled(): boolean {
   return process.env.CLOUD_PROJECT_METADATA_ENABLED === 'true' && getD1Status().configured;
@@ -16,6 +17,73 @@ function validateClipFinderProject(ownerId: string, input: unknown): Project {
     throw new Error('Invalid project document');
   }
   return project;
+}
+
+function stripCaptionMakerLocalPaths(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripCaptionMakerLocalPaths);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !['storagePath', 'renderedVideoPath', 'renderedSrtPath'].includes(key))
+      .map(([key, child]) => [key, stripCaptionMakerLocalPaths(child)])
+  );
+}
+
+export function validateReelMakerProject(ownerId: string, input: unknown): CaptionProject {
+  if (!ownerId || !input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid Reel Maker project');
+  const project = input as CaptionProject;
+  if (!/^[a-zA-Z0-9_-]{1,160}$/.test(project.id || '') ||
+      typeof project.title !== 'string' || project.title.length > 300 ||
+      !Array.isArray(project.transcript) || !Array.isArray(project.captionGroups) ||
+      !project.captionStyle || typeof project.captionStyle !== 'object' ||
+      !project.outputSettings || typeof project.outputSettings !== 'object' ||
+      typeof project.createdAt !== 'string' || typeof project.updatedAt !== 'string') {
+    throw new Error('Invalid Reel Maker project');
+  }
+  return project;
+}
+
+/** Persist the current Reel Maker state in D1 so the same account can reopen it on another device. */
+export async function saveReelMakerDocument(ownerId: string, input: unknown): Promise<CaptionProject> {
+  const project = validateReelMakerProject(ownerId, input);
+  const stripped = stripCaptionMakerLocalPaths(project);
+  const saved: CaptionProject = {
+    ...(stripped as CaptionProject),
+    updatedAt: new Date().toISOString(),
+  };
+  const payload = JSON.stringify(saved);
+  if (Buffer.byteLength(payload, 'utf8') > 1_500_000) throw new Error('Project metadata exceeds 1.5 MB');
+  const result = await d1Query<{ id: string }>(
+    `INSERT INTO project_documents (kind, id, owner_user_id, payload, updated_at)
+     VALUES ('reel-maker', ?, ?, ?, ?)
+     ON CONFLICT(kind, id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+     WHERE project_documents.owner_user_id = excluded.owner_user_id
+     RETURNING id`,
+    [saved.id, ownerId, payload, saved.updatedAt],
+  );
+  if (!result.success || result.results.length !== 1) throw new Error('Reel Maker project save failed or belongs to another account');
+  return saved;
+}
+
+export async function getReelMakerDocument(ownerId: string, id: string): Promise<CaptionProject | null> {
+  validateIdentity(ownerId, id);
+  const result = await d1Query<{ payload: string }>(
+    `SELECT payload FROM project_documents WHERE kind = 'reel-maker' AND id = ? AND owner_user_id = ? LIMIT 1`,
+    [id, ownerId],
+  );
+  if (!result.success) throw new Error('Unable to load Reel Maker project');
+  if (!result.results[0]) return null;
+  return validateReelMakerProject(ownerId, JSON.parse(result.results[0].payload));
+}
+
+export async function listReelMakerDocuments(ownerId: string): Promise<CaptionProject[]> {
+  validateIdentity(ownerId);
+  const result = await d1Query<{ payload: string }>(
+    `SELECT payload FROM project_documents WHERE kind = 'reel-maker' AND owner_user_id = ? ORDER BY updated_at DESC LIMIT 50`,
+    [ownerId],
+  );
+  if (!result.success) throw new Error('Unable to list Reel Maker projects');
+  return result.results.map(row => validateReelMakerProject(ownerId, JSON.parse(row.payload)));
 }
 
 /** Persist Clip Finder manifests in D1 so ephemeral hosts can recover project state. */

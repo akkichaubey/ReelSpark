@@ -95,6 +95,20 @@ export async function reservePrivateMediaOperation(kind: 'class_a_ops' | 'class_
   await reserveOperation(kind);
 }
 
+/** True only when a private media object has a completed, owner-verified R2 catalog record. */
+export async function hasPrivateMediaBackup(userId: string, filename: string): Promise<boolean> {
+  if (!privateMediaEnabled()) return false;
+  requireDatabase();
+  const relative = relativeMediaPath(filename);
+  const result = await d1Query<{ object_key: string }>(
+    'SELECT object_key FROM private_media WHERE relative_path = ? AND owner_user_id = ? LIMIT 1',
+    [relative, userId],
+  );
+  if (!result.success) throw new Error('Private media catalog unavailable');
+  const record = result.results[0];
+  return Boolean(record?.object_key?.startsWith(`users/${mediaUserNamespace(userId)}/`));
+}
+
 async function ensureSafeDirectory(directory: string): Promise<void> {
   await fs.mkdir(APP_CONFIG.storageRoot, { recursive: true });
   const realRoot = await fs.realpath(APP_CONFIG.storageRoot);
