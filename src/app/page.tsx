@@ -37,6 +37,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
+import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
 
 function DashboardPageContent() {
   const router = useRouter();
@@ -65,6 +66,7 @@ function DashboardPageContent() {
   // Async States
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
+  const [localUploadProgress, setLocalUploadProgress] = useState<number | null>(null);
   const [renderingClipIds, setRenderingClipIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -264,17 +266,19 @@ function DashboardPageContent() {
   // Handler: Upload local file for YouTube project
   const handleUploadLocalFileForYouTube = async (file: File) => {
     if (!activeProject) return;
+    setLocalUploadProgress(0);
     try {
       showToast(`Uploading source video (${file.name})...`, 'info');
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`/api/projects/${activeProject.id}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
+      const data = await uploadFormDataWithProgress<{
+        success?: boolean;
+        error?: string;
+        project?: Project;
+      }>(`/api/projects/${activeProject.id}/upload`, formData, setLocalUploadProgress);
       if (data.success && data.project) {
+        setLocalUploadProgress(100);
         setActiveProject(data.project);
         showToast('Source video uploaded! Starting transcription...', 'success');
         refreshActiveProject(activeProject.id);
@@ -283,6 +287,8 @@ function DashboardPageContent() {
       }
     } catch (err: any) {
       showToast(err.message, 'error');
+    } finally {
+      setLocalUploadProgress(null);
     }
   };
 
@@ -681,6 +687,8 @@ function DashboardPageContent() {
             onRenderAllSelected={handleRenderAllSelected}
             onExportZip={handleExportZip}
             onUploadLocalFileForYouTube={handleUploadLocalFileForYouTube}
+            isUploadingLocalFile={localUploadProgress !== null}
+            localUploadProgress={localUploadProgress ?? 0}
             isAnalyzing={isAnalyzing}
             isRendering={isRendering}
             onOpenGeminiModal={() => setShowOllamaModal(true)}

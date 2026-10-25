@@ -34,6 +34,8 @@ import {
   Users,
   Flame,
 } from 'lucide-react';
+import { ProgressCircle } from '@/components/ProgressCircle';
+import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
 import {
   AudioAsset,
   ImageAsset,
@@ -159,6 +161,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isUploadingBgm, setIsUploadingBgm] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ media: 0, audio: 0, bgm: 0 });
   const [customBgmTracks, setCustomBgmTracks] = useState<BgMusicTrack[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -195,15 +198,18 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
 
     try {
       setIsUploadingBgm(true);
+      setUploadProgress((current) => ({ ...current, bgm: 0 }));
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', 'audio');
-      const res = await fetch('/api/caption-maker/upload', {
-        method: 'POST',
-        body: formData,
+      const data = await uploadFormDataWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: ImageAsset | AudioAsset;
+      }>('/api/caption-maker/upload', formData, (bgm) => {
+        setUploadProgress((current) => ({ ...current, bgm }));
       });
-      const data = await res.json();
-      if (!res.ok || !data?.success || !data.asset) {
+      if (!data?.success || !data.asset) {
         throw new Error(data?.error || 'Unable to upload background music');
       }
       if (data.asset.fileUrl) {
@@ -222,6 +228,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         setCustomBgmTracks(updated);
         onBgMusicChange?.(newTrack);
       }
+      setUploadProgress((current) => ({ ...current, bgm: 100 }));
     } catch (err: any) {
       setUploadError(err.message || 'Failed to upload custom background music');
     } finally {
@@ -253,6 +260,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const handleMediaFile = async (file: File) => {
     setUploadError(null);
     setIsUploadingMedia(true);
+    setUploadProgress((current) => ({ ...current, media: 0 }));
     try {
       const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
       const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
@@ -264,16 +272,19 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       formData.append('file', file);
       formData.append('type', isVideoFile ? 'video' : 'image');
 
-      const res = await fetch('/api/caption-maker/upload', {
-        method: 'POST',
-        body: formData,
+      const data = await uploadFormDataWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: ImageAsset;
+      }>('/api/caption-maker/upload', formData, (media) => {
+        setUploadProgress((current) => ({ ...current, media }));
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to upload background media');
       }
 
       onImageChange(data.asset);
+      setUploadProgress((current) => ({ ...current, media: 100 }));
     } catch (err: any) {
       setUploadError(err.message);
     } finally {
@@ -284,21 +295,25 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const handleAudioFile = async (file: File) => {
     setUploadError(null);
     setIsUploadingAudio(true);
+    setUploadProgress((current) => ({ ...current, audio: 0 }));
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', 'audio');
 
-      const res = await fetch('/api/caption-maker/upload', {
-        method: 'POST',
-        body: formData,
+      const data = await uploadFormDataWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: AudioAsset;
+      }>('/api/caption-maker/upload', formData, (audio) => {
+        setUploadProgress((current) => ({ ...current, audio }));
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to process audio or extract from video');
       }
 
       onAudioChange(data.asset);
+      setUploadProgress((current) => ({ ...current, audio: 100 }));
     } catch (err: any) {
       setUploadError(err.message);
     } finally {
@@ -595,11 +610,19 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             className="border-2 border-dashed border-white/10 hover:border-amber-500/40 rounded-xl p-4 text-center transition-all bg-zinc-950/40 hover:bg-zinc-900/50 flex flex-col items-center justify-center space-y-2.5 group"
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
-              <UploadCloud className="w-5 h-5" />
+              {isUploadingMedia ? (
+                <ProgressCircle value={uploadProgress.media} size={30} strokeWidth={3} label="Background media upload" />
+              ) : (
+                <UploadCloud className="w-5 h-5" />
+              )}
             </div>
             <div>
               <p className="text-xs font-bold text-zinc-200">
-                {isUploadingMedia ? 'Uploading Background Media...' : 'Choose Background Video or Image'}
+                {isUploadingMedia
+                  ? uploadProgress.media >= 100
+                    ? `Processing Background Media (upload ${uploadProgress.media}%)...`
+                    : `Uploading Background Media (${uploadProgress.media}%)...`
+                  : 'Choose Background Video or Image'}
               </p>
               <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
             </div>
@@ -980,11 +1003,19 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             className="border-2 border-dashed border-white/10 hover:border-amber-500/40 rounded-xl p-4 text-center transition-all bg-zinc-950/40 hover:bg-zinc-900/50 flex flex-col items-center justify-center space-y-2.5 group"
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
-              <UploadCloud className="w-5 h-5" />
+              {isUploadingAudio ? (
+                <ProgressCircle value={uploadProgress.audio} size={30} strokeWidth={3} label="Spoken audio upload" />
+              ) : (
+                <UploadCloud className="w-5 h-5" />
+              )}
             </div>
             <div>
               <p className="text-xs font-bold text-zinc-200">
-                {isUploadingAudio ? 'Processing Voice Audio/Video...' : 'Choose Spoken Audio or Video'}
+                {isUploadingAudio
+                  ? uploadProgress.audio >= 100
+                    ? `Preparing Voice Captions (upload ${uploadProgress.audio}%)...`
+                    : `Uploading Voice Audio/Video (${uploadProgress.audio}%)...`
+                  : 'Choose Spoken Audio or Video'}
               </p>
               <p className="text-[10px] text-zinc-500 mt-0.5">
                 Audio or video will be processed with AI for speech transcription and captions:
@@ -1199,8 +1230,18 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             disabled={isUploadingBgm}
             className="w-full py-2 px-3 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500/60 bg-purple-950/20 hover:bg-purple-950/40 text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 disabled:opacity-50"
           >
-            <UploadCloud className="w-4 h-4 text-purple-400" />
-            <span>{isUploadingBgm ? 'Uploading Track...' : '+ Upload Custom MP3 / WAV Music'}</span>
+            {isUploadingBgm ? (
+              <ProgressCircle value={uploadProgress.bgm} size={26} strokeWidth={3} label="Background music upload" className="text-purple-400" />
+            ) : (
+              <UploadCloud className="w-4 h-4 text-purple-400" />
+            )}
+            <span>
+              {isUploadingBgm
+                ? uploadProgress.bgm >= 100
+                  ? `Processing Track (upload ${uploadProgress.bgm}%)...`
+                  : `Uploading Track (${uploadProgress.bgm}%)...`
+                : '+ Upload Custom MP3 / WAV Music'}
+            </span>
           </button>
 
         <input

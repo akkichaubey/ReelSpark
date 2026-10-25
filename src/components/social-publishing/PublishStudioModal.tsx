@@ -31,6 +31,7 @@ import {
 import { validateVideoForPlatform } from '@/lib/social-intelligence/video-validator';
 import { SocialPlatformIcon } from '@/components/social-intelligence/SocialPlatformIcon';
 import { OAuthCredentialsModal } from './OAuthCredentialsModal';
+import { ProgressCircle } from '@/components/ProgressCircle';
 
 interface PublishStudioModalProps {
   isOpen: boolean;
@@ -758,7 +759,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                         </button>
                       )}
                       {(record.status === 'uploading' || record.status === 'processing') && (
-                        <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+                        <ProgressCircle value={record.progressPercent} size={28} strokeWidth={3} label={`${record.platform} publishing progress`} />
                       )}
                     </div>
                   </div>

@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { formatMsToTimestamp, MediaAsset } from '@/lib/clipping-studio/contracts';
+import { ProgressCircle } from '@/components/ProgressCircle';
+import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
 
 export const MediaLibrary: React.FC = () => {
   const {
@@ -29,6 +31,7 @@ export const MediaLibrary: React.FC = () => {
   } = useClippingStore();
 
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [relinkingAssetId, setRelinkingAssetId] = useState<string | null>(null);
   const [newRelinkPath, setNewRelinkPath] = useState('');
@@ -38,23 +41,24 @@ export const MediaLibrary: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     if (!activeProject) return;
     setIsUploading(true);
+    setUploadProgress(0);
     setUploadError(null);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`/api/clipping-studio/projects/${activeProject.id}/media`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
+      const data = await uploadFormDataWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: MediaAsset;
+      }>(`/api/clipping-studio/projects/${activeProject.id}/media`, formData, setUploadProgress);
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to import media file');
       }
 
       addMediaAsset(data.asset);
+      setUploadProgress(100);
     } catch (err: any) {
       setUploadError(err.message || 'Media import failed');
     } finally {
@@ -114,14 +118,18 @@ export const MediaLibrary: React.FC = () => {
           />
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
             {isUploading ? (
-              <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+              <ProgressCircle value={uploadProgress} size={36} strokeWidth={3.5} label="Media upload and inspection" />
             ) : (
               <UploadCloud className="w-6 h-6" />
             )}
           </div>
           <div>
             <p className="text-sm font-bold text-white">
-              {isUploading ? 'Inspecting Media with FFprobe...' : 'Drop video or audio file here, or browse'}
+              {isUploading
+                ? uploadProgress >= 100
+                  ? `Inspecting Media with FFprobe (upload ${uploadProgress}%)...`
+                  : `Uploading Media (${uploadProgress}%)...`
+                : 'Drop video or audio file here, or browse'}
             </p>
             <p className="text-xs text-zinc-400 mt-1">
               Supports MP4, MOV, WEBM, MKV, AVI, MP3, WAV, M4A, AAC, OGG (Original remains untouched)

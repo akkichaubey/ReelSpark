@@ -13,11 +13,11 @@ import {
   Upload,
   CheckCircle2,
   Music,
-  Loader2,
   ChevronDown,
   Cpu,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
+import { ProgressCircle } from '@/components/ProgressCircle';
 
 interface ProjectHeaderProps {
   project: Project;
@@ -25,6 +25,8 @@ interface ProjectHeaderProps {
   onRenderAllSelected: () => void;
   onExportZip: () => void;
   onUploadLocalFileForYouTube: (file: File) => void;
+  isUploadingLocalFile: boolean;
+  localUploadProgress: number;
   isAnalyzing: boolean;
   isRendering: boolean;
   onOpenOllamaModal?: () => void;
@@ -37,6 +39,8 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   onRenderAllSelected,
   onExportZip,
   onUploadLocalFileForYouTube,
+  isUploadingLocalFile,
+  localUploadProgress,
   isAnalyzing,
   isRendering,
   onOpenOllamaModal,
@@ -154,7 +158,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               >
                 {isAnalyzing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-zinc-900" />
+                    <ProgressCircle value={project.progress} size={26} strokeWidth={3.5} label="Video analysis" className="text-zinc-900" />
                     <span>Analyzing Video ({project.progress}%)...</span>
                   </>
                 ) : (
@@ -217,10 +221,21 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              disabled={isUploadingLocalFile}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-zinc-950 font-bold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              <Upload className="w-4 h-4" />
-              <span>Attach Local Video</span>
+              {isUploadingLocalFile ? (
+                <ProgressCircle value={localUploadProgress} size={26} strokeWidth={3} label="Local source video upload" className="text-zinc-950" />
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              <span>
+                {isUploadingLocalFile
+                  ? localUploadProgress >= 100
+                    ? 'Upload complete · processing...'
+                    : `Uploading (${localUploadProgress}%)...`
+                  : 'Attach Local Video'}
+              </span>
             </button>
           </div>
         </div>

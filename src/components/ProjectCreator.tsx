@@ -3,6 +3,8 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
+import { ProgressCircle } from '@/components/ProgressCircle';
+import { readJsonResponse, uploadFormDataWithProgress } from '@/lib/upload-with-progress';
 
 interface ProjectCreatorProps {
   onProjectCreated: (projectId: string) => void;
@@ -14,6 +16,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
   const [title, setTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(0);
+  const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading' | 'finalizing'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   // Studio Settings (Defaults)
@@ -75,6 +79,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
 
     try {
       setIsSubmitting(true);
+      setSubmitProgress(0);
+      setSubmitStage('creating');
 
       const resolvedSourceType = activeTab === 'audio' ? 'audio' : 'upload';
 
@@ -93,32 +99,42 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
         }),
       });
 
-      const createData = await createRes.json();
+      const createData = await readJsonResponse<{
+        success: boolean;
+        error?: string;
+        project?: { id: string };
+      }>(createRes);
       if (!createData.success) {
         throw new Error(createData.error || 'Failed to create project');
       }
 
-      const projectId = createData.project.id;
+      const projectId = createData.project?.id;
+      if (!projectId) throw new Error('The server created no project ID. Please retry.');
 
       // Step 2: Upload file
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const uploadRes = await fetch(`/api/projects/${projectId}/upload`, {
-        method: 'POST',
-        body: formData,
+      setSubmitStage('uploading');
+      setSubmitProgress(0);
+      const uploadData = await uploadFormDataWithProgress<{
+        success: boolean;
+        error?: string;
+      }>(`/api/projects/${projectId}/upload`, formData, (uploadPercent) => {
+        setSubmitProgress(uploadPercent);
+        if (uploadPercent >= 100) setSubmitStage('finalizing');
       });
-
-      const uploadData = await uploadRes.json();
       if (!uploadData.success) {
         throw new Error(uploadData.error || `Failed to upload ${activeTab} file`);
       }
 
+      setSubmitProgress(100);
       onProjectCreated(projectId);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred');
     } finally {
       setIsSubmitting(false);
+      setSubmitStage('idle');
     }
   };
 
@@ -317,8 +333,20 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             >
               {isSubmitting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-                  <span>Processing...</span>
+                  <ProgressCircle
+                    value={submitProgress}
+                    size={30}
+                    strokeWidth={3.5}
+                    label="File transfer"
+                    className="text-zinc-900"
+                  />
+                  <span aria-live="polite">
+                    {submitStage === 'creating'
+                      ? `Preparing project (${submitProgress}%)...`
+                      : submitStage === 'finalizing'
+                      ? `Upload complete · checking media (${submitProgress}%)...`
+                      : `Uploading (${submitProgress}%)...`}
+                  </span>
                 </>
               ) : (
                 <>

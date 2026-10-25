@@ -17,7 +17,6 @@ import {
   Film,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Zap,
   ShieldCheck,
   Gauge,
@@ -28,6 +27,7 @@ import {
   Code2,
   Combine,
 } from 'lucide-react';
+import { ProgressCircle } from '@/components/ProgressCircle';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -185,10 +185,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {isRendering && (
             <div className="text-center py-8 space-y-4">
               <div className="relative w-16 h-16 mx-auto">
-                <Loader2 className="w-16 h-16 text-amber-400 animate-spin" />
-                <span className="absolute inset-0 flex items-center justify-center font-mono text-xs font-bold text-amber-300">
-                  {renderProgress}%
-                </span>
+                <ProgressCircle value={renderProgress} size={64} strokeWidth={3} label="Video render" className="text-amber-400" />
               </div>
               <div>
                 <h4 className="text-zinc-100 font-semibold text-lg">

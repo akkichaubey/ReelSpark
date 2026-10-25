@@ -7,12 +7,12 @@ import {
   ShieldCheck,
   Award,
   CheckCircle2,
-  Loader2,
   Clock,
   ScanSearch,
   Zap,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
+import { ProgressCircle } from '@/components/ProgressCircle';
 
 interface AnalysisProgressCardProps {
   project: Project;
@@ -120,7 +120,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
         {/* Live Status Message text */}
         <div className="flex items-center justify-between text-xs text-zinc-300">
           <p className="flex items-center space-x-2 font-medium">
-            <Loader2 className="w-3.5 h-3.5 text-sky-400 animate-spin flex-shrink-0" />
+            <ProgressCircle value={progress} size={23} strokeWidth={3} label="Video analysis" className="text-sky-400" />
             <span className="text-white font-semibold">{message}</span>
           </p>
           <span className="text-zinc-500 hidden sm:inline">Auto-refreshing in real-time</span>
@@ -161,7 +161,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
                 {isDone ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 ) : isActive ? (
-                  <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
+                  <ProgressCircle value={progress} size={23} strokeWidth={3} label={`Analysis stage ${stage.id}`} className="text-sky-400" />
                 ) : (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">
                     Step {stage.id}

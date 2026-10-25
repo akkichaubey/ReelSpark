@@ -26,6 +26,7 @@ import {
   Mic,
   Zap,
 } from 'lucide-react';
+import { ProgressCircle } from '@/components/ProgressCircle';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import {
   ExportJob,
@@ -608,8 +609,7 @@ export const ExportStudio: React.FC = () => {
                           )}
                           {job.status === 'running' && (
                             <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-semibold border border-blue-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-                              <span>{job.progressPercent}%</span>
+                              <ProgressCircle value={job.progressPercent} size={26} strokeWidth={3} label={`Export ${job.progressPercent}%`} className="text-blue-400" />
                             </span>
                           )}
                           {job.status === 'completed' && (
