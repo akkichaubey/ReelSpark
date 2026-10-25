@@ -62,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     } ${
       isPublicHome ? 'border-b border-transparent bg-transparent' : 'border-b border-zinc-800 bg-zinc-900/90 backdrop-blur-md'
     }`}>
-      <div className={isPublicHome ? 'mx-auto flex w-full max-w-5xl items-center justify-between' : 'flex w-full items-center justify-between'}>
+      <div className={isPublicHome ? 'mx-auto flex w-full max-w-6xl items-center justify-between' : 'flex w-full items-center justify-between'}>
       {/* Brand & Studio Navigation */}
       <div className="flex items-center gap-3">
         {/* Brand Logo */}
