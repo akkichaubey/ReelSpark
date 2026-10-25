@@ -1042,7 +1042,9 @@ function CaptionMakerPageContent() {
           rawTranscriptHindi: data.rawTranscriptHindi || targetProj.rawTranscriptHindi,
           rawTranscriptEnglish: data.rawTranscriptEnglish || targetProj.rawTranscriptEnglish,
           isAudioSynced: true,
-          syncVersion: 4,
+          syncVersion: data.wordTimingSource === 'model-word-level' ? 5 : 4,
+          wordTimingSource: data.wordTimingSource || 'phrase-estimated',
+          wordTimingLanguage: data.wordTimingLanguage,
           bgMusic: autoMatchedBgm,
           sfxCues: data.sfxCues || targetProj.sfxCues || [],
           autoSfxEnabled: targetProj.autoSfxEnabled !== false,
@@ -1323,12 +1325,12 @@ function CaptionMakerPageContent() {
     await syncAudioWithTranscript(project, false);
   };
 
-  // Automatically sync audio & text when any clip or uploaded audio project is loaded without acoustic-locked syncVersion 4
+  // Keep existing v4 projects intact; only sync projects with no valid acoustic sync version.
   useEffect(() => {
     if (
       project.audio?.fileUrl &&
       project.audio.fileUrl !== '/sample-audio.mp3' &&
-      (!project.isAudioSynced || project.syncVersion !== 4 || project.transcript.length === 0) &&
+      (!project.isAudioSynced || ![4, 5].includes(project.syncVersion || 0) || project.transcript.length === 0) &&
       !isTranscribing
     ) {
       syncAudioWithTranscript(project, true);
@@ -1449,7 +1451,7 @@ function CaptionMakerPageContent() {
     if (
       activeProj.audio?.fileUrl &&
       activeProj.audio.fileUrl !== '/sample-audio.mp3' &&
-      (!activeProj.isAudioSynced || activeProj.syncVersion !== 4)
+      (!activeProj.isAudioSynced || ![4, 5].includes(activeProj.syncVersion || 0))
     ) {
       setRenderStatusText('Pre-Render Check: Locking audio waveform & caption timestamps...');
       const synced = await syncAudioWithTranscript(activeProj, true);
@@ -1848,18 +1850,27 @@ function CaptionMakerPageContent() {
               </button>
             </div>
 
-            {/* Live AI Pre-Check Verification Badge */}
+            {/* Word timing quality badge */}
+            {(() => {
+              const exactWordCount = project.transcript.filter((word) => word.timingSource === 'model-word-level').length;
+              const wordTimingCoverage = project.transcript.length
+                ? Math.round((exactWordCount / project.transcript.length) * 100)
+                : 0;
+              const hasStrongWordTiming = wordTimingCoverage >= 85;
+              return (
             <button
               type="button"
               onClick={handleTranscribe}
               disabled={isTranscribing}
-              title="Click to re-verify audio & caption waveform sync"
+              title={hasStrongWordTiming
+                ? 'Most visible caption words use speech-recognizer word timestamps. Click to sync again.'
+                : 'Current captions use phrase-based timing estimates. Click to request accurate word-level timing.'}
               className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
                 isTranscribing
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                  : project.isAudioSynced && project.syncVersion === 4
+                  : hasStrongWordTiming
                   ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
-                  : 'bg-sky-500/15 border-sky-500/35 text-sky-300 hover:bg-sky-500/25'
+                  : 'bg-amber-500/10 border-amber-500/35 text-amber-300 hover:bg-amber-500/20'
               }`}
             >
               {isTranscribing ? (
@@ -1869,15 +1880,23 @@ function CaptionMakerPageContent() {
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  {hasStrongWordTiming
+                    ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    : <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />}
                   <span>
-                    {project.isAudioSynced && project.syncVersion === 4
-                      ? `AI Sync Verified (${project.captionGroups.length} Phrases)`
-                      : 'Verify Audio Sync'}
+                    {hasStrongWordTiming
+                      ? `Word Sync ${wordTimingCoverage}%`
+                      : exactWordCount > 0
+                        ? `Word Sync ${wordTimingCoverage}% · Verify`
+                        : project.isAudioSynced
+                          ? 'Estimated Sync · Verify'
+                          : 'Verify Audio Sync'}
                   </span>
                 </>
               )}
             </button>
+              );
+            })()}
           </div>
 
           {/* Action Controls (Undo, Redo, Save, Render, Shortcuts) */}

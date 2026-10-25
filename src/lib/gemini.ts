@@ -15,6 +15,7 @@ import {
 } from './ollama';
 import { getOllamaModel, loadAppSettings } from './config';
 import { ClipCandidate, TranscriptSegment } from './types';
+import { parseGeminiWordTimingResponse, ParsedWordTimings } from './caption-maker/word-timing';
 
 export type ChunkAnalysisInput = OllamaChunkInput;
 
@@ -113,6 +114,61 @@ export async function generateWithGemini(params: {
   return text.trim();
   }
   throw new Error('Google Gemini did not return a response.');
+}
+
+/**
+ * Request genuine word offsets from Gemini's dedicated speech transcription
+ * model. This is intentionally separate from the creative bilingual analysis
+ * request below, which does not provide reliable per-word timing metadata.
+ */
+export async function transcribeAudioWithGeminiWordTimings(
+  audioFilePath: string,
+  mimeType: string,
+  durationSeconds: number
+): Promise<ParsedWordTimings | undefined> {
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    loadAppSettings().geminiApiKey ||
+    ''
+  ).trim();
+  if (!apiKey) return undefined;
+
+  const fs = await import('fs/promises');
+  const audio = await fs.readFile(audioFilePath);
+  // Keep the request within Gemini's inline payload limits. Larger files use
+  // the existing Files API path for transcription and retain phrase estimates.
+  if (audio.byteLength >= 15 * 1024 * 1024) return undefined;
+
+  const response = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [{ inlineData: { data: audio.toString('base64'), mimeType } }],
+        }],
+        generationConfig: {
+          audioTranscriptionConfig: {
+            wordTimestamp: true,
+            mode: 'VERBATIM',
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(60000),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = (payload as any)?.error?.message || `Gemini word timing request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return parseGeminiWordTimingResponse(payload, durationSeconds);
 }
 
 /**

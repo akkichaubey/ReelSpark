@@ -8,6 +8,13 @@ export interface TranscriptWord {
   emoji?: string;
   intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
   speakerId?: string;
+  timingSource?: 'model-word-level' | 'phrase-estimated';
+}
+
+export interface SyncedWordTiming {
+  text: string;
+  start: number;
+  end: number;
 }
 
 export interface CaptionGroup {
@@ -335,6 +342,9 @@ export interface SyncedPhraseSegment {
   speechIntervalIndex?: number;
   speakerId?: string; // 'Speaker 1' | 'Speaker 2'
   intensity?: 'normal' | 'punch' | 'climax' | 'whisper';
+  /** Direct word timestamps returned by speech recognition, attached to the nearest phrase. */
+  wordTimings?: SyncedWordTiming[];
+  wordTimingLanguage?: 'hi' | 'en';
 }
 
 export interface TrimRange {
@@ -376,6 +386,9 @@ export interface CaptionProject {
   syncedSegments?: SyncedPhraseSegment[];
   isAudioSynced?: boolean;
   syncVersion?: number;
+  /** Distinguishes speech-model word times from phrase-duration estimates. */
+  wordTimingSource?: 'model-word-level' | 'phrase-estimated';
+  wordTimingLanguage?: 'hi' | 'en';
   trimRange?: TrimRange;
   createdAt: string;
   updatedAt: string;
@@ -398,6 +411,8 @@ export interface TranscriptionResult {
   fillerSegments?: FillerSegment[];
   language?: string;
   duration?: number;
+  wordTimingSource?: 'model-word-level' | 'phrase-estimated';
+  wordTimingLanguage?: 'hi' | 'en';
 }
 
 export interface TranscriptionProvider {

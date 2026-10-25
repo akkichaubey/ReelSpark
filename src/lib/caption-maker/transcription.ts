@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { generateContentWithFallback, getGeminiClient } from '../gemini';
+import { generateContentWithFallback, getGeminiClient, transcribeAudioWithGeminiWordTimings } from '../gemini';
 import { checkGeminiStatus, resolveApiGeminiModel } from '../config';
 import { detectSpeechIntervals, SpeechInterval } from '../ffmpeg';
 import { SyncedPhraseSegment, TranscriptionProvider, TranscriptionResult, TranscriptWord } from './types';
 import { detectImportantWords } from './important-words';
 import { buildWordsFromSyncedSegments } from './clip-to-reel';
+import { attachWordTimingsToSegments } from './word-timing';
 
 export interface TranscriptionFallbackHint {
   textHindi?: string;
@@ -280,6 +281,10 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
             end: Number(s.end) || 0,
             textHindi: String(s.textHindi || s.textHi || s.text || '').trim(),
             textEnglish: String(s.textEnglish || s.textEn || s.text || '').trim(),
+            wordTimings: Array.isArray(s.wordTimings) ? s.wordTimings : undefined,
+            wordTimingLanguage: s.wordTimingLanguage === 'hi' || s.wordTimingLanguage === 'en'
+              ? s.wordTimingLanguage
+              : undefined,
           }));
 
           // Dynamically upgrade any older cache that wasn't locked to hardware FFmpeg speech intervals
@@ -325,6 +330,12 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
             audioAnalysis: cached.audioAnalysis,
             fillerSegments: cached.fillerSegments,
             language: preferredLanguage,
+            wordTimingSource: cached.wordTimingSource === 'model-word-level' && segments.some((segment) => segment.wordTimings?.length)
+              ? 'model-word-level'
+              : 'phrase-estimated',
+            wordTimingLanguage: cached.wordTimingLanguage === 'hi' || cached.wordTimingLanguage === 'en'
+              ? cached.wordTimingLanguage
+              : undefined,
           };
         }
       } catch (e) {
@@ -361,6 +372,15 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         : ext === '.mov'
         ? 'video/quicktime'
         : 'audio/mp3';
+
+    // In parallel with phrase translation, ask the speech-specific model for
+    // real word offsets. If unavailable, keep the current transcript flow and
+    // mark its character-weighted timings as estimates.
+    const wordTimingsPromise = transcribeAudioWithGeminiWordTimings(audioFilePath, mimeType, totalDuration)
+      .catch((error) => {
+        console.warn('[Caption sync] Gemini word-level timing unavailable; using phrase estimates:', error?.message || error);
+        return undefined;
+      });
 
     const intervalHintsText =
       speechIntervals.length > 0
@@ -521,6 +541,14 @@ Output ONLY the raw JSON object.
       segments = alignSegmentsToAcousticIntervals(segments, speechIntervals);
     }
 
+    const modelWordTimings = await wordTimingsPromise;
+    if (modelWordTimings?.words.length) {
+      segments = attachWordTimingsToSegments(segments, modelWordTimings);
+    }
+    const wordTimingSource = modelWordTimings?.words.length
+      ? 'model-word-level' as const
+      : 'phrase-estimated' as const;
+
     // Parse AI Audio Enhancements
     const sfxCues = Array.isArray(parsed.sfxCues)
       ? parsed.sfxCues.map((c: any, idx: number) => ({
@@ -563,7 +591,9 @@ Output ONLY the raw JSON object.
             titleHindi: parsed.titleHindi || fallbackHint?.titleHindi || '',
             titleEnglish: parsed.titleEnglish || fallbackHint?.titleEnglish || '',
             acousticLocked: true,
-            syncVersion: 4,
+            syncVersion: 5,
+            wordTimingSource,
+            wordTimingLanguage: modelWordTimings?.language,
             totalDuration,
             segments,
             sfxCues,
@@ -598,6 +628,8 @@ Output ONLY the raw JSON object.
       audioAnalysis,
       fillerSegments,
       language: preferredLanguage,
+      wordTimingSource,
+      wordTimingLanguage: modelWordTimings?.language,
     };
   }
 }

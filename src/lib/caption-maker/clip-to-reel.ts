@@ -4,6 +4,7 @@ import { detectImportantWords } from './important-words';
 import { groupTranscriptWords } from './caption-grouping';
 import { DEFAULT_CAPTION_STYLE, DEFAULT_OUTPUT_SETTINGS } from './sample-data';
 import { devanagariToHinglish, enrichWordsWithEmojis } from './hinglish-and-emoji';
+import { matchExactWordTimings } from './word-timing';
 
 export interface ClipAudioOverride {
   audioUrl: string;
@@ -49,6 +50,22 @@ export function buildWordsFromSyncedSegments(
       .filter((t) => t.length > 0);
     if (tokens.length === 0) continue;
 
+    const exactTimings = matchExactWordTimings(tokens, seg.wordTimings, lang, seg.wordTimingLanguage);
+    if (exactTimings) {
+      for (let i = 0; i < tokens.length; i += 1) {
+        words.push({
+          id: `w_${wordIdx++}_${Date.now().toString(36)}`,
+          text: tokens[i],
+          start: exactTimings[i].start,
+          end: exactTimings[i].end,
+          speakerId: seg.speakerId,
+          intensity: seg.intensity,
+          timingSource: 'model-word-level',
+        });
+      }
+      continue;
+    }
+
     const segStart = Math.max(0, Number(seg.start) || 0);
     const segEnd = Math.max(segStart + 0.15, Number(seg.end) || segStart + 1.2);
     const segDur = segEnd - segStart;
@@ -76,6 +93,7 @@ export function buildWordsFromSyncedSegments(
         end: wEnd,
         speakerId: seg.speakerId,
         intensity: seg.intensity,
+        timingSource: seg.wordTimings?.length ? 'phrase-estimated' : undefined,
       });
       cursor = nextCursor;
     }
@@ -224,7 +242,13 @@ export function createCaptionProjectFromClip(
     sourceClipId: candidate.id,
     syncedSegments,
     isAudioSynced: Boolean(audioOverride?.isAudioSynced || (syncedSegments && syncedSegments.length > 0)),
-    syncVersion: syncedSegments && syncedSegments.length > 0 ? 4 : undefined,
+    syncVersion: syncedSegments && syncedSegments.length > 0
+      ? syncedSegments.some((segment) => segment.wordTimings?.length) ? 5 : 4
+      : undefined,
+    wordTimingSource: syncedSegments?.some((segment) => segment.wordTimings?.length)
+      ? 'model-word-level'
+      : syncedSegments?.length ? 'phrase-estimated' : undefined,
+    wordTimingLanguage: syncedSegments?.find((segment) => segment.wordTimings?.length)?.wordTimingLanguage,
     image: undefined,
     audio: {
       id: `audio_${candidate.id}`,
