@@ -57,7 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-    <header className={`h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 ${
+    <header className={`h-18 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 ${
       isPublicHome ? 'fixed inset-x-0 top-0' : 'sticky top-0'
     } ${
       isPublicHome ? 'border-b border-transparent bg-transparent' : 'border-b border-zinc-800 bg-zinc-900/90 backdrop-blur-md'
