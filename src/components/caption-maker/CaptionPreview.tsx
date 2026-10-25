@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { Play, Pause, Sparkles } from 'lucide-react';
+import { Play, Pause, Clapperboard } from 'lucide-react';
 import {
   CaptionGroup,
   CaptionStyle,
@@ -427,7 +427,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
           )
         ) : (
           <div className="text-center p-6 text-zinc-500 flex flex-col items-center space-y-2">
-            <Sparkles className="w-8 h-8 text-zinc-600 animate-pulse" />
+            <Clapperboard className="w-8 h-8 text-zinc-600" aria-hidden="true" />
             <p className="text-xs font-semibold text-zinc-400">Upload background video or image</p>
             <p className="text-[10px] text-zinc-600">Reel canvas will render here</p>
           </div>

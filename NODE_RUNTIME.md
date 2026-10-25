@@ -15,29 +15,20 @@ change. Existing npm security overrides remain in place.
 Official security-release notes:
 https://nodejs.org/en/blog/release/v24.22.1
 
-## Windows PATH conflict
+## Windows PATH conflict — resolved 2026-10-25
 
-This machine also has a standalone Node installation in `C:\Program Files\nodejs`.
-Its machine PATH entry takes priority over the nvm user shim. `nvm use 24.22.1`
-alone therefore does not guarantee that an unqualified `node` command uses nvm.
-No standalone installation was removed and no machine-wide PATH was rewritten.
+The initial issue was a standalone Node 24.21.0 earlier on PATH than nvm. The
+current nvm version is 24.22.1 and is the default. A fresh PowerShell now
+resolves `node` and `npm` through the nvm shim:
 
-From a PowerShell terminal in the project, run:
+- `node --version`: `v24.22.1`
+- `npm --version`: `11.19.1`
+- `node -p "process.versions.undici"`: `7.30.1`
+- `nvm list`: `24.22.1 (default)`
 
-```powershell
-. .\scripts\use-project-node.ps1
-node --version
-npm --version
-node -p "process.versions.undici"
-```
-
-The helper selects the `.nvmrc` version and puts the installed nvm shim first for
-that terminal only. Expected results: v24.22.1, 11.19.1 and 7.30.1. Run it again
-in each new terminal while the standalone PATH conflict remains. Start the app
-from that terminal with `npm run dev` or `npm run start` after a successful build.
-Already-running Node processes do not change runtime automatically and require
-a restart. Removing the standalone Node or changing machine PATH is a separate
-system-level change; neither was performed here.
+The existing `scripts/use-project-node.ps1` remains a fallback for terminals
+that inherit a stale PATH. Restart already-running Node processes after a
+runtime change.
 
 ## Verification
 
@@ -48,3 +39,22 @@ The version guard also passed minimum-version/LTS-major boundary tests.
 Detailed results and non-blocking installation warnings are in TESTING.md.
 No live deployment, remote migration or cloud storage operation is part of this
 runtime upgrade. Linux Docker execution remains unverified.
+
+## Global nvm and Render verification — 2026-10-25
+
+The project Node pins were already aligned: `.nvmrc`, `.node-version`,
+`package.json` and `package-lock.json` require 24.22.1; Render's Docker service
+uses `node:24.22.1-bookworm-slim`. Render's live commit `36b6cb1` matches the
+verified repository commit, so no framework/dependency update or new deployment
+was needed for this runtime check.
+
+Under the globally resolved nvm runtime, `npm run prebuild`, `npm run build`,
+`npm run typecheck`, and `npm run verify:server` passed. The server regression
+script passed all 21 suites. Broader current QA outcomes are recorded in
+TESTING.md; they include pre-existing test and lint failures unrelated to Node.
+
+The live media-upload error is a separate schema problem: the connected D1
+database does not contain the `private_media` table required by the upload
+catalog. Apply `src/lib/cloudflare/migrations/0002_private_media.sql` before
+relying on logout/login media recovery. No cloud migration was run during this
+Node runtime check.

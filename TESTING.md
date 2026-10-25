@@ -266,3 +266,34 @@ Before releasing or deploying changes:
    npm run typecheck
    npm run build
    ```
+
+## Current runtime and QA verification — 2026-10-25
+
+The system's default nvm runtime now resolves in a fresh PowerShell without the
+project helper: Node `v24.22.1`, npm `11.19.1`, bundled Undici `7.30.1`. NVM's
+default is `24.22.1`. `.nvmrc`, `.node-version`, package and lockfile engines,
+and the Render Docker base are all pinned to this version. The live Render
+deployment is commit `36b6cb1`, matching the checked-out project; its Dockerfile
+uses `node:24.22.1-bookworm-slim`.
+
+Verified under Node 24.22.1:
+
+- `npm run prebuild`: passed.
+- `npm run build`: passed.
+- `npm run typecheck`: passed.
+- `npm run verify:server`: passed all 21 server regression suites.
+- `npm test`: 53/63 passed; 10 failed. Failures include tests that still expect
+  Safe Area/badge defaults that differ from the current editor defaults, two
+  social-generation tests receiving 401 without authenticated test setup, and
+  brand preset, custom BGM, account-scoped autosave, and clipping recovery tests.
+- `npm run test:qa`: 21/22 passed. The remaining thumbnail test expects Safe
+  Area enabled by default, while the current product default is off.
+- `npm run lint`: 43 errors and 213 warnings across 25 files.
+
+The Render upload attempt displayed `Private media catalog save failed; local
+file retained`. Read-only inspection of the connected D1 database found the
+`private_media` table missing; its `0002_private_media.sql` migration is still
+pending. Logout/login media recovery is therefore not verified. The local
+deployment preflight also remains incomplete because local production origin,
+publishing-encryption, and private R2 settings are not configured; this is
+separate from the Node runtime.

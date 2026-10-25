@@ -9,7 +9,7 @@ import {
 } from '@/lib/caption-maker/thumbnail-presets';
 import { ImageAsset, ImagePosition, OutputSettings } from '@/lib/caption-maker/types';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
-import { Download, Sparkles } from 'lucide-react';
+import { Download, ImagePlus } from 'lucide-react';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
 import { normalizeHookWord } from '@/lib/caption-maker/hook-quality';
 
@@ -309,7 +309,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
           )
         ) : (
           <div className="text-center p-6 text-zinc-500 flex flex-col items-center space-y-2">
-            <Sparkles className="w-8 h-8 text-zinc-600 animate-pulse" />
+            <ImagePlus className="w-8 h-8 text-zinc-600" aria-hidden="true" />
             <p className="text-xs font-semibold text-zinc-400">Upload background video or image</p>
             <p className="text-[10px] text-zinc-600">Thumbnail cover will render here</p>
           </div>
