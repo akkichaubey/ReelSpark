@@ -1,142 +1,120 @@
-# Cloud persistence rollout
+# Cloud persistence and server storage
 
-## Current implementation: Clipping Studio metadata only
+## Current architecture
 
-The browser talks to authenticated `/api/clipping-studio/projects` routes, not
-directly to D1. SQL and tokens remain server-side. Project snapshots include
-clips, recipes and export metadata. D1 queries scope all operations by the
-authenticated owner; ID-conflict updates cannot transfer ownership.
+The Render service is a Next.js Node server. Its free-instance filesystem is
+ephemeral, so `storage/` is a working cache, not durable storage. Authenticated
+server routes use Cloudflare D1 for project metadata and a private Cloudflare R2
+bucket for supported media. The bucket does not need public access.
 
-Metadata alone is **not complete media persistence**. The opt-in private media
-integration below covers selected upload/output/download and hydration paths;
-live R2 and full restart/redeploy workflows remain unverified. Clip Finder/Reel
-Maker cloud documents, export recovery and durable deletion are still pending.
+- Clip Finder project manifests are stored owner-scoped in D1 and hydrate the
+  local cache after a restart or deploy.
+- Caption Maker, Clip Finder and supported Clipping Studio media are backed up
+  to R2 with an owner-scoped catalog entry, random object key, size and SHA-256.
+- Restores verify ownership and integrity before atomically writing to the local
+  cache. Uploads are not reported as durable unless both the R2 object and D1
+  catalog entry succeed.
+- D1 tracks upload reservations, monthly app-side R2 request usage, delete
+  tombstones, delayed cleanup entries and the bounded orphan-scan cursor.
+- The server janitor handles known temporary files, failed uploads and interrupted
+  Clip Finder work. Queued R2 cleanup is delayed and reference-checked.
 
-## Activation is intentionally off
+## D1 migrations
 
-No remote migration, cloud object upload, resource creation, credential change or
-plan upgrade was performed by this implementation.
+Storage requires migrations `0001`, `0002`, `0003`, `0005`, `0006`, `0007` and
+`0008` in `src/lib/cloudflare/migrations/`. Migration `0004` is for social
+publishing and is separate. The storage migrations are additive; they do not
+rewrite existing project records. Migrations `0007` and `0008` have been applied
+to the configured D1 database and their tables were verified. Do not rerun
+non-idempotent `0006` against an already migrated database.
 
-After database backup/review, apply the additive migration to the intended D1
-database (explicitly select local vs remote; do not run blindly):
+Before connecting a different D1 database, back it up, review each migration,
+then apply migrations in order using Wrangler or the Cloudflare D1 API. Confirm
+that `users`, `project_documents`, `private_media`,
+`private_media_upload_reservations`, `media_cleanup_queue`,
+`deleted_clip_finder_projects`, and `media_cleanup_state` exist.
 
-`src/lib/cloudflare/migrations/0001_project_documents.sql`
+## Enablement
 
-It creates `project_documents` and an owner index only. It does not alter,
-reassign or delete legacy tables/data. Requires the existing `users` table.
-
-Then configure the server only:
+Set server-only environment variables in `.env.local` for local development and
+in Render's Environment settings for production. Never expose credentials with
+`NEXT_PUBLIC_` or commit `.env.local`.
 
 ```ini
 CLOUD_PROJECT_METADATA_ENABLED=true
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-CLOUDFLARE_D1_DATABASE_ID=your-database-id
-CLOUDFLARE_API_TOKEN=your-private-d1-token
-```
-
-Do not use `NEXT_PUBLIC_` for these credentials. Without the explicit flag and
-credentials, API responses state that metadata sync is disabled. Configured
-cloud failures return an error, not a false successful local fallback.
-
-## Next storage work
-
-1. Validate the new private S3 adapter against a private bucket only after
-   reviewing migrations, credentials, quotas and billing controls.
-2. Complete recovery of all editor documents and owner manifests.
-3. Verify hydration through every processing entry point; some flows may still
-   require a private preview first. New clipping snapshots now use portable
-   references rebound to the current server cache root. Legacy default-storage
-   Windows paths are also rebound; custom-root legacy paths may need relinking.
-4. Restore project documents for all editors and reconcile export states.
-5. Validate the opt-in deletion/inventory implementation below and complete
-   deletion coverage for the other editors and legacy objects.
-6. Verify two-user isolation and restart/redeploy recovery with real cloud storage.
-
-R2 S3 compatibility: https://developers.cloudflare.com/r2/api/s3/api/
-D1 limits: https://developers.cloudflare.com/d1/platform/limits/
-
-## Actual verification
-
-See `tests/cloud_project_documents.test.ts`: runs the additive SQL against an
-in-memory SQLite database, uses mocked HTTP transport, and tests tenant
-isolation, ownership conflict, owner-scoped deletion, disabled mode and cloud
-failure responses. No live Cloudflare connectivity or media recovery is implied.
-
-## Private media integration (off by default)
-
-Added exact runtime dependency `@aws-sdk/client-s3@3.1156.0`. The new
-`private-r2.ts` adapter uses the supported S3 endpoint and separate S3 credentials.
-The old unused `r2.ts` helper is not used by this path. No anonymous object route,
-public bucket URL or browser credential is introduced.
-
-After database backup/review, explicitly apply migration
-`src/lib/cloudflare/migrations/0002_private_media.sql`. Then configure only on
-the server (never paste real keys into chat or Git):
-
-```ini
 CLOUD_PRIVATE_MEDIA_ENABLED=true
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-CLOUDFLARE_R2_BUCKET_NAME=your-private-bucket
-R2_ACCESS_KEY_ID=your-private-r2-access-key-id
-R2_SECRET_ACCESS_KEY=your-private-r2-secret-access-key
+CLOUD_MEDIA_LIFECYCLE_ENABLED=true
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_D1_DATABASE_ID=...
+CLOUDFLARE_API_TOKEN=...
+CLOUDFLARE_R2_BUCKET_NAME=reelspark-storage
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
 ```
 
-Existing D1 credentials are also required. Keep the bucket private and use
-bucket-scoped object credentials. Example/Render flags default to false;
-`.env.local` was not changed. No live migration/upload/resource was performed.
+Use a private bucket-scoped R2 token and a D1 token limited to the required
+database. Local and production environments may share D1/R2 if they use the same
+credentials; that means both environments see the same account's saved projects
+and media. Use a separate database and bucket to isolate development data.
 
-Implemented: opt-in backup hooks for Caption Maker uploads/companion audio,
-Clipping imports/relinks/exports, bridge outputs, trimmed audio, caption video
-renders, subtitles and generated covers. Catalog entries bind relative paths
-to owner, random object key, byte count and SHA-256. Limit: 500 MB per object.
-Authenticated downloads can restore files and asset/project owner records;
-probe, structured export sources and caption render/transcribe/trim have
-hydration hooks. Supported namespaces: caption-maker and clipping-studio only.
-Main Clip Finder `projects/` files are not covered yet.
+Render's `render.yaml` enables cloud metadata, private media, lifecycle cleanup,
+and local janitor defaults. At the last dashboard check, the live service had
+private media enabled but `CLOUD_MEDIA_LIFECYCLE_ENABLED` was still `false`; the
+cleanup flag needs to be enabled after the code deploy. The live service uses
+the `codex/server-readiness` branch. Local `.env.local` currently has D1 access
+but no R2 access keys, so local cloud-media flags remain off; local processing
+still uses disk, but those local-only files do not survive a server restart.
+Render Free has no persistent disk; local files that were not uploaded to R2
+can disappear on restart or deploy.
 
-Restore checks actual filesystem paths, streams to a temporary file and verifies
-size/hash before rename. Corrupt partials are removed. Failed catalog writes
-attempt rollback of only the newly uploaded random-key object; local media stays.
+## Storage limits and costs
 
-Pending: live SDK/cloud verification, complete editor/job recovery, deletion
-coverage outside Clipping Studio, quotas/rate limiting, cross-host paths and
-Linux tests. Repeated backups create new objects; the opt-in inventory below
-now tracks new objects so superseded uploads can be cleaned safely.
+ReelSpark stops its own R2 backup/restore requests at conservative app-side
+thresholds: 8 GB stored, 800,000 Class A operations and 8,000,000 Class B
+operations per month. The counters live in D1 and reset by month. Lower the
+`CLOUD_R2_*_LIMIT` values to leave more headroom.
 
-`tests/private_media_cloud.test.ts` passed with real SQLite catalog SQL and an
-in-memory object-store fake: backup, loss of the whole cache, owner-aware restore,
-corruption rejection, partial cleanup, traversal denial and failure rollback.
-Production build, TypeScript and targeted new-module lint checks also passed.
-This does not prove live R2 uploads or Render restart recovery.
+These limits only track ReelSpark's own requests and known objects. They cannot
+see other Cloudflare applications or guarantee that the Cloudflare account will
+never incur charges. Cloudflare usage notifications are warnings, not a hard
+account-wide spend cap. Review Cloudflare's current R2 pricing and usage before
+increasing limits. No billing plan or subscription is changed by this project.
 
-Dependency triage reduced npm audit from 11 alerts to 0 using scoped nested
-overrides, without changing framework versions. Node's built-in Undici remains
-a separate runtime security gate; see DEPENDENCY_SECURITY.md.
+## Cleanup behavior
 
-## Durable deletion and bounded cleanup (off by default)
+- `STORAGE_CLEANUP_ENABLED=true` starts an in-process maintenance schedule when
+  the Node server starts. Defaults: run hourly, retain recognized temp files for
+  24 hours and require private-media orphans to be 30 days old.
+- Active upload/render/export paths and known project references are excluded.
+  Symlinks, unknown owners and failed reference inventories are not destructively
+  cleaned.
+- Project deletion writes an owner-checked D1 tombstone before removing the
+  catalog/document. R2 deletion is queued and happens after a one-hour grace
+  period, with reference checks immediately before physical deletion.
+- The R2 orphan reconciler scans one bounded page per run and persists its
+  continuation cursor in D1. It only considers old, exact-format app object keys
+  that have no catalog row or active upload reservation.
+- Render Free may suspend an idle service; the in-process timer cannot run while
+  the service is asleep. Cleanup resumes on server startup/requests. A separate
+  always-on scheduler would require a scheduled external worker/service.
+- Temporary render files stay local and are not backed up. Successful final
+  outputs remain in R2 only when a supported route explicitly backs them up.
 
-After reviewing/backing up the intended database, explicitly apply
-`src/lib/cloudflare/migrations/0003_media_lifecycle.sql`, then enable only on the
-server with `CLOUD_MEDIA_LIFECYCLE_ENABLED=true`. No live migration or cleanup
-was executed in development. All three cloud flags remain false in templates.
+The authenticated administrator endpoint `GET /api/admin/media-cleanup` reports
+local storage categories and R2 cleanup status. `POST` defaults to dry-run;
+physical cleanup must be explicitly requested by an administrator. Logs use the
+`[Storage maintenance]` prefix.
 
-- Every new backup first registers its randomized key in durable inventory.
-  Current `private_media` catalog references are excluded from cleanup.
-- Clipping project deletion validates ownership, checks persisted shared media
-  references, writes a durable tombstone to fence save/restore/recreation, queues
-  legacy catalog keys, removes owned metadata and then removes owned local data.
-  Failures can be retried. Cloud deletion refuses to run without lifecycle config.
-- UI local cache/crash snapshots are removed only after server confirmation.
-  Name-based automatic deletion of legacy projects was removed.
-- Physical object removal is separate and explicit: admin-only POST
-  `/api/admin/media-cleanup` defaults to dry-run, max 10 candidates, with a one-hour
-  grace period. `{"dryRun":false,"limit":10}` performs deletion only for
-  unreferenced, owner-prefixed keys; failures retain inventory for retry.
-- No timer, recurring job or cloud scheduler was created. Until maintenance is
-  explicitly run, queued/superseded objects can continue consuming storage.
+## Verification
 
-SQL/mocked-object tests cover dry-run, active-object protection, failure/retry,
-another owner's deletion denial, saved shared-reference protection, deletion
-tombstones and re-save/restore denial. Real D1/R2 and concurrent multi-instance
-operations remain unverified. References existing only in browser caches and
-untracked pre-migration orphan objects are not fully covered by this mechanism.
+On 2026-10-25, `npm run typecheck`, `npm run build`, `npm run test:storage`,
+`npm run test:private-media`, and `npx tsx tests/media_lifecycle.test.ts` passed.
+The tests use a local SQLite fixture and a fake R2 adapter; they verify safe
+cleanup, retry, owner isolation, project restoration after local-cache loss,
+quotas, tombstones and media deletion. They do not simulate a real Render
+restart or upload a file to the live R2 bucket. The live D1 table names were
+read and the `0007`/`0008` schema was verified. Deployment of the current source
+still requires a successful GitHub-to-Render deploy and a live app smoke check.
+
+See [STORAGE_LIFECYCLE.md](STORAGE_LIFECYCLE.md) for cleanup operations and
+`tests/` for the test coverage.

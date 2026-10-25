@@ -9,8 +9,9 @@ import { MAX_UPLOAD_BYTES, validateUpload } from '@/lib/media-validation';
 import { MediaAsset } from '@/lib/clipping-studio/contracts';
 import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
 import { canReadMedia } from '@/lib/media-access';
-import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import { backupPrivateMedia, deletePrivateMedia } from '@/lib/cloudflare/private-media';
 import { getIncomingUploadMetadata, streamRequestBodyToFile, UploadRequestError } from '@/lib/stream-upload';
+import { registerStorageTask } from '@/lib/storage-runtime';
 
 // Permitted media extensions
 const ALLOWED_EXTS = new Set([
@@ -45,9 +46,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let finishStorageTask: (() => void) | undefined;
+  let uploadAbort: AbortController | undefined;
+  let createdFilePath: string | undefined;
+  let keepCreatedFile = false;
+  let uploadOwnerId: string | undefined;
   try {
     const access = await requireMediaUser(req);
     if (access.error) return access.error;
+    uploadOwnerId = access.user.id;
     const { id: projectId } = await params;
     if (!(await clippingProjectAccess(access.user.id, projectId, true))) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -59,7 +66,7 @@ export async function POST(
     let fileSizeBytes = 0;
 
     if (contentType.includes('application/octet-stream')) {
-      const { filename, expectedSize } = getIncomingUploadMetadata(req);
+      const { filename, expectedSize, uploadId } = getIncomingUploadMetadata(req);
       const uploadError = validateUpload({ name: filename, size: expectedSize }, ['video', 'audio']);
       if (uploadError) {
         return NextResponse.json({ success: false, error: uploadError }, { status: 400 });
@@ -80,9 +87,19 @@ export async function POST(
 
       // Stream raw request bytes to a staging file so large uploads stay off the heap.
       const stagingPath = path.join(mediaDir, `.incoming-${randomUUID()}`);
+      uploadAbort = new AbortController();
+      finishStorageTask = registerStorageTask({
+        id: uploadId,
+        ownerId: access.user.id,
+        kind: 'upload',
+        paths: [mediaDir],
+        cancel: () => uploadAbort?.abort(),
+      });
       try {
-        fileSizeBytes = await streamRequestBodyToFile(req, stagingPath);
+        fileSizeBytes = await streamRequestBodyToFile(req, stagingPath, undefined, AbortSignal.any([req.signal, uploadAbort.signal]));
+        if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
         await fs.promises.rename(stagingPath, targetFilePath);
+        createdFilePath = targetFilePath;
       } catch (error) {
         await fs.promises.rm(stagingPath, { force: true }).catch(() => undefined);
         throw error;
@@ -125,13 +142,17 @@ export async function POST(
       const mediaDir = getProjectMediaDir(projectId);
       targetFilePath = getAvailableManagedPath(mediaDir, path.basename(localFilePath));
       fs.copyFileSync(localFilePath, targetFilePath);
+      createdFilePath = targetFilePath;
       originalFilename = path.basename(localFilePath);
       fileSizeBytes = stat.size;
     }
 
-    // Inspect media with FFprobe
-    await backupPrivateMedia(access.user.id, targetFilePath);
+    // Validate the complete media before recording it in local or cloud storage.
     const meta = await probeVideo(targetFilePath);
+    if (uploadAbort?.signal.aborted) throw new Error('Upload cancelled.');
+    await backupPrivateMedia(access.user.id, targetFilePath);
+    if (uploadAbort?.signal.aborted) throw new Error('Upload cancelled.');
+    keepCreatedFile = true;
     const assetId = `asset_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date().toISOString();
 
@@ -163,8 +184,21 @@ export async function POST(
       asset: mediaAsset,
     });
   } catch (err: any) {
+    if (createdFilePath && !keepCreatedFile) {
+      try {
+        if (uploadOwnerId) await deletePrivateMedia(uploadOwnerId, createdFilePath);
+        await fs.promises.rm(createdFilePath, { force: true });
+      } catch (cleanupError) {
+        console.error('[Clipping media upload] Rollback failed; janitor will retry:', cleanupError);
+        const rootRelative = path.relative(APP_CONFIG.storageRoot, createdFilePath).split(path.sep).join('/');
+        const markerPath = path.join(path.dirname(createdFilePath), `.partial-${randomUUID()}.json`);
+        await fs.promises.writeFile(markerPath, JSON.stringify({ ownerId: uploadOwnerId, target: rootRelative })).catch(() => undefined);
+      }
+    }
     console.error('[Clipping Media Import Error]', err);
     return NextResponse.json({ success: false, error: err.message || 'Media import failed' }, { status: err instanceof UploadRequestError ? err.status : 500 });
+  } finally {
+    finishStorageTask?.();
   }
 }
 

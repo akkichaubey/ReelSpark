@@ -17,7 +17,7 @@ async function main() {
     const directory = path.join(root, 'caption-maker', 'asset_fixture');
     await fs.mkdir(directory, { recursive: true });
     await recordMediaOwner(directory, 'usr_admin');
-    await assert.rejects(recordMediaOwner(directory, 'bob'), /EEXIST/);
+    await assert.rejects(recordMediaOwner(directory, 'bob'), /different account/);
     const media = path.join(directory, 'sample.mp3');
     await fs.writeFile(media, '0123456789');
     assert.equal(await canReadMedia('usr_admin', media), true);

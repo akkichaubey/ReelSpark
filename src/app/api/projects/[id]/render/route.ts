@@ -7,11 +7,17 @@ import { extractClipAudio, renderClip } from '@/lib/ffmpeg';
 import { transcribeAudio } from '@/lib/caption-maker/transcription';
 import { generateAssForClip, generateSrtForClip } from '@/lib/srt';
 import { ClipCandidate } from '@/lib/types';
+import { registerStorageTask } from '@/lib/storage-runtime';
+import { randomUUID } from 'node:crypto';
+import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let finishStorageTask: (() => void) | undefined;
+  const renderAbort = new AbortController();
+  let requestAbort: (() => void) | undefined;
   try {
     const { id } = await params;
     const accessError = await requireProjectAccess(req, id);
@@ -51,6 +57,16 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'No clips selected for rendering' }, { status: 400 });
     }
 
+    requestAbort = () => renderAbort.abort();
+    req.signal.addEventListener('abort', requestAbort, { once: true });
+    finishStorageTask = registerStorageTask({
+      id: `render_${randomUUID()}`,
+      ownerId: project.ownerUserId as string,
+      kind: 'render',
+      paths: [dirs.rootDir],
+      cancel: () => renderAbort.abort(),
+    });
+
     project.status = 'RENDERING';
     project.statusMessage = `Rendering ${clipsToRender.length} clip(s) with FFmpeg...`;
     await saveProject(project);
@@ -58,6 +74,7 @@ export async function POST(
     const results = [];
 
     for (let i = 0; i < clipsToRender.length; i++) {
+      if (renderAbort.signal.aborted) break;
       const clip = clipsToRender[i];
       clip.renderStatus = 'rendering';
       await saveProject(project);
@@ -80,12 +97,14 @@ export async function POST(
               normalizeAudio: false,
             });
           }
+          if (renderAbort.signal.aborted) throw new Error('Render cancelled.');
           const transRes = await transcribeAudio(clipAudioPath, 'en', {
             textHindi: clip.transcriptHindi || clip.transcript,
             textEnglish: clip.transcriptEnglish || clip.transcript,
             titleHindi: clip.titleHindi || clip.title,
             titleEnglish: clip.titleEnglish || clip.title,
           });
+          if (renderAbort.signal.aborted) throw new Error('Render cancelled.');
           if (transRes.syncedSegments && transRes.syncedSegments.length > 0) {
             (clip as any).syncedSegments = transRes.syncedSegments;
             const outsideSegments = (project.transcript || []).filter(
@@ -137,7 +156,15 @@ export async function POST(
           aspectRatio: project.settings.aspectRatio,
           normalizeAudio: project.settings.normalizeAudio,
           subtitlesAssPath: assPathToUse,
+          signal: renderAbort.signal,
         });
+
+        // Persist deliverables before marking the candidate complete so an
+        // ephemeral Render restart cannot leave a dead local-only output URL.
+        if (project.ownerUserId) {
+          await backupPrivateMedia(project.ownerUserId, renderResult.outputPath);
+          await backupPrivateMedia(project.ownerUserId, outputSrtPath);
+        }
 
         clip.renderStatus = 'completed';
         clip.renderedVideoPath = renderResult.outputPath;
@@ -153,7 +180,7 @@ export async function POST(
       } catch (renderErr: any) {
         console.error(`Rendering failed for clip ${clip.id}:`, renderErr);
         clip.renderStatus = 'failed';
-        clip.renderError = renderErr.message;
+        clip.renderError = renderAbort.signal.aborted ? 'Render cancelled.' : renderErr.message;
         results.push({
           clipId: clip.id,
           success: false,
@@ -162,11 +189,13 @@ export async function POST(
       }
 
       project.progress = Math.round(((i + 1) / clipsToRender.length) * 100);
+      if (renderAbort.signal.aborted) project.statusMessage = 'Render cancelled. Existing project files were retained.';
       await saveProject(project);
+      if (renderAbort.signal.aborted) break;
     }
 
-    project.status = 'COMPLETED';
-    project.statusMessage = `Rendering completed for ${results.filter(r => r.success).length} of ${clipsToRender.length} clip(s).`;
+    project.status = renderAbort.signal.aborted ? 'QUEUED' : 'COMPLETED';
+    if (!renderAbort.signal.aborted) project.statusMessage = `Rendering completed for ${results.filter(r => r.success).length} of ${clipsToRender.length} clip(s).`;
     await saveProject(project);
 
     return NextResponse.json({
@@ -177,5 +206,8 @@ export async function POST(
   } catch (err: any) {
     console.error('Rendering handler error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } finally {
+    if (requestAbort) req.signal.removeEventListener('abort', requestAbort);
+    finishStorageTask?.();
   }
 }

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import { commitStorageFile, createStorageStagingPath, removeStorageFile } from '../storage-files';
 
 export * from './export-planner';
 
@@ -86,8 +87,25 @@ export function executeExportProcess(
     const ffmpegBin = getFfmpegBinary();
     const logs: string[] = [];
     let isCancelled = false;
+    let settled = false;
+    const stagingPath = createStorageStagingPath(outputPath);
+    const stagedArgs = args.map((argument) => argument === outputPath ? stagingPath : argument);
+    const cleanupFailedExport = async () => {
+      await removeStorageFile(stagingPath);
+      const outputDir = path.dirname(outputPath);
+      if (path.basename(path.dirname(outputDir)) === 'exports' && path.basename(outputDir).startsWith('export-')) {
+        await fs.promises.rm(outputDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    };
+    const fail = async (error: string) => {
+      if (settled) return;
+      settled = true;
+      activeProcessMap.delete(jobId);
+      await cleanupFailedExport();
+      resolve({ success: false, outputPath, fileSizeBytes: 0, error });
+    };
 
-    const child = spawn(/*turbopackIgnore: true*/ ffmpegBin, args, { windowsHide: true });
+    const child = spawn(/*turbopackIgnore: true*/ ffmpegBin, stagedArgs, { windowsHide: true });
 
     activeProcessMap.set(jobId, {
       process: child,
@@ -122,75 +140,43 @@ export function executeExportProcess(
     });
 
     child.on('error', (err) => {
-      activeProcessMap.delete(jobId);
-      resolve({
-        success: false,
-        outputPath,
-        fileSizeBytes: 0,
-        error: `Failed to spawn FFmpeg: ${err.message}`,
-      });
+      void fail(`Failed to spawn FFmpeg: ${err.message}`);
     });
 
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
+      if (settled) return;
       activeProcessMap.delete(jobId);
 
       if (isCancelled) {
-        if (fs.existsSync(outputPath)) {
-          try {
-            fs.unlinkSync(outputPath);
-          } catch {}
-        }
-        return resolve({
-          success: false,
-          outputPath,
-          fileSizeBytes: 0,
-          error: 'Export job was cancelled by user',
-        });
+        return void await fail('Export job was cancelled by user');
       }
 
       if (code !== 0) {
         const errorSummary = logs.slice(-5).join('\n') || `FFmpeg process exited with code ${code}`;
-        return resolve({
-          success: false,
-          outputPath,
-          fileSizeBytes: 0,
-          error: errorSummary,
-        });
+        return void await fail(errorSummary);
       }
 
-      if (!fs.existsSync(outputPath)) {
-        return resolve({
-          success: false,
-          outputPath,
-          fileSizeBytes: 0,
-          error: `Output file was not created at expected destination: ${outputPath}`,
-        });
+      if (!fs.existsSync(stagingPath)) {
+        return void await fail(`Output file was not created at expected destination: ${outputPath}`);
       }
 
       try {
-        const stats = fs.statSync(outputPath);
+        const stats = fs.statSync(stagingPath);
         if (stats.size === 0) {
-          return resolve({
-            success: false,
-            outputPath,
-            fileSizeBytes: 0,
-            error: 'Output file was created but contains 0 bytes',
-          });
+          return void await fail('Output file was created but contains 0 bytes');
         }
 
+        await commitStorageFile(stagingPath, outputPath);
+        const finalStats = fs.statSync(outputPath);
+        settled = true;
         onProgress(100);
         return resolve({
           success: true,
           outputPath,
-          fileSizeBytes: stats.size,
+          fileSizeBytes: finalStats.size,
         });
       } catch (err: any) {
-        return resolve({
-          success: false,
-          outputPath,
-          fileSizeBytes: 0,
-          error: `Failed to verify output file: ${err.message}`,
-        });
+        return void await fail(`Failed to verify output file: ${err.message}`);
       }
     });
   });

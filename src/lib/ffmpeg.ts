@@ -4,6 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import { getFfmpegPath, getFfprobePath } from './config';
 import { VideoMetadata } from './types';
+import { commitStorageFile, createStorageStagingPath, removeStorageFile } from './storage-files';
+import { APP_CONFIG } from './config';
+import { isStoragePathActive } from './storage-runtime';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,6 +88,7 @@ export interface RenderClipOptions {
   normalizeAudio?: boolean;
   subtitlesAssPath?: string;
   onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 /**
@@ -132,20 +136,22 @@ export async function detectBestVideoEncoder(): Promise<string> {
  * Defaults to files older than 2 hours.
  */
 export async function cleanupTempStorage(
-  tempDir = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'storage/temp'),
+  tempDir = APP_CONFIG.tempDir,
   maxAgeMs = 2 * 60 * 60 * 1000
 ): Promise<number> {
   if (!fs.existsSync(tempDir)) return 0;
   let deletedCount = 0;
   try {
-    const files = await fs.promises.readdir(tempDir);
+    const files = await fs.promises.readdir(tempDir, { withFileTypes: true });
     const now = Date.now();
     for (const file of files) {
-      const fullPath = path.join(tempDir, file);
+      if (file.isSymbolicLink()) continue;
+      const fullPath = path.join(tempDir, file.name);
+      if (isStoragePathActive(fullPath)) continue;
       try {
-        const stats = await fs.promises.stat(fullPath);
-        if (stats.isFile() && now - stats.mtimeMs > maxAgeMs) {
-          await fs.promises.unlink(fullPath);
+        const stats = await fs.promises.lstat(fullPath);
+        if ((stats.isFile() || stats.isDirectory()) && now - stats.mtimeMs > maxAgeMs) {
+          await fs.promises.rm(fullPath, { recursive: stats.isDirectory(), force: true });
           deletedCount++;
         }
       } catch {}
@@ -169,7 +175,10 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     normalizeAudio = true,
     subtitlesAssPath,
     onProgress,
+    signal,
   } = options;
+
+  if (signal?.aborted) throw new Error('Render cancelled.');
 
   const ffmpegPath = getFfmpegPath();
   const duration = Math.max(0.5, end - start);
@@ -219,6 +228,7 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
   const meta = await probeVideo(sourceVideoPath);
   const isAudioOnly = !meta.videoCodec && meta.hasAudio;
 
+  const stagingOutputPath = createStorageStagingPath(outputPath);
   const args: string[] = ['-y'];
 
   if (isAudioOnly) {
@@ -276,12 +286,27 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     '-b:a', '192k',
     '-shortest',
     '-movflags', '+faststart',
-    outputPath
+    stagingOutputPath
   );
 
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegPath, args);
     let stderr = '';
+    let settled = false;
+    const cleanupSignal = () => signal?.removeEventListener('abort', abortRender);
+    const abortRender = () => {
+      if (process.platform === 'win32' && proc.pid) spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { windowsHide: true });
+      else proc.kill('SIGTERM');
+    };
+    const fail = async (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanupSignal();
+      await removeStorageFile(stagingOutputPath);
+      reject(error);
+    };
+    signal?.addEventListener('abort', abortRender, { once: true });
+    if (signal?.aborted) abortRender();
 
     proc.stderr.on('data', (chunk) => {
       const msg = chunk.toString();
@@ -300,24 +325,30 @@ export async function renderClip(options: RenderClipOptions): Promise<{ outputPa
     });
 
     proc.on('close', async (code) => {
+      if (settled) return;
+      if (signal?.aborted) return void await fail(new Error('Render cancelled.'));
       if (code === 0) {
         try {
-          const validated = await validateRenderedClip(outputPath);
+          const validated = await validateRenderedClip(stagingOutputPath);
           if (!validated.valid) {
-            reject(new Error(validated.error || 'Validation failed for rendered clip'));
+            await fail(new Error(validated.error || 'Validation failed for rendered clip'));
             return;
           }
+          if (signal?.aborted) return void await fail(new Error('Render cancelled.'));
+          await commitStorageFile(stagingOutputPath, outputPath);
+          settled = true;
+          cleanupSignal();
           resolve({ outputPath, duration: validated.duration });
         } catch (e: any) {
-          reject(e);
+          await fail(e instanceof Error ? e : new Error('Render failed'));
         }
       } else {
-        reject(new Error(`FFmpeg rendering exited with code ${code}. Stderr: ${stderr.slice(-500)}`));
+        await fail(new Error(`FFmpeg rendering exited with code ${code}. Stderr: ${stderr.slice(-500)}`));
       }
     });
 
     proc.on('error', (err) => {
-      reject(err);
+      void fail(err);
     });
   });
 }

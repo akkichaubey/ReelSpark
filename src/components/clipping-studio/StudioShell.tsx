@@ -11,6 +11,7 @@ import { ClipsLibrary } from './ClipsLibrary';
 import { MergeStudio } from './MergeStudio';
 import { ExportStudio } from './ExportStudio';
 import { useClippingStore, StudioTab } from '@/lib/clipping-studio/use-clipping-store';
+import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
 import {
   Film,
   Scissors,
@@ -37,6 +38,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
     activeTab,
     setActiveTab,
     activeProject,
+    projects,
     createProject,
     initializeStore,
     isLoading,
@@ -64,6 +66,14 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
   useEffect(() => {
     initializeStore();
   }, [initializeStore]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const timer = window.setTimeout(() => {
+      void syncStorageReferenceInventory('clipping-studio', projects);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, projects]);
 
   // Synchronize tab from URL query param if present
   useEffect(() => {

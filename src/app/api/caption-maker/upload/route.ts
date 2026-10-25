@@ -9,15 +9,22 @@ import { validateUpload } from '@/lib/media-validation';
 import { randomUUID } from 'node:crypto';
 import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
 import { recordMediaOwner } from '@/lib/media-access';
-import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import { backupPrivateMedia, deletePrivateMedia } from '@/lib/cloudflare/private-media';
 import { getIncomingUploadMetadata, streamRequestBodyToFile, UploadRequestError } from '@/lib/stream-upload';
+import { registerStorageTask } from '@/lib/storage-runtime';
 
 export async function POST(req: NextRequest) {
+  let uploadDirectory: string | undefined;
+  let uploadAbort: AbortController | undefined;
+  let finishStorageTask: (() => void) | undefined;
+  let keepUploadedAsset = false;
+  let uploadOwnerId: string | undefined;
   try {
     const user = await getRequestUser(req);
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    uploadOwnerId = user.id;
     if (!isSameOriginAuthRequest(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
-    const { filename, mediaType, expectedSize } = getIncomingUploadMetadata(req, true);
+    const { filename, mediaType, expectedSize, uploadId } = getIncomingUploadMetadata(req, true);
     const type = mediaType!;
     const permittedKinds = type === 'image' ? ['image'] as const : type === 'video' ? ['video'] as const : ['audio', 'video'] as const;
     const uploadError = validateUpload({ name: filename, size: expectedSize }, [...permittedKinds]);
@@ -59,7 +66,17 @@ export async function POST(req: NextRequest) {
     // Prepare target storage directory
     const assetId = `asset_${randomUUID()}`;
     const uploadDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', assetId);
+    uploadDirectory = uploadDir;
     assertSafePath(uploadDir, APP_CONFIG.storageRoot);
+
+    uploadAbort = new AbortController();
+    finishStorageTask = registerStorageTask({
+      id: uploadId,
+      ownerId: user.id,
+      kind: 'upload',
+      paths: [uploadDir],
+      cancel: () => uploadAbort?.abort(),
+    });
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -67,8 +84,7 @@ export async function POST(req: NextRequest) {
     await recordMediaOwner(uploadDir, user.id);
 
     const targetFilePath = path.join(uploadDir, safeName);
-    const fileSize = await streamRequestBodyToFile(req, targetFilePath);
-    await backupPrivateMedia(user.id, targetFilePath);
+    const fileSize = await streamRequestBodyToFile(req, targetFilePath, undefined, AbortSignal.any([req.signal, uploadAbort.signal]));
 
     const relativePath = `caption-maker/${assetId}/${safeName}`;
     const fileUrl = `/api/files/${relativePath}`;
@@ -87,7 +103,6 @@ export async function POST(req: NextRequest) {
         const extractedAudioPath = path.join(uploadDir, extractedAudioName);
         const { duration: extractedDuration } = await extractAudioFromVideo(targetFilePath, extractedAudioPath);
         const extractedStat = fs.statSync(extractedAudioPath);
-        await backupPrivateMedia(user.id, extractedAudioPath);
         companionAudioPath = extractedAudioPath;
         companionAudioUrl = `/api/files/caption-maker/${assetId}/${extractedAudioName}`;
         companionFormat = 'MP3';
@@ -97,6 +112,12 @@ export async function POST(req: NextRequest) {
         // Preserve the uploaded source as the audio asset if optional extraction fails.
         console.warn('Companion audio extraction note:', error instanceof Error ? error.message : error);
       }
+
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      if (companionAudioPath !== targetFilePath) await fs.promises.rm(targetFilePath, { force: true });
+      await backupPrivateMedia(user.id, companionAudioPath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      keepUploadedAsset = true;
 
       const audioAsset: AudioAsset = {
         id: `aud_${assetId}`,
@@ -121,6 +142,10 @@ export async function POST(req: NextRequest) {
     if (isVideo) {
       // Background videos are rendered as visuals; avoid an unused audio transcode.
       const duration = await probeAudioDuration(targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      await backupPrivateMedia(user.id, targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      keepUploadedAsset = true;
       const videoAsset: ImageAsset = {
         id: assetId,
         fileUrl,
@@ -158,10 +183,17 @@ export async function POST(req: NextRequest) {
         scale: 100,
         mediaType: 'image',
       };
+      await backupPrivateMedia(user.id, targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      keepUploadedAsset = true;
       return NextResponse.json({ success: true, asset: imageAsset, type: 'image' });
     } else {
       // Audio duration probing
       const duration = await probeAudioDuration(targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      await backupPrivateMedia(user.id, targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      keepUploadedAsset = true;
       const audioAsset: AudioAsset = {
         id: assetId,
         fileUrl,
@@ -174,10 +206,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, asset: audioAsset, type: 'audio' });
     }
   } catch (err: any) {
+    if (uploadDirectory && !keepUploadedAsset) {
+      try {
+        if (uploadOwnerId && fs.existsSync(/*turbopackIgnore: true*/ uploadDirectory)) {
+          const entries = await fs.promises.readdir(/*turbopackIgnore: true*/ uploadDirectory, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isFile() && !entry.name.startsWith('.')) {
+              await deletePrivateMedia(uploadOwnerId, path.join(uploadDirectory, entry.name));
+            }
+          }
+        }
+        await fs.promises.rm(uploadDirectory, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.error('[Caption Maker upload] Rollback failed; janitor will retry:', cleanupError);
+        await fs.promises.writeFile(path.join(uploadDirectory, '.abandoned-upload.json'), JSON.stringify({ failedAt: new Date().toISOString() })).catch(() => undefined);
+      }
+    }
     console.error('Caption Maker upload failed:', err);
     return NextResponse.json(
       { error: err.message || 'File upload failed' },
       { status: err instanceof UploadRequestError ? err.status : 500 }
     );
+  } finally {
+    finishStorageTask?.();
   }
 }

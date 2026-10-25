@@ -4,6 +4,9 @@ import { fallbackJobs, daemonJobOwners, type FallbackExportJob } from '@/lib/cli
 import { requireMediaUser } from '@/lib/media-api-access';
 import { createServerExportPlan, ExportPlanError } from '@/lib/clipping-studio/server-export-plan';
 import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import path from 'node:path';
+import { cancelActiveExportJob } from '@/lib/clipping-studio/export-engine';
+import { registerStorageTask } from '@/lib/storage-runtime';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://127.0.0.1:4000';
 
@@ -84,6 +87,13 @@ export async function POST(req: NextRequest) {
     };
 
     fallbackJobs.set(jobId, fallbackJob);
+    const finishStorageTask = registerStorageTask({
+      id: `export:${jobId}`,
+      ownerId: access.user.id,
+      kind: 'export',
+      paths: [path.dirname(outputPath), path.resolve(path.dirname(outputPath), '..', '..')],
+      cancel: () => { cancelActiveExportJob(jobId); },
+    });
 
     // Asynchronously kick off export process without blocking response
     executeExportProcess(
@@ -116,7 +126,7 @@ export async function POST(req: NextRequest) {
       fallbackJob.status = 'failed';
       fallbackJob.errorMessage = error instanceof Error ? error.message : 'Export execution failed';
       fallbackJob.completedAt = new Date().toISOString();
-    });
+    }).finally(finishStorageTask);
 
     return NextResponse.json({ success: true, job: fallbackJob, source: 'nextjs_in_process' }, { status: 202 });
   } catch (err: any) {

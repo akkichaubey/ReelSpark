@@ -3,6 +3,8 @@ import fs from 'fs';
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, SfxCue, TranscriptWord } from './types';
 import { RemotionCaptionProps } from '../../remotion/types';
 import { probeAudioDuration } from './ffmpeg-renderer';
+import { makeCancelSignal } from '@remotion/renderer';
+import { commitStorageFile, createStorageStagingPath, removeStorageFile } from '../storage-files';
 
 export interface RenderRemotionOptions {
   imagePath?: string;
@@ -33,6 +35,7 @@ export interface RenderRemotionOptions {
   speaker1Color?: string;
   speaker2Color?: string;
   onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 // In-memory cache for the Webpack bundle location across render requests
@@ -161,6 +164,8 @@ export async function renderRemotionReelVideo(
     onProgress,
   } = options;
 
+  if (options.signal?.aborted) throw new Error('Render cancelled.');
+
   // 1. Get exact audio duration
   let duration = 10;
   if (audioPath && fs.existsSync(audioPath)) {
@@ -169,6 +174,7 @@ export async function renderRemotionReelVideo(
     const maxWordEnd = Math.max(...words.map((w) => w.end));
     duration = Math.max(3, maxWordEnd + 0.5);
   }
+  if (options.signal?.aborted) throw new Error('Render cancelled.');
 
   // 2. Resolve image/video source (prefer Data URL if image, file:// if video)
   const isVideo =
@@ -270,30 +276,44 @@ export async function renderRemotionReelVideo(
     id: 'CaptionReel',
     inputProps: inputProps as unknown as Record<string, unknown>,
   });
+  if (options.signal?.aborted) throw new Error('Render cancelled.');
 
   const tempDir = path.dirname(outputPath);
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
 
-  // 7. Render frames and encode to MP4 via Remotion Renderer
-  await renderMedia({
-    browserExecutable,
-    composition,
-    serveUrl: bundleLocation,
-    codec: 'h264',
-    outputLocation: outputPath,
-    inputProps: inputProps as unknown as Record<string, unknown>,
-    imageFormat: 'jpeg',
-    // Windows uses the project's FFmpeg wrapper; Linux uses Remotion's native package.
-    binariesDirectory: process.platform === 'win32' ? path.resolve(process.cwd(), 'bin') : null,
-    logLevel: 'warn',
-    onProgress: ({ progress }) => {
-      if (onProgress) {
-        onProgress(Math.min(99, Math.round(progress * 100)));
-      }
-    },
-  });
+  // Render into a unique staging file. The previous successful output remains intact until commit.
+  const stagingOutputPath = createStorageStagingPath(outputPath);
+  const { cancelSignal, cancel } = makeCancelSignal();
+  const abortRender = () => cancel();
+  options.signal?.addEventListener('abort', abortRender, { once: true });
+  if (options.signal?.aborted) abortRender();
+  try {
+    await renderMedia({
+      browserExecutable,
+      composition,
+      serveUrl: bundleLocation,
+      codec: 'h264',
+      outputLocation: stagingOutputPath,
+      inputProps: inputProps as unknown as Record<string, unknown>,
+      imageFormat: 'jpeg',
+      cancelSignal,
+      // Windows uses the project's FFmpeg wrapper; Linux uses Remotion's native package.
+      binariesDirectory: process.platform === 'win32' ? path.resolve(process.cwd(), 'bin') : null,
+      logLevel: 'warn',
+      onProgress: ({ progress }) => {
+        if (onProgress) onProgress(Math.min(99, Math.round(progress * 100)));
+      },
+    });
+    if (options.signal?.aborted) throw new Error('Render cancelled.');
+    await commitStorageFile(stagingOutputPath, outputPath);
+  } catch (error) {
+    await removeStorageFile(stagingOutputPath);
+    throw error;
+  } finally {
+    options.signal?.removeEventListener('abort', abortRender);
+  }
 
   if (onProgress) {
     onProgress(100);

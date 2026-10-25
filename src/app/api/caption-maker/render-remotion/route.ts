@@ -1,7 +1,7 @@
 import { requireProjectAccess } from '@/lib/project-access';
 import { backupPrivateMedia, restorePrivateMedia } from '@/lib/cloudflare/private-media';
 import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
-import { mediaUserNamespace, canUseRenderMedia } from '@/lib/media-access';
+import { mediaUserNamespace, canUseRenderMedia, recordMediaOwner } from '@/lib/media-access';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -15,8 +15,16 @@ import { DEFAULT_OUTPUT_SETTINGS } from '@/lib/caption-maker/sample-data';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
 import { cleanupTempStorage } from '@/lib/caption-maker/ffmpeg-renderer';
 import { validateCaptionRenderRequest } from '@/lib/media-validation';
+import { registerStorageTask } from '@/lib/storage-runtime';
+import { randomUUID } from 'node:crypto';
 
 export async function POST(req: NextRequest) {
+  let finishStorageTask: (() => void) | undefined;
+  let streamingResponse = false;
+  const renderAbort = new AbortController();
+  const requestAbort = () => renderAbort.abort();
+  req.signal.addEventListener('abort', requestAbort, { once: true });
+  if (req.signal.aborted) renderAbort.abort();
   try {
     const user = await getRequestUser(req);
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -187,9 +195,19 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(renderDir)) {
       fs.mkdirSync(renderDir, { recursive: true });
     }
+    await recordMediaOwner(path.dirname(renderDir), user.id);
 
     const outputMp4Path = path.join(renderDir, `${safeProjectId}_remotion.mp4`);
     const outputSrtPath = path.join(renderDir, `${safeProjectId}_captions.srt`);
+    if (!isStream) {
+      finishStorageTask = registerStorageTask({
+        id: `remotion-render:${user.id}:${safeProjectId}:${randomUUID()}`,
+        ownerId: user.id,
+        kind: 'render',
+        paths: [renderDir, APP_CONFIG.tempDir],
+        cancel: () => renderAbort.abort(),
+      });
+    }
 
     // 5. Write SRT Subtitle File
     const srtContent =
@@ -234,9 +252,17 @@ export async function POST(req: NextRequest) {
 
     // 6. Handle SSE Streaming if requested
     if (isStream) {
+      streamingResponse = true;
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
+          const finishStreamTask = registerStorageTask({
+            id: `remotion-render:${user.id}:${safeProjectId}:${randomUUID()}`,
+            ownerId: user.id,
+            kind: 'render',
+            paths: [renderDir, APP_CONFIG.tempDir],
+            cancel: () => renderAbort.abort(),
+          });
           try {
             controller.enqueue(
               encoder.encode(
@@ -270,6 +296,7 @@ export async function POST(req: NextRequest) {
               bgMusicOffset,
               sfxCues: body.sfxCues,
               autoSfxEnabled: body.autoSfxEnabled,
+              signal: renderAbort.signal,
               speaker1Color: body.speaker1Color,
               speaker2Color: body.speaker2Color,
               onProgress: (pct) => {
@@ -310,6 +337,7 @@ export async function POST(req: NextRequest) {
                     introDuration: thumbnailIntroDuration ?? 0.000001,
                     width: outputSettings.width,
                     height: outputSettings.height,
+                    signal: renderAbort.signal,
                   });
                   thumbnailMerged = true;
                 } catch (mergeErr: any) {
@@ -339,15 +367,13 @@ export async function POST(req: NextRequest) {
             controller.close();
           } catch (err: any) {
             console.error('Remotion render stream error:', err);
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: 'error',
-                  error: err.message || 'Remotion video rendering failed',
-                })}\n\n`
-              )
-            );
-            controller.close();
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Remotion video rendering failed' })}\n\n`));
+              controller.close();
+            } catch { /* The client may have disconnected. */ }
+          } finally {
+            req.signal.removeEventListener('abort', requestAbort);
+            finishStreamTask();
           }
         },
       });
@@ -390,6 +416,7 @@ export async function POST(req: NextRequest) {
       autoSfxEnabled: body.autoSfxEnabled,
       speaker1Color: body.speaker1Color,
       speaker2Color: body.speaker2Color,
+      signal: renderAbort.signal,
     });
 
     // Asynchronously prune expired temporary files
@@ -420,6 +447,7 @@ export async function POST(req: NextRequest) {
             introDuration: thumbnailIntroDuration ?? 0.000001,
             width: outputSettings.width,
             height: outputSettings.height,
+            signal: renderAbort.signal,
           });
           thumbnailMerged = true;
         } catch (mergeErr: any) {
@@ -447,5 +475,8 @@ export async function POST(req: NextRequest) {
       { error: err.message || 'Remotion video rendering failed' },
       { status: 500 }
     );
+  } finally {
+    if (!streamingResponse) req.signal.removeEventListener('abort', requestAbort);
+    finishStorageTask?.();
   }
 }

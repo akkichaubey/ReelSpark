@@ -21,6 +21,8 @@
     "deploy:preflight": "node scripts/deployment-preflight.cjs",
     "verify:linux-render": "tsx scripts/smoke-linux-render.ts",
     "test": "tsx tests/test_suite.ts",
+    "test:storage": "tsx tests/storage_maintenance.test.ts",
+    "test:private-media": "tsx tests/private_media_cloud.test.ts",
     "test:cta": "tsx tests/reels_cta_presets.test.ts",
     "test:social": "tsx tests/smart_social_intelligence.test.ts",
     "test:social-platform": "tsx tests/social_post_platform_rules.test.ts",

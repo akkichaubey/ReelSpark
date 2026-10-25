@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   try {
     const user = await getRequestUser(req);
     if (!user) return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
-    const projects = await listProjects();
+    const projects = await listProjects(user.id);
     return NextResponse.json({ success: true, projects: projects.filter(project => ownsProject(user, project)) });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

@@ -30,6 +30,7 @@ export const MediaLibrary: React.FC = () => {
   } = useClippingStore();
 
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadComplete, setUploadComplete] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [relinkingAssetId, setRelinkingAssetId] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export const MediaLibrary: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     if (!activeProject || uploadAbortController.current) return;
     setIsUploading(true);
+    setUploadComplete(false);
     setUploadProgress(0);
     setUploadError(null);
     const controller = new AbortController();
@@ -58,11 +60,14 @@ export const MediaLibrary: React.FC = () => {
 
       addMediaAsset(data.asset);
       setUploadProgress(100);
+      setUploadComplete(true);
     } catch (err: any) {
       if (err instanceof UploadCancelledError) {
         setUploadProgress(0);
+        setUploadComplete(false);
         setUploadError(null);
       } else {
+        setUploadComplete(false);
         setUploadError(err.message || 'Media import failed');
       }
     } finally {
@@ -126,6 +131,8 @@ export const MediaLibrary: React.FC = () => {
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
             {isUploading ? (
               <UploadProgressIndicator progress={uploadProgress} processing={uploadProgress >= 100} size={36} strokeWidth={3.5} label="Media upload and inspection" />
+            ) : uploadComplete ? (
+              <UploadProgressIndicator progress={100} complete size={36} strokeWidth={3.5} label="Media upload complete" />
             ) : (
               <UploadCloud className="w-6 h-6" />
             )}
@@ -141,7 +148,7 @@ export const MediaLibrary: React.FC = () => {
             <p className="text-xs text-zinc-400 mt-1">
               Supports MP4, MOV, WEBM, MKV, AVI, MP3, WAV, M4A, AAC, OGG (Original remains untouched)
             </p>
-            {isUploading && uploadProgress < 100 && (
+            {isUploading && (
               <button
                 type="button"
                 onClick={(event) => {

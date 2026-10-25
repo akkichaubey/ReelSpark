@@ -43,6 +43,9 @@ detect their public URL, and the Blueprint generates a stable publishing key.
 Cloud credentials, migrations and provider-approved callbacks still require initial
 configuration. Check authenticated `/api/social-publishing/status` for missing setup.
 
+For upload cancellation, server-side cleanup, storage usage monitoring, retention
+defaults and the deployment storage limits, see [Storage lifecycle management](STORAGE_LIFECYCLE.md).
+
 ### 1. Prerequisites
 - **Node.js**: `>=24.22.1 <25` (pinned to 24.22.1 via nvm).
 - **npm** package manager
@@ -107,27 +110,23 @@ npm run media-service
 
 ## ☁️ Cloud Deployment on Render (Recommended)
 
-### Cloudflare deployment preparation (2026-10-23)
+The production service runs on [Render](https://render.com) from the GitHub
+repository's `codex/server-readiness` branch. Render uses the repository's
+[`Dockerfile`](Dockerfile) and [`render.yaml`](render.yaml); commits pushed to
+that connected branch trigger deployment. Check Render's Deploys page for the
+actual live commit and build status.
 
-- The production CSS loader now declares `type: 'css'` instead of renaming CSS output. A local production build completed successfully after this correction.
-- Docker copies the installation hook before `npm ci --include=dev`, requires the committed npm lockfile, and sets `NODE_ENV=production` after building. A Docker image build has not been verified on this workstation because Docker is unavailable.
-- Social-post generation requires a validated session in production unless demo login is explicitly enabled. A request-body `userId` alone does not authorize access.
-- Cloudflare account login, domain selection, and the Node host or Cloudflare Containers hosting choice are still pending. No cloud resources have been created or application deployed.
-- The existing `cf:deploy` / Pages `.next` upload is not a complete deployment path for this application. Native FFmpeg/Chromium processing and filesystem storage require a suitable server/container deployment and persistence strategy.
+Cloud media persistence requires server-only Cloudflare D1 and private R2
+credentials, the migrations listed in [CLOUD_PERSISTENCE.md](CLOUD_PERSISTENCE.md),
+and the cloud feature flags enabled in Render. Do not make the R2 bucket public.
+The deployed Render Free service has ephemeral local disk and may sleep, so
+uploads must be backed up to R2 to survive restarts; its in-process cleanup
+timer only runs while the service is awake. A persistent disk or always-on
+scheduled worker is a separate hosting capability and may incur charges.
 
-ReelSpark is pre-configured for 1-click cloud deployment on [Render](https://render.com) using Docker:
-
-1. **Push your code to GitHub / GitLab**.
-2. Go to [dashboard.render.com](https://dashboard.render.com) and click **New +** → **Blueprint** (or **Web Service**).
-3. Select your repository. Render will automatically detect [`render.yaml`](render.yaml) and [`Dockerfile`](Dockerfile).
-4. Configure your environment variables:
-   - `OLLAMA_BASE_URL`: Ollama Host (`http://127.0.0.1:11434` or remote Ollama server).
-   - `OLLAMA_MODEL`: `llama3.2`
-   - `NODE_ENV`: `production`
-5. Click **Apply / Deploy**.
-
-> **Why Render over Vercel?**
-> Render runs your application as a persistent Docker container with native Linux FFmpeg (`libass`), Chromium for Remotion video rendering, persistent disk storage, and no 10-second serverless execution timeouts.
+The existing `cf:deploy` Pages upload is not a complete hosting path for this
+Node application because native FFmpeg/Chromium processing and server storage
+require a Node-capable server/container.
 
 ---
 
@@ -146,8 +145,6 @@ ReelSpark is intentionally **local-only by default**. All video processing, FFmp
 - Media uploads are checked against supported extensions and size bounds.
 - Subtitle rendering is executed using native local FFmpeg binaries (`bin/ffmpeg.exe`).
 - To expose the server remotely, set `REELSPARK_ALLOW_REMOTE=true` only behind your own reverse proxy with authentication and HTTPS.
-# Cloud persistence preparation
-
-See [CLOUD_PERSISTENCE.md](CLOUD_PERSISTENCE.md) for the metadata-only rollout,
-the additive D1 migration and outstanding private-media storage work. Metadata
-sync is off by default and is not a guarantee of restart-safe media persistence.
+See [CLOUD_PERSISTENCE.md](CLOUD_PERSISTENCE.md) for D1 project persistence,
+private R2 media backup/restore, migrations, free-tier guard limits and the
+current hosting limitations.

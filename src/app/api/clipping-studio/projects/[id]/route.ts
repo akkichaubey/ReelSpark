@@ -9,6 +9,8 @@ import { deleteOwnedClippingProject } from '@/lib/cloudflare/media-lifecycle';
 import { projectCloudEnabled } from '@/lib/cloudflare/project-documents';
 import { privateMediaEnabled } from '@/lib/cloudflare/private-media';
 import { fallbackJobs } from '@/lib/clipping-studio/export-job-registry';
+import { cancelStorageTasksUnder, isStoragePathActive } from '@/lib/storage-runtime';
+import { isStoragePathReferencedByAnotherProject, loadStorageReferenceSnapshot } from '@/lib/storage-references';
 
 export async function DELETE(
   req: NextRequest,
@@ -19,8 +21,19 @@ export async function DELETE(
     if (access.error) return access.error;
     const { id: projectId } = await params;
     if (!/^[a-zA-Z0-9_-]{1,160}$/.test(projectId)) return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
+    const ownedProjectDir = await clippingProjectAccess(access.user.id, projectId);
+    if (ownedProjectDir) {
+      await cancelStorageTasksUnder(ownedProjectDir);
+      if (isStoragePathActive(ownedProjectDir)) {
+        return NextResponse.json({ error: 'Project processing is still stopping. Retry deletion in a moment.' }, { status: 409 });
+      }
+      const references = await loadStorageReferenceSnapshot();
+      if (isStoragePathReferencedByAnotherProject(references, 'clipping-studio', projectId, ownedProjectDir)) {
+        return NextResponse.json({ error: 'Project media is referenced by another saved project or the media inventory needs refreshing. Refresh the workspace, then retry.' }, { status: 409 });
+      }
+    }
     if (Array.from(fallbackJobs.values()).some(job => job.projectId === projectId && job.ownerUserId === access.user.id && ['running', 'queued'].includes(job.status))) {
-      return NextResponse.json({ error: 'Cancel active exports before deleting the project' }, { status: 409 });
+      return NextResponse.json({ error: 'Project processing is still stopping. Retry deletion in a moment.' }, { status: 409 });
     }
     if (mediaLifecycleEnabled()) {
       await deleteOwnedClippingProject(access.user.id, projectId);

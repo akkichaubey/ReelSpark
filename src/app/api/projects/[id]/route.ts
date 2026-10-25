@@ -1,6 +1,6 @@
 import { requireProjectAccess } from '@/lib/project-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteProject, loadProject, saveProject } from '@/lib/storage';
+import { deleteProject, loadProject, saveProject, ProjectMediaReferencedError, StorageInUseError } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
@@ -60,6 +60,9 @@ export async function DELETE(
     }
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    if (err instanceof ProjectMediaReferencedError) return NextResponse.json({ success: false, error: err.message }, { status: 409 });
+    if (err instanceof StorageInUseError) return NextResponse.json({ success: false, error: err.message }, { status: 409 });
+    console.error('Project deletion failed:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

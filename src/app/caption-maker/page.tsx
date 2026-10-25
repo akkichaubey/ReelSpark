@@ -1,5 +1,6 @@
 'use client';
 import { accountCache, ACCOUNT_WORKSPACE_FLUSH_EVENT } from '@/lib/account-cache';
+import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -36,6 +37,7 @@ import { ProjectHistoryModal } from '@/components/caption-maker/ProjectHistoryMo
 import {
   saveProjectToLocalStorage,
   saveProjectSnapshot,
+  getProjectSnapshots,
   detectCrashRecovery,
   ProjectSnapshot,
 } from '@/lib/caption-maker/project-storage';
@@ -633,6 +635,17 @@ function CaptionMakerPageContent() {
     }, 1200);
     return () => clearTimeout(timer);
   }, [project]);
+
+  // The project itself lives in the user's browser cache. Keep a server-side
+  // inventory of every asset reachable from the current project, undo history,
+  // and saved snapshots so storage maintenance never guesses from file age.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const snapshots = getProjectSnapshots().map((snapshot) => snapshot.project);
+      void syncStorageReferenceInventory('caption-maker', [project, ...history, ...snapshots]);
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [history, project]);
 
   // Save project to localStorage and generate manual snapshot
   useEffect(() => {

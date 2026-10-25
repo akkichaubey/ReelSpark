@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { getFfmpegPath } from '../config';
+import { commitStorageFile, createStorageStagingPath, removeStorageFile } from '../storage-files';
 
 export type ThumbnailMergeMode = 'intro_and_poster' | 'intro_hook' | 'poster_only';
 
@@ -15,6 +16,7 @@ export interface MergeThumbnailOptions {
   introDuration?: number; // in seconds, default 1.0
   width?: number; // target video width
   height?: number; // target video height
+  signal?: AbortSignal;
 }
 
 /**
@@ -51,7 +53,9 @@ export async function mergeThumbnailIntoVideo(
     introDuration = 0.000001,
     width = 1080,
     height = 1920,
+    signal,
   } = options;
+  if (signal?.aborted) throw new Error('Thumbnail merge cancelled.');
 
   const ffmpeg = getFfmpegPath();
 
@@ -63,10 +67,7 @@ export async function mergeThumbnailIntoVideo(
   }
 
   const targetOutputPath = customOutputPath || videoPath;
-  const tempOutput = path.join(
-    path.dirname(targetOutputPath),
-    `temp_merged_${Date.now()}_${path.basename(targetOutputPath)}`
-  );
+  const tempOutput = createStorageStagingPath(targetOutputPath, 'partial');
 
   let args: string[] = [];
 
@@ -133,8 +134,23 @@ export async function mergeThumbnailIntoVideo(
     ];
   }
 
-  await new Promise<void>((resolve, reject) => {
+  try {
+    await new Promise<void>((resolve, reject) => {
     const child = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let settled = false;
+    const cleanupSignal = () => signal?.removeEventListener('abort', abortMerge);
+    const abortMerge = () => {
+      if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'], { windowsHide: true });
+      else child.kill('SIGTERM');
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanupSignal();
+      reject(error);
+    };
+    signal?.addEventListener('abort', abortMerge, { once: true });
+    if (signal?.aborted) abortMerge();
 
     let stderrData = '';
     child.stderr.on('data', (d) => {
@@ -142,10 +158,14 @@ export async function mergeThumbnailIntoVideo(
     });
 
     child.on('close', (code) => {
+      if (settled) return;
+      if (signal?.aborted) return fail(new Error('Thumbnail merge cancelled.'));
       if (code === 0 && fs.existsSync(tempOutput) && fs.statSync(tempOutput).size > 1000) {
+        settled = true;
+        cleanupSignal();
         resolve();
       } else {
-        reject(
+        fail(
           new Error(
             `FFmpeg thumbnail merge failed with exit code ${code}: ${stderrData.slice(-500)}`
           )
@@ -154,22 +174,13 @@ export async function mergeThumbnailIntoVideo(
     });
 
     child.on('error', (err) => {
-      reject(new Error(`Failed to launch FFmpeg: ${err.message}`));
+      fail(new Error(`Failed to launch FFmpeg: ${err.message}`));
     });
-  });
-
-  // Safely replace target video with merged output
-  if (fs.existsSync(tempOutput)) {
-    if (fs.existsSync(targetOutputPath) && targetOutputPath === videoPath) {
-      // Remove original before moving temp
-      try {
-        await fs.promises.unlink(videoPath);
-      } catch {
-        // Continue
-      }
-    }
-    await fs.promises.rename(tempOutput, targetOutputPath);
+    });
+    await commitStorageFile(tempOutput, targetOutputPath);
+    return { outputPath: targetOutputPath };
+  } catch (error) {
+    await removeStorageFile(tempOutput);
+    throw error;
   }
-
-  return { outputPath: targetOutputPath };
 }

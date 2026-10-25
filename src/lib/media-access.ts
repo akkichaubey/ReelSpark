@@ -27,7 +27,15 @@ export async function canUseRenderMedia(userId: string, filePath: string): Promi
 /** Write once when creating a new, server-generated media directory. */
 export async function recordMediaOwner(directory: string, userId: string): Promise<void> {
   assertSafePath(directory, APP_CONFIG.storageRoot);
-  await fs.writeFile(path.join(directory, OWNER_FILE), JSON.stringify({ userId }), { flag: 'wx' });
+  await fs.mkdir(directory, { recursive: true });
+  const ownerPath = path.join(directory, OWNER_FILE);
+  try {
+    await fs.writeFile(ownerPath, JSON.stringify({ userId }), { flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const existing = JSON.parse(await fs.readFile(ownerPath, 'utf8')) as { userId?: string };
+    if (existing.userId !== userId) throw new Error('Media directory belongs to a different account');
+  }
 }
 
 /** Unknown/legacy ownership is denied; never infer an owner from a URL. */

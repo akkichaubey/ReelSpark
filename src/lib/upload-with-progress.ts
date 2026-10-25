@@ -57,6 +57,21 @@ export class UploadCancelledError extends Error {
   }
 }
 
+function notifyServerUploadCancellation(uploadId: string): void {
+  void fetch(`/api/storage/uploads/${encodeURIComponent(uploadId)}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+function newUploadId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
 /** Read a local image file with measurable progress and an optional cancel signal. */
 export function readFileAsDataUrlWithProgress(
   file: File,
@@ -169,12 +184,20 @@ export function uploadFileWithProgress<T>(
     }
 
     const request = new XMLHttpRequest();
+    const uploadId = newUploadId();
+    let cancellationNotified = false;
+    const notifyCancellation = () => {
+      if (cancellationNotified) return;
+      cancellationNotified = true;
+      notifyServerUploadCancellation(uploadId);
+    };
     const cleanupAbortListener = () => signal?.removeEventListener('abort', abortRequest);
-    const abortRequest = () => request.abort();
+    const abortRequest = () => { request.abort(); notifyCancellation(); };
     request.open('POST', url);
     request.responseType = 'text';
     request.setRequestHeader('Content-Type', 'application/octet-stream');
     request.setRequestHeader('X-ReelSpark-File-Name', encodeURIComponent(file.name));
+    request.setRequestHeader('X-ReelSpark-Upload-Id', uploadId);
     if (mediaType) request.setRequestHeader('X-ReelSpark-Media-Type', mediaType);
 
     request.upload.addEventListener('progress', (event) => {
@@ -209,10 +232,12 @@ export function uploadFileWithProgress<T>(
 
     request.addEventListener('error', () => {
       cleanupAbortListener();
+      notifyCancellation();
       reject(new Error('Network connection ended before the upload finished. Check your connection and try again.'));
     });
     request.addEventListener('abort', () => {
       cleanupAbortListener();
+      notifyCancellation();
       reject(new UploadCancelledError());
     });
     signal?.addEventListener('abort', abortRequest, { once: true });

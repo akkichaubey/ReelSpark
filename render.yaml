@@ -20,11 +20,25 @@ services:
       - key: REELSPARK_ALLOW_REMOTE
         value: "true"
       - key: CLOUD_PROJECT_METADATA_ENABLED
-        value: "false"
+        value: "true"
       - key: CLOUD_PRIVATE_MEDIA_ENABLED
-        value: "false"
+        value: "true"
       - key: CLOUD_MEDIA_LIFECYCLE_ENABLED
-        value: "false"
+        value: "true"
+      - key: CLOUD_R2_STORAGE_LIMIT_BYTES
+        value: "8000000000"
+      - key: CLOUD_R2_CLASS_A_LIMIT
+        value: "800000"
+      - key: CLOUD_R2_CLASS_B_LIMIT
+        value: "8000000"
+      - key: STORAGE_CLEANUP_ENABLED
+        value: "true"
+      - key: STORAGE_CLEANUP_INTERVAL_MINUTES
+        value: "60"
+      - key: STORAGE_TEMP_RETENTION_HOURS
+        value: "24"
+      - key: STORAGE_ORPHAN_RETENTION_DAYS
+        value: "30"
       # AUTH_URL may be set for a custom domain; otherwise RENDER_EXTERNAL_URL is detected.
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -37,6 +51,12 @@ services:
       - key: CLOUDFLARE_API_TOKEN
         sync: false
       - key: CLOUDFLARE_D1_DATABASE_ID
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET_NAME
+        value: reelspark-storage
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
     # No persistent disk: Render Free does not support one.
     # Public requests still require application authentication and account ownership.

@@ -240,7 +240,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                   : 'Attach Local Video'}
               </span>
             </button>
-            {isUploadingLocalFile && localUploadProgress < 100 && (
+            {isUploadingLocalFile && (
               <button
                 type="button"
                 onClick={onCancelLocalFileUpload}

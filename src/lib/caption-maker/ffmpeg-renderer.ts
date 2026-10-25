@@ -7,6 +7,7 @@ import { escapeFilterPath, detectBestVideoEncoder, cleanupTempStorage } from '..
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, SfxCue, TranscriptWord } from './types';
 import { generateAssSubtitles } from './ass-generator';
 import { buildFfmpegEncodingArgs } from './export-settings';
+import { commitStorageFile, createStorageStagingPath, removeStorageFile } from '../storage-files';
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +38,7 @@ export interface RenderReelOptions {
   sfxCues?: SfxCue[];
   autoSfxEnabled?: boolean;
   onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 /**
@@ -213,7 +215,10 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     imageScale = 100,
     bgMusicPath,
     onProgress,
+    signal,
   } = options;
+
+  if (signal?.aborted) throw new Error('Render cancelled.');
 
   const ffmpeg = getFfmpegPath();
   const { width, height } = outputSettings;
@@ -230,6 +235,7 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
 
   // 1. Get exact audio duration
   const audioDuration = await probeAudioDuration(audioPath);
+  if (signal?.aborted) throw new Error('Render cancelled.');
 
   // 2. Generate ASS Subtitles file
   const assContent = generateAssSubtitles(groups, words, style, outputSettings);
@@ -240,6 +246,7 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
 
   const assPath = path.join(tempDir, `captions_${Date.now()}.ass`);
   await fs.promises.writeFile(assPath, assContent, 'utf8');
+  const stagingOutputPath = createStorageStagingPath(outputPath);
 
   // 3. Build FFmpeg filter complex for image fit mode + burned-in subtitles
   const escapedAss = escapeFilterPath(assPath);
@@ -314,7 +321,7 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
   }
 
   // 3. AI Sound Effect (SFX) Track Pre-Mix
-  const tempSfxPath = path.join(path.dirname(outputPath), `temp_sfx_${Date.now()}.mp3`);
+  const tempSfxPath = path.join(path.dirname(outputPath), `temp_sfx_${Date.now()}_${Math.random().toString(36).slice(2)}.mp3`);
   let hasSfxTrack = false;
   if (options.autoSfxEnabled !== false && options.sfxCues && options.sfxCues.length > 0) {
     try {
@@ -371,11 +378,29 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     ...audioArgs,
     '-shortest',
     '-t', audioDuration.toFixed(2),
-    outputPath,
+    stagingOutputPath,
   ];
 
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let settled = false;
+    const cleanupSignal = () => signal?.removeEventListener('abort', abortRender);
+    const cleanup = async () => {
+      await Promise.all([removeStorageFile(assPath), removeStorageFile(tempSfxPath), removeStorageFile(stagingOutputPath)]);
+    };
+    const abortRender = () => {
+      if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'], { windowsHide: true });
+      else child.kill('SIGTERM');
+    };
+    const fail = async (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanupSignal();
+      await cleanup();
+      reject(error);
+    };
+    signal?.addEventListener('abort', abortRender, { once: true });
+    if (signal?.aborted) abortRender();
 
     child.stderr.on('data', (data) => {
       const line = data.toString();
@@ -391,29 +416,26 @@ export async function renderReelVideo(options: RenderReelOptions): Promise<{ out
     });
 
     child.on('close', async (code) => {
-      // Clean up temporary ASS and SFX files
-      try {
-        if (fs.existsSync(assPath)) {
-          await fs.promises.unlink(assPath);
+      if (settled) return;
+      if (signal?.aborted) return void await fail(new Error('Render cancelled.'));
+      if (code === 0 && fs.existsSync(stagingOutputPath) && fs.statSync(stagingOutputPath).size > 1000) {
+        try {
+          await commitStorageFile(stagingOutputPath, outputPath);
+          await Promise.all([removeStorageFile(assPath), removeStorageFile(tempSfxPath)]);
+          settled = true;
+          cleanupSignal();
+          if (onProgress) onProgress(100);
+          resolve({ outputPath, duration: audioDuration });
+        } catch (error) {
+          await fail(error instanceof Error ? error : new Error('Could not save the completed render'));
         }
-      } catch {}
-
-      try {
-        if (hasSfxTrack && fs.existsSync(tempSfxPath)) {
-          await fs.promises.unlink(tempSfxPath);
-        }
-      } catch {}
-
-      if (code === 0 && fs.existsSync(outputPath)) {
-        if (onProgress) onProgress(100);
-        resolve({ outputPath, duration: audioDuration });
       } else {
-        reject(new Error(`FFmpeg caption reel render failed with code ${code}`));
+        await fail(new Error(`FFmpeg caption reel render failed with code ${code}`));
       }
     });
 
     child.on('error', (err) => {
-      reject(new Error(`Failed to launch FFmpeg: ${err.message}`));
+      void fail(new Error(`Failed to launch FFmpeg: ${err.message}`));
     });
   });
 }

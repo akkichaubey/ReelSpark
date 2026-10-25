@@ -14,7 +14,7 @@ import {
 import { groupTranscriptWords } from '@/lib/caption-maker/caption-grouping';
 import { FillerSegment, SfxCue, SyncedPhraseSegment, TranscriptWord } from '@/lib/caption-maker/types';
 import { requireMediaUser } from '@/lib/media-api-access';
-import { canReadMedia, mediaUserNamespace } from '@/lib/media-access';
+import { canReadMedia, mediaUserNamespace, recordMediaOwner } from '@/lib/media-access';
 import { backupPrivateMedia, restorePrivateMedia } from '@/lib/cloudflare/private-media';
 
 export async function POST(req: NextRequest) {
@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
+    await recordMediaOwner(outputDir, access.user.id);
     const filename = `jumpcut-${Date.now()}-${path.basename(targetPath, path.extname(targetPath))}.mp3`;
     const outputPath = path.join(outputDir, filename);
 

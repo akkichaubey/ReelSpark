@@ -667,7 +667,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
             </div>
 
-            {isUploadingMedia && uploadProgress.media < 100 && (
+            {isUploadingMedia && (
               <button
                 type="button"
                 onClick={() => cancelUpload('media')}
@@ -1100,7 +1100,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </p>
             </div>
 
-            {isUploadingAudio && uploadProgress.audio < 100 && (
+            {isUploadingAudio && (
               <button
                 type="button"
                 onClick={() => cancelUpload('audio')}
@@ -1338,7 +1338,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </span>
           </button>
 
-          {isUploadingBgm && uploadProgress.bgm < 100 && (
+          {isUploadingBgm && (
             <button
               type="button"
               onClick={() => cancelUpload('bgm')}

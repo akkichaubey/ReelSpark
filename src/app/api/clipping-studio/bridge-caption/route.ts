@@ -9,7 +9,7 @@ import { extractClipAudio } from '@/lib/ffmpeg';
 import { probeAudioDuration } from '@/lib/caption-maker/ffmpeg-renderer';
 import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
 import { requireMediaUser } from '@/lib/media-api-access';
-import { canReadMedia, mediaUserNamespace } from '@/lib/media-access';
+import { canReadMedia, mediaUserNamespace, recordMediaOwner } from '@/lib/media-access';
 import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
 
 const execFileAsync = promisify(execFile);
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(/*turbopackIgnore: true*/ targetDir)) {
       fs.mkdirSync(/*turbopackIgnore: true*/ targetDir, { recursive: true });
     }
+    await recordMediaOwner(targetDir, access.user.id);
 
     const clipSafeId = sanitizeFilename(clipId);
     const startSec = Math.max(0, startMs / 1000);

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { MAX_UPLOAD_BYTES } from './media-validation';
@@ -15,6 +16,14 @@ export interface IncomingUploadMetadata {
   filename: string;
   mediaType?: 'image' | 'video' | 'audio';
   expectedSize?: number;
+  uploadId: string;
+}
+
+export function getIncomingUploadId(request: Request): string {
+  const header = request.headers.get('x-reelspark-upload-id');
+  if (!header) return randomUUID();
+  if (!/^[a-zA-Z0-9_-]{16,128}$/.test(header)) throw new UploadRequestError('The upload session is invalid. Refresh the page and try again.');
+  return header;
 }
 
 /** Read upload metadata from headers so the media bytes can remain a stream. */
@@ -56,6 +65,7 @@ export function getIncomingUploadMetadata(request: Request, requireMediaType = f
 
   return {
     filename,
+    uploadId: getIncomingUploadId(request),
     mediaType: rawMediaType === 'image' || rawMediaType === 'video' || rawMediaType === 'audio' ? rawMediaType : undefined,
     expectedSize,
   };
@@ -66,6 +76,7 @@ export async function streamRequestBodyToFile(
   request: Request,
   targetPath: string,
   maxBytes = MAX_UPLOAD_BYTES,
+  signal?: AbortSignal,
 ): Promise<number> {
   if (!request.body) throw new UploadRequestError('The upload did not contain a file body.');
 
@@ -90,11 +101,11 @@ export async function streamRequestBodyToFile(
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
   const output = await fs.promises.open(targetPath, 'wx');
   try {
-    await pipeline(
-      Readable.fromWeb(request.body as any),
-      sizeLimit,
-      output.createWriteStream(),
-    );
+    if (signal) {
+      await pipeline(Readable.fromWeb(request.body as any), sizeLimit, output.createWriteStream(), { signal });
+    } else {
+      await pipeline(Readable.fromWeb(request.body as any), sizeLimit, output.createWriteStream());
+    }
   } catch (error) {
     await fs.promises.rm(targetPath, { force: true }).catch(() => undefined);
     throw error;

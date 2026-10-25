@@ -2,6 +2,40 @@ import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from './config';
 import { Project } from './types';
+import { cancelStorageTasksUnder, isStoragePathActive } from './storage-runtime';
+
+export class StorageInUseError extends Error {
+  constructor(message = 'Project files are still in use by an active upload or processing task. Retry deletion in a moment.') {
+    super(message);
+    this.name = 'StorageInUseError';
+  }
+}
+
+export class ProjectMediaReferencedError extends Error {
+  constructor() {
+    super('Project media is referenced by another saved project. The project was retained to protect shared files.');
+    this.name = 'ProjectMediaReferencedError';
+  }
+}
+
+function containsPathInsideProject(value: unknown, targetDirectory: string): boolean {
+  if (typeof value === 'string') {
+    let candidate: string | undefined;
+    try {
+      if (value.startsWith('/api/files/')) candidate = path.join(APP_CONFIG.storageRoot, decodeURIComponent(value.slice('/api/files/'.length).split(/[?#]/)[0]));
+      else if (value.startsWith('reelspark-storage:')) candidate = path.resolve(APP_CONFIG.storageRoot, value.slice('reelspark-storage:'.length));
+      else if (path.isAbsolute(value)) candidate = value;
+      if (!candidate) return false;
+      const safe = assertSafePath(path.resolve(candidate), APP_CONFIG.storageRoot);
+      const relative = path.relative(targetDirectory, safe);
+      return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+    } catch { return false; }
+  }
+  if (Array.isArray(value)) return value.some((item) => containsPathInsideProject(item, targetDirectory));
+  if (value && typeof value === 'object') return Object.entries(value).some(([key, child]) =>
+    /(?:path|url)$/i.test(key) && containsPathInsideProject(child, targetDirectory) || containsPathInsideProject(child, targetDirectory));
+  return false;
+}
 
 // Ensure base storage directories exist
 export function initStorage(): void {
@@ -102,6 +136,11 @@ export function getProjectDirs(projectId: string): ProjectDirectories {
 export async function saveProject(project: Project): Promise<void> {
   const dirs = getProjectDirs(project.id);
   project.updatedAt = new Date().toISOString();
+  const projectDocuments = await import('./cloudflare/project-documents');
+  if (projectDocuments.projectCloudEnabled()) {
+    if (!project.ownerUserId) throw new Error('Project owner is required for cloud persistence');
+    await projectDocuments.saveClipFinderDocument(project.ownerUserId, project);
+  }
   const tempFile = `${dirs.manifestFile}.tmp`;
   await fs.promises.writeFile(tempFile, JSON.stringify(project, null, 2), 'utf8');
   await fs.promises.rename(tempFile, dirs.manifestFile);
@@ -113,6 +152,35 @@ export async function saveProject(project: Project): Promise<void> {
 export async function loadProject(projectId: string): Promise<Project | null> {
   try {
     const dirs = getProjectDirs(projectId);
+    const projectDocuments = await import('./cloudflare/project-documents');
+    if (projectDocuments.projectCloudEnabled()) {
+      const cloudProject = await projectDocuments.loadClipFinderDocument(projectId);
+      if (cloudProject) {
+        const tempFile = `${dirs.manifestFile}.tmp`;
+        await fs.promises.writeFile(tempFile, JSON.stringify(cloudProject, null, 2), 'utf8');
+        await fs.promises.rename(tempFile, dirs.manifestFile);
+        return cloudProject;
+      }
+      if (!(await projectDocuments.clipFinderProjectDeleted(projectId)) && fs.existsSync(dirs.manifestFile)) {
+        const localProject = JSON.parse(await fs.promises.readFile(dirs.manifestFile, 'utf8')) as Project;
+        if (localProject.id === projectId && localProject.ownerUserId) {
+          // One-time migration for projects created before cloud metadata was
+          // enabled. Back up existing deliverables before committing metadata.
+          if (process.env.CLOUD_PRIVATE_MEDIA_ENABLED === 'true') {
+            const { backupPrivateMedia } = await import('./cloudflare/private-media');
+            const paths = [localProject.localVideoPath, ...localProject.candidates.flatMap(candidate => [candidate.renderedVideoPath, candidate.renderedSrtPath])];
+            for (const filename of new Set(paths.filter((value): value is string => Boolean(value)))) {
+              if (fs.existsSync(filename) && fs.statSync(filename).isFile()) await backupPrivateMedia(localProject.ownerUserId, filename);
+            }
+          }
+          await projectDocuments.saveClipFinderDocument(localProject.ownerUserId, localProject);
+          return localProject;
+        }
+      }
+      // A configured cloud catalog is authoritative; stale local manifests must
+      // not resurrect a project that was deleted or is owned by another user.
+      return null;
+    }
     if (!fs.existsSync(/*turbopackIgnore: true*/ dirs.manifestFile)) {
       return null;
     }
@@ -127,8 +195,12 @@ export async function loadProject(projectId: string): Promise<Project | null> {
 /**
  * List all existing projects.
  */
-export async function listProjects(): Promise<Project[]> {
+export async function listProjects(ownerUserId?: string): Promise<Project[]> {
   initStorage();
+  const projectDocuments = await import('./cloudflare/project-documents');
+  if (projectDocuments.projectCloudEnabled()) {
+    return projectDocuments.listClipFinderDocuments(ownerUserId);
+  }
   const entries = await fs.promises.readdir(APP_CONFIG.projectsDir, { withFileTypes: true });
   const projects: Project[] = [];
 
@@ -154,17 +226,39 @@ export async function listProjects(): Promise<Project[]> {
  * Delete a project and its entire directory.
  */
 export async function deleteProject(projectId: string): Promise<boolean> {
-  try {
-    const dirs = getProjectDirs(projectId);
-    if (fs.existsSync(dirs.rootDir)) {
-      await fs.promises.rm(dirs.rootDir, { recursive: true, force: true });
-      return true;
-    }
-    return false;
-  } catch (err) {
-    console.error(`Failed to delete project ${projectId}:`, err);
-    return false;
+  if (!/^[a-zA-Z0-9_-]{1,160}$/.test(projectId)) throw new Error('Invalid project ID');
+  const projectRoot = assertSafePath(path.join(APP_CONFIG.projectsDir, sanitizeFilename(projectId)), APP_CONFIG.projectsDir);
+  const project = await loadProject(projectId);
+  if (!project) return false;
+
+  const projects = await listProjects();
+  if (projects.some((project) => project.id !== projectId && containsPathInsideProject(project, projectRoot))) {
+    throw new ProjectMediaReferencedError();
   }
+
+  await cancelStorageTasksUnder(projectRoot);
+  if (isStoragePathActive(projectRoot)) throw new StorageInUseError();
+
+  const projectDocuments = await import('./cloudflare/project-documents');
+  if (projectDocuments.projectCloudEnabled()) {
+    if (!project.ownerUserId) throw new Error('Project owner is required for cloud deletion');
+    const { deleteOwnedClipFinderProject } = await import('./cloudflare/media-lifecycle');
+    await deleteOwnedClipFinderProject(project.ownerUserId, projectId);
+  }
+
+  if (!fs.existsSync(projectRoot)) {
+    console.info('[Storage] Deleted cloud project', projectId);
+    return true;
+  }
+
+  const realProjectsDir = await fs.promises.realpath(APP_CONFIG.projectsDir);
+  const realProjectDir = assertSafePath(await fs.promises.realpath(projectRoot), realProjectsDir);
+  if (path.dirname(realProjectDir) !== realProjectsDir || path.basename(realProjectDir) !== projectId) {
+    throw new Error('Unsafe project directory; files were retained');
+  }
+  await fs.promises.rm(realProjectDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  console.info('[Storage] Deleted project directory', projectId);
+  return true;
 }
 
 /**

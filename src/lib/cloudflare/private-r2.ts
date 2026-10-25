@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 
@@ -39,4 +39,24 @@ export async function deletePrivateObject(key: string): Promise<void> {
   const { s3, bucket } = client();
   try { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(30000) }); }
   finally { s3.destroy(); }
+}
+
+/** Enumerate only a bounded page of the app's private namespace for orphan checks. */
+export async function listPrivateObjects(continuationToken?: string, maxKeys = 100): Promise<{
+  objects: Array<{ key: string; lastModified?: Date }>;
+  continuationToken?: string;
+}> {
+  const { s3, bucket } = client();
+  try {
+    const page = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: 'users/',
+      MaxKeys: Math.min(1000, Math.max(1, maxKeys)),
+      ContinuationToken: continuationToken,
+    }), { abortSignal: AbortSignal.timeout(30000) });
+    return {
+      objects: (page.Contents || []).flatMap(item => item.Key ? [{ key: item.Key, lastModified: item.LastModified }] : []),
+      continuationToken: page.NextContinuationToken,
+    };
+  } finally { s3.destroy(); }
 }

@@ -389,7 +389,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 </>
               )}
             </button>
-            {submitStage === 'uploading' && submitProgress < 100 && (
+            {(submitStage === 'uploading' || submitStage === 'finalizing') && (
               <button
                 type="button"
                 onClick={() => uploadAbortController.current?.abort()}

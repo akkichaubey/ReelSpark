@@ -1,7 +1,7 @@
 import { requireProjectAccess } from '@/lib/project-access';
 import { backupPrivateMedia, restorePrivateMedia } from '@/lib/cloudflare/private-media';
 import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
-import { mediaUserNamespace, canUseRenderMedia } from '@/lib/media-access';
+import { mediaUserNamespace, canUseRenderMedia, recordMediaOwner } from '@/lib/media-access';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -14,8 +14,14 @@ import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings
 import { DEFAULT_OUTPUT_SETTINGS } from '@/lib/caption-maker/sample-data';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
 import { validateCaptionRenderRequest } from '@/lib/media-validation';
+import { registerStorageTask } from '@/lib/storage-runtime';
 
 export async function POST(req: NextRequest) {
+  let finishStorageTask: (() => void) | undefined;
+  const renderAbort = new AbortController();
+  const requestAbort = () => renderAbort.abort();
+  req.signal.addEventListener('abort', requestAbort, { once: true });
+  if (req.signal.aborted) renderAbort.abort();
   try {
     const user = await getRequestUser(req);
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -174,6 +180,7 @@ export async function POST(req: NextRequest) {
     // 4. Prepare project render directory
     const safeProjectId = sanitizeFilename(projectId);
     const renderDir = path.join(APP_CONFIG.storageRoot, 'caption-maker', 'renders', userNamespace, safeProjectId);
+    const renderUserDir = path.dirname(renderDir);
     assertSafePath(renderDir, path.join(APP_CONFIG.storageRoot, 'caption-maker', 'renders', userNamespace));
     if (!safeProjectId || safeProjectId === '.' || safeProjectId === '..') {
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
@@ -182,9 +189,17 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(renderDir)) {
       fs.mkdirSync(renderDir, { recursive: true });
     }
+    await recordMediaOwner(renderUserDir, user.id);
 
     const outputMp4Path = path.join(renderDir, `${safeProjectId}_final.mp4`);
     const outputSrtPath = path.join(renderDir, `${safeProjectId}_captions.srt`);
+    finishStorageTask = registerStorageTask({
+      id: `caption-render:${user.id}:${safeProjectId}:${Date.now()}`,
+      ownerId: user.id,
+      kind: 'render',
+      paths: [renderDir, APP_CONFIG.tempDir],
+      cancel: () => renderAbort.abort(),
+    });
 
     // 5. Write SRT Subtitle File
     const srtContent =
@@ -250,6 +265,7 @@ export async function POST(req: NextRequest) {
       bgMusicOffset,
       sfxCues: body.sfxCues,
       autoSfxEnabled: body.autoSfxEnabled,
+      signal: renderAbort.signal,
     });
 
     // Asynchronously prune expired temporary files
@@ -282,6 +298,7 @@ export async function POST(req: NextRequest) {
             introDuration: thumbnailIntroDuration ?? 0.000001,
             width: outputSettings.width,
             height: outputSettings.height,
+            signal: renderAbort.signal,
           });
           thumbnailMerged = true;
         } catch (mergeErr: any) {
@@ -312,5 +329,8 @@ export async function POST(req: NextRequest) {
       { error: err.message || 'Video rendering failed' },
       { status: 500 }
     );
+  } finally {
+    req.signal.removeEventListener('abort', requestAbort);
+    finishStorageTask?.();
   }
 }

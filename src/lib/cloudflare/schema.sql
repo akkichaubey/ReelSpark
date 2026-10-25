@@ -21,6 +21,41 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
+-- Durable Clip Finder and Clipping Studio project documents.
+CREATE TABLE IF NOT EXISTS project_documents (
+  kind TEXT NOT NULL,
+  id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  payload TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (kind, id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_documents_owner
+  ON project_documents(owner_user_id, kind, updated_at DESC);
+CREATE TABLE IF NOT EXISTS deleted_clip_finder_projects (
+  project_id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  deleted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_clip_finder_projects_owner
+  ON deleted_clip_finder_projects(owner_user_id, deleted_at);
+CREATE TABLE IF NOT EXISTS deleted_clipping_projects (
+  project_id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  deleted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS media_cleanup_queue (
+  object_key TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_cleanup_age ON media_cleanup_queue(created_at);
+CREATE TABLE IF NOT EXISTS media_cleanup_state (
+  state_key TEXT PRIMARY KEY,
+  cursor TEXT,
+  updated_at TEXT NOT NULL
+);
+
 -- ─── Private media recovery catalog ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS private_media (
   relative_path TEXT PRIMARY KEY,
@@ -31,6 +66,24 @@ CREATE TABLE IF NOT EXISTS private_media (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_private_media_owner ON private_media(owner_user_id);
+
+-- App-side R2 free-tier guard (migration 0005).
+CREATE TABLE IF NOT EXISTS cloud_media_usage (
+  month_key TEXT PRIMARY KEY,
+  class_a_ops INTEGER NOT NULL DEFAULT 0 CHECK (class_a_ops >= 0),
+  class_b_ops INTEGER NOT NULL DEFAULT 0 CHECK (class_b_ops >= 0)
+);
+CREATE TABLE IF NOT EXISTS private_media_upload_reservations (
+  relative_path TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reserved_bytes INTEGER NOT NULL CHECK (reserved_bytes >= 0),
+  pending_object_key TEXT,
+  started_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_private_media_reservations_started
+  ON private_media_upload_reservations(started_at);
+CREATE INDEX IF NOT EXISTS idx_private_media_reservations_object
+  ON private_media_upload_reservations(pending_object_key);
 
 -- ─── User Profiles (Extended Details & Customization) ────────────────────────
 CREATE TABLE IF NOT EXISTS user_profiles (
