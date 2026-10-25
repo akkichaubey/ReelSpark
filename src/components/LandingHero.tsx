@@ -70,12 +70,12 @@ export const LandingHero: React.FC = () => {
   return (
     <main className="flex-1 flex flex-col items-center justify-center relative overflow-hidden bg-zinc-950 text-zinc-100 selection:bg-amber-400 selection:text-black">
       {/* Background Decorative Ambient Glows */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[520px] bg-gradient-to-b from-amber-500/15 via-amber-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 -left-40 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -right-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Hero Content Section */}
-      <section className="relative max-w-5xl w-full mx-auto px-4 sm:px-8 pt-16 sm:pt-24 pb-16 text-center space-y-8 z-10">
+      <section className="relative max-w-5xl w-full mx-auto px-4 sm:px-8 pt-24 sm:pt-32 pb-20 text-center space-y-8 z-10">
         {/* Release Pill Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900/90 border border-white/10 text-xs font-semibold text-zinc-300 shadow-xl backdrop-blur-md">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
