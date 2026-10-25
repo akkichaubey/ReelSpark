@@ -67,7 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="flex items-center gap-3">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center hover:opacity-90 transition-opacity" title="ReelMaker">
-          <ReelSparkLogo variant="full" className="h-7 w-auto shrink-0" />
+          <ReelSparkLogo variant="full" className="h-9 w-auto shrink-0" />
         </Link>
 
         {/* Studio Switcher — only shown when logged in */}
@@ -231,7 +231,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           /* When NOT logged in: Keep only Login / Register button on top right */
           <button
             onClick={() => openAuthModal('login')}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-sm shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <User className="w-3.5 h-3.5 text-zinc-950" />
             <span>Login / Register</span>
