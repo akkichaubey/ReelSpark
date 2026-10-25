@@ -166,6 +166,13 @@ function DashboardPageContent() {
         await checkAuth();
         if (!active) return;
 
+        // Projects are private. A 401 is normal for signed-out visitors, so do not
+        // request them while the public landing page is being bootstrapped.
+        if (!useAuthStore.getState().user) {
+          setProjects([]);
+          return;
+        }
+
         void fetchJsonWithTimeout('/api/system')
           .then((sysData) => {
             if (!active || sysData.status !== 'ok') return;
@@ -175,7 +182,7 @@ function DashboardPageContent() {
               setSelectedOllamaModel(currentModel);
             }
           })
-          .catch((err) => console.error('Failed to fetch system status:', err));
+          .catch((err) => console.warn('System status is currently unavailable:', err));
 
         const projData = await fetchJsonWithTimeout('/api/projects');
         if (!projData.success) {
@@ -185,7 +192,6 @@ function DashboardPageContent() {
           setProjects(projData.projects || []);
         }
       } catch (err) {
-        console.error('Failed to fetch projects:', err);
         if (active) {
           setWorkspaceLoadError(
             err instanceof Error ? err.message : 'Could not load your workspace.'
