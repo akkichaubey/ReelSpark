@@ -488,7 +488,13 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 <div>
                   <label
                     className="font-bold text-xs text-zinc-100 block cursor-pointer select-none"
-                    onClick={() => update({ badgeEnabled: settings.badgeEnabled === false ? true : false })}
+                    onClick={() => {
+                  const nextVal = settings.badgeEnabled === false ? true : false;
+                  update({
+                    badgeEnabled: nextVal,
+                    badgeText: (nextVal && !settings.badgeText) ? "DON'T MISS" : settings.badgeText,
+                  });
+                }}
                   >
                     Hook Badge Pill
                   </label>
@@ -502,7 +508,13 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 type="button"
                 role="switch"
                 aria-checked={settings.badgeEnabled !== false}
-                onClick={() => update({ badgeEnabled: settings.badgeEnabled === false ? true : false })}
+                onClick={() => {
+                  const nextVal = settings.badgeEnabled === false ? true : false;
+                  update({
+                    badgeEnabled: nextVal,
+                    badgeText: (nextVal && !settings.badgeText) ? "DON'T MISS" : settings.badgeText,
+                  });
+                }}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                   settings.badgeEnabled !== false ? 'bg-amber-400' : 'bg-zinc-700'
                 }`}
@@ -525,7 +537,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={() => update({ badgeEnabled: true })}
+                  onClick={() => update({ badgeEnabled: true, badgeText: settings.badgeText || "DON'T MISS" })}
                   className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5 mt-1 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -836,9 +848,25 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
 
                 {/* 5. Typography & Dimensions Customization */}
                 <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
-                  <span className="font-bold text-xs text-zinc-200 block">
-                    Typography & Padding
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-zinc-200 block">
+                      Typography & Padding
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => update({
+                        badgeFontSize: 26,
+                        badgeFontWeight: '800',
+                        badgePaddingX: 18,
+                        badgePaddingY: 9,
+                        badgeLetterSpacing: 1,
+                      })}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer"
+                      title="Reset Typography & Padding to defaults (26px font, 18px horizontal, 9px vertical)"
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>

@@ -293,6 +293,71 @@ export function getPlatformConfig(platformKey: SocialPlatformKey | string): Plat
 }
 
 /**
+ * Official 2026 Platform Description / Caption Limits Reference
+ * - Instagram Reels: Max 2,200 chars | Rec: 150–500 chars | Truncation: ~125 chars
+ * - Facebook Reels:  Max 5,000 chars | Rec: 150–500 chars | Truncation: ~200 chars
+ * - Threads video:   Max 500 chars   | Rec: 100–350 chars | Truncation: 500 chars
+ * - YouTube Shorts:  Max 5,000 chars | Rec: 200–1,000 chars | Truncation: ~150 chars
+ * - All Platforms:   Max 500 chars   | Rec: 100–350 chars | Truncation: ~125 chars
+ */
+export interface PlatformDescriptionLimit {
+  max: number;
+  recMin: number;
+  recMax: number;
+  preFold: number;
+  label: string;
+  notes?: string;
+}
+
+export const PLATFORM_DESCRIPTION_LIMITS: Record<string, PlatformDescriptionLimit> = {
+  instagram: {
+    max: 2200,
+    recMin: 150,
+    recMax: 500,
+    preFold: 125,
+    label: 'Instagram Reels',
+    notes: 'Max 2,200 chars. Recommended: 150–500 chars. First ~125 chars visible before "...more".',
+  },
+  facebook: {
+    max: 5000,
+    recMin: 150,
+    recMax: 500,
+    preFold: 200,
+    label: 'Facebook Reels',
+    notes: 'Max 5,000 chars for Reels. Recommended: 150–500 chars.',
+  },
+  threads: {
+    max: 500,
+    recMin: 100,
+    recMax: 350,
+    preFold: 500,
+    label: 'Threads Video',
+    notes: 'Hard max 500 chars. Recommended: 100–350 chars.',
+  },
+  youtube: {
+    max: 5000,
+    recMin: 200,
+    recMax: 1000,
+    preFold: 150,
+    label: 'YouTube Shorts',
+    notes: 'Max 5,000 characters. Recommended: 200–1,000 chars. Active clickable hyperlinks.',
+  },
+  all: {
+    max: 500,
+    recMin: 100,
+    recMax: 350,
+    preFold: 125,
+    label: 'All Platforms',
+    notes: 'Constrained by Threads (500 chars max) so one copy works everywhere.',
+  },
+};
+
+export function getPlatformDescriptionLimit(platformKey: string): PlatformDescriptionLimit {
+  const key = (platformKey || '').toLowerCase();
+  return PLATFORM_DESCRIPTION_LIMITS[key] || PLATFORM_DESCRIPTION_LIMITS.all;
+}
+
+/**
  * Validate whether a platform key is recognized.
  */
 export function isRecognizedPlatform(key: string): key is SocialPlatformKey {

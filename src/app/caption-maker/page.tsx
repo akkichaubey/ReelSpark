@@ -791,8 +791,20 @@ function CaptionMakerPageContent() {
 
   const currentThumbSettings = useMemo(() => {
     if (project.thumbnailSettings) {
+      const isBadgeExplicitlyDisabled = project.thumbnailSettings.badgeEnabled !== true;
+      const badgePaddingX = project.thumbnailSettings.badgePaddingX ?? 18;
+      const badgePaddingY = project.thumbnailSettings.badgePaddingY ?? 9;
       return {
         ...project.thumbnailSettings,
+        badgeText: isBadgeExplicitlyDisabled
+          ? (project.thumbnailSettings.badgeText || '')
+          : (project.thumbnailSettings.badgeText || "DON'T MISS"),
+        badgeEnabled: !isBadgeExplicitlyDisabled,
+        badgeFontSize: project.thumbnailSettings.badgeFontSize ?? 26,
+        badgeFontWeight: project.thumbnailSettings.badgeFontWeight || '800',
+        badgePaddingX,
+        badgePaddingY,
+        badgeLetterSpacing: project.thumbnailSettings.badgeLetterSpacing ?? 1,
         aspectRatio: initialThumbAspect,
         safeZoneOverrides: project.thumbnailSettings.safeZoneOverrides || project.captionStyle?.safeZoneOverrides,
       };

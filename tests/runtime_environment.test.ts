@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+
+async function main() {
+  Object.assign(process.env, { NODE_ENV:'development', STORAGE_DIR:fs.mkdtempSync(path.join(os.tmpdir(),'reelspark-runtime-')) });
+  for (const key of ['OAUTH_ENCRYPTION_KEY','AUTH_SECRET','CLOUDFLARE_API_TOKEN','RENDER','RENDER_EXTERNAL_URL']) delete process.env[key];
+  const { runtimeOrigin } = await import('../src/lib/runtime-origin');
+  const { getAuthOrigin, startGoogleFlow } = await import('../src/lib/google-auth');
+  const { isSameOriginAuthRequest } = await import('../src/lib/auth');
+  const { publishingSecret } = await import('../src/lib/social-intelligence/publishing-secret');
+  const { encryptToken, decryptToken } = await import('../src/lib/social-intelligence/token-encryption');
+  const { publishingRuntimeStatus } = await import('../src/lib/social-intelligence/publishing-runtime');
+  const { GET: status } = await import('../src/app/api/social-publishing/status/route');
+  process.env.AUTH_URL = 'https://live.example.test';
+  assert.equal(getAuthOrigin('http://localhost:3000/api/auth/google'),'http://localhost:3000');
+  assert.equal(runtimeOrigin('http://127.0.0.1:3000/reel-maker'),'http://127.0.0.1:3000');
+  assert.ok(isSameOriginAuthRequest(new Request('http://127.0.0.1:3000/api/test',{headers:{origin:'http://127.0.0.1:3000'}})));
+  assert.equal(isSameOriginAuthRequest(new Request('http://localhost:3000/api/test',{headers:{origin:'https://evil.example'}})),false);
+  process.env.GOOGLE_CLIENT_ID = 'test-client'; process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
+  const localFlow = startGoogleFlow(getAuthOrigin('http://127.0.0.1:3000/api/auth/google'),'/');
+  assert.equal(new URL(localFlow.authorizationUrl).searchParams.get('redirect_uri'),'http://127.0.0.1:3000/api/auth/google/callback');
+  const localKey = publishingSecret();
+  assert.ok(localKey.length >= 32); assert.equal(publishingSecret(),localKey);
+  const token = encryptToken('test-token'); assert.ok(token.startsWith('v2:')); assert.equal(decryptToken(token),'test-token');
+  const restartedKey = execFileSync(process.execPath,['node_modules/tsx/dist/cli.mjs','-e',"process.stdout.write(require('./src/lib/social-intelligence/publishing-secret').publishingSecret())"],{env:process.env,windowsHide:true}).toString();
+  assert.equal(restartedKey,localKey,'Restart must retain the generated local key');
+  // Preserve development tokens saved by the previous implementation.
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm',crypto.createHash('sha256').update('reelspark-secure-publishing-oauth-dev-key-2026').digest(),iv);
+  const encrypted = Buffer.concat([cipher.update('legacy-dev-token'),cipher.final()]);
+  assert.equal(decryptToken(Buffer.concat([iv,cipher.getAuthTag(),encrypted]).toString('base64')),'legacy-dev-token');
+  assert.equal((await status(new Request('http://localhost:3000/api/social-publishing/status'))).status,401);
+  Object.assign(process.env,{CLOUDFLARE_ACCOUNT_ID:'fixture',CLOUDFLARE_D1_DATABASE_ID:'fixture',CLOUDFLARE_API_TOKEN:'fixture'});
+  assert.throws(publishingSecret,/environments sharing D1/);
+  assert.equal(publishingRuntimeStatus('http://localhost:3000').encryptionReady,false);
+  delete process.env.CLOUDFLARE_API_TOKEN;
+  console.log('✓ Local/127.0.0.1 callbacks, CSRF origin, generated key restart persistence and legacy compatibility');
+
+  Object.assign(process.env,{NODE_ENV:'production'});
+  assert.equal(runtimeOrigin('http://localhost:3000/api/test'),'https://live.example.test');
+  assert.throws(publishingSecret,/Configure OAUTH_ENCRYPTION_KEY/,'Production must never reuse a temporary local key');
+  assert.equal(publishingRuntimeStatus().configurationReady,false);
+  Object.assign(process.env,{OAUTH_ENCRYPTION_KEY:'production-fixture-key-at-least-32-characters'});
+  assert.equal(decryptToken(encryptToken('production-token')),'production-token');
+  delete process.env.AUTH_URL;
+  assert.throws(() => runtimeOrigin('https://attacker.example'),'Unpinned production origin must be rejected');
+  Object.assign(process.env,{RENDER:'true',RENDER_EXTERNAL_URL:'https://fixture.onrender.com'});
+  assert.equal(runtimeOrigin('http://localhost:10000'),'https://fixture.onrender.com');
+  const remoteFlow = startGoogleFlow(runtimeOrigin('http://localhost:10000'),'/');
+  assert.equal(new URL(remoteFlow.authorizationUrl).searchParams.get('redirect_uri'),'https://fixture.onrender.com/api/auth/google/callback');
+  Object.assign(process.env,{CLOUDFLARE_ACCOUNT_ID:'fixture',CLOUDFLARE_D1_DATABASE_ID:'fixture',CLOUDFLARE_API_TOKEN:'fixture',CLOUD_PRIVATE_MEDIA_ENABLED:'true',CLOUDFLARE_R2_BUCKET_NAME:'fixture',R2_ACCESS_KEY_ID:'fixture',R2_SECRET_ACCESS_KEY:'fixture'});
+  const configured = publishingRuntimeStatus();
+  assert.equal(configured.configurationReady,true); assert.equal(configured.verification,'configuration-only');
+  process.env.AUTH_URL = 'http://localhost:3000';
+  assert.throws(() => runtimeOrigin('https://fixture.onrender.com'));
+  process.env.OAUTH_ENCRYPTION_KEY = 'short';
+  assert.throws(publishingSecret,/at least 32/);
+  console.log('✓ Live canonical HTTPS, Render URL detection, stable key enforcement and configuration diagnostics (no network calls)');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

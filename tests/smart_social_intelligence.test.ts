@@ -9,6 +9,8 @@ import {
   PLATFORM_CONFIGS,
   getPlatformConfig,
   isRecognizedPlatform,
+  PLATFORM_DESCRIPTION_LIMITS,
+  getPlatformDescriptionLimit,
 } from '../src/lib/social-intelligence/platform-rules';
 import { validateSocialPost } from '../src/lib/social-intelligence/post-validator';
 import {
@@ -240,7 +242,35 @@ async function runSocialIntelligenceTests() {
   const fbConfig = getPlatformConfig('facebook');
   assert.strictEqual(fbConfig.characterLimits.maxTotal, 63206);
 
+  // 5.5 Official 2026 Description Limits (Image 2)
+  const igDesc = getPlatformDescriptionLimit('instagram');
+  assert.strictEqual(igDesc.max, 2200, 'Instagram Reels max description must be 2,200 chars');
+  assert.strictEqual(igDesc.recMin, 150);
+  assert.strictEqual(igDesc.recMax, 500);
+  assert.strictEqual(igDesc.preFold, 125);
+
+  const fbDesc = getPlatformDescriptionLimit('facebook');
+  assert.strictEqual(fbDesc.max, 5000, 'Facebook Reels max description must be 5,000 chars');
+  assert.strictEqual(fbDesc.recMin, 150);
+  assert.strictEqual(fbDesc.recMax, 500);
+
+  const threadsDesc = getPlatformDescriptionLimit('threads');
+  assert.strictEqual(threadsDesc.max, 500, 'Threads video max description must be 500 chars');
+  assert.strictEqual(threadsDesc.recMin, 100);
+  assert.strictEqual(threadsDesc.recMax, 350);
+
+  const ytDesc = getPlatformDescriptionLimit('youtube');
+  assert.strictEqual(ytDesc.max, 5000, 'YouTube Shorts max description must be 5,000 chars');
+  assert.strictEqual(ytDesc.recMin, 200);
+  assert.strictEqual(ytDesc.recMax, 1000);
+
+  const allDesc = getPlatformDescriptionLimit('all');
+  assert.strictEqual(allDesc.max, 500, 'All Platforms copy must be bounded by 500 chars');
+  assert.strictEqual(allDesc.recMin, 100);
+  assert.strictEqual(allDesc.recMax, 350);
+
   console.log('  ✓ Checked configured reference limits for Instagram, YouTube, Threads, and Facebook');
+  console.log('  ✓ Verified official 2026 platform description limits (Instagram 2.2k, FB 5k, Threads 500, YT 5k, All 500)');
 
   // ─── SECTION 6: Post Validation & Quality Scoring ───────────────────────────
   console.log('▶ Section 6: Smart Post Validation & Quality Scoring Engine');

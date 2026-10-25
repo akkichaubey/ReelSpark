@@ -239,3 +239,59 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('cf_model',       '"@cf/meta/llama-3.1-8b-instruct"'),
   ('cf_whisper',     '"@cf/openai/whisper-large-v3-turbo"'),
   ('max_clip_duration', '60');
+
+-- ─── Social Media Publishing System ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_oauth_connections (
+  id                  TEXT PRIMARY KEY,
+  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform            TEXT NOT NULL,
+  platform_user_id    TEXT NOT NULL,
+  account_name        TEXT NOT NULL,
+  account_handle      TEXT,
+  avatar_url          TEXT,
+  access_token        TEXT NOT NULL,
+  refresh_token       TEXT,
+  token_expires_at    TEXT,
+  scope               TEXT NOT NULL,
+  metadata            TEXT NOT NULL DEFAULT '{}',
+  status              TEXT NOT NULL DEFAULT 'connected',
+  last_error          TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_user_platform ON social_oauth_connections(user_id, platform);
+
+CREATE TABLE IF NOT EXISTS social_publishing_jobs (
+  id                  TEXT PRIMARY KEY,
+  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_path          TEXT NOT NULL,
+  thumbnail_path      TEXT,
+  video_metadata      TEXT NOT NULL DEFAULT '{}',
+  show_other_socials  INTEGER NOT NULL DEFAULT 1,
+  status              TEXT NOT NULL DEFAULT 'queued',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pub_jobs_user ON social_publishing_jobs(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS social_published_posts (
+  id                  TEXT PRIMARY KEY,
+  job_id              TEXT NOT NULL REFERENCES social_publishing_jobs(id) ON DELETE CASCADE,
+  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform            TEXT NOT NULL,
+  connection_id       TEXT REFERENCES social_oauth_connections(id) ON DELETE SET NULL,
+  post_title          TEXT,
+  post_caption        TEXT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'pending',
+  progress_percent    REAL NOT NULL DEFAULT 0.0,
+  platform_post_id    TEXT,
+  platform_post_url   TEXT,
+  error_message       TEXT,
+  retry_count         INTEGER NOT NULL DEFAULT 0,
+  idempotency_key     TEXT NOT NULL UNIQUE,
+  published_at        TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pub_posts_job ON social_published_posts(job_id);
+CREATE INDEX IF NOT EXISTS idx_pub_posts_user ON social_published_posts(user_id, platform, status);

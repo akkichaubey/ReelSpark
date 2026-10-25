@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { runtimeOrigin } from './runtime-origin';
 
 export const GOOGLE_FLOW_COOKIE = 'reelspark_google_flow';
 export const GOOGLE_FLOW_TTL = 10 * 60;
@@ -18,17 +19,7 @@ export function isGoogleConfigured(): boolean {
 }
 
 export function getAuthOrigin(requestUrl: string): string {
-  const configured = process.env.AUTH_URL?.trim();
-  const url = new URL(configured || requestUrl);
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (url.username || url.password || (url.protocol !== 'https:' && !(local && url.protocol === 'http:'))) {
-    throw new Error('AUTH_URL must use HTTPS, except on localhost.');
-  }
-  if (process.env.NODE_ENV === 'production' && (!configured || url.protocol !== 'https:')) {
-    throw new Error('Set AUTH_URL to your public HTTPS origin.');
-  }
-  if (!configured && !local) throw new Error('Set AUTH_URL for a remote deployment.');
-  return url.origin;
+  return runtimeOrigin(requestUrl);
 }
 
 export function safeReturnTo(value: string | null | undefined, origin: string): string {

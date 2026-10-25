@@ -6,6 +6,7 @@
  */
 
 import { SocialAccount, SocialLinkPreferences, SocialPlatformKey } from './types';
+import { ensureThreeDotsSpacing, hasThreeDotsPrefix } from './cta-presets';
 
 export const PLATFORM_DOMAINS: Record<SocialPlatformKey, string[]> = {
   facebook: ['facebook.com', 'fb.com', 'fb.watch', 'www.facebook.com', 'm.facebook.com', 'web.facebook.com'],
@@ -321,14 +322,28 @@ export function formatSocialLinksBlock(
 ): string {
   if (!eligibleLinks || eligibleLinks.length === 0) return '';
 
-  const heading = preferences.customHeading?.trim() || '';
-  const separateLines = preferences.displaySeparateLines !== false;
+  const rawHeading = (preferences.customHeading || '').trimEnd();
+  // Strip any legacy embedded dots from heading text so heading text remains purely heading
+  let headingText = rawHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
 
+  const shouldIncludeDots =
+    preferences.threeDotsSpacer !== undefined
+      ? preferences.threeDotsSpacer
+      : hasThreeDotsPrefix(rawHeading);
+
+  let heading = headingText;
+  if (shouldIncludeDots) {
+    heading = headingText ? `\n.\n.\n.\n\n${headingText}` : `\n.\n.\n.`;
+  }
+
+  const separateLines = preferences.displaySeparateLines !== false;
   const linkLines = eligibleLinks.map((l) => l.formattedText);
 
   if (separateLines) {
-    return [heading, ...linkLines].filter(Boolean).join('\n');
+    const linksText = linkLines.join('\n');
+    return heading ? `${heading}\n\n${linksText}` : linksText;
   } else {
-    return [heading, linkLines.join(' • ')].filter(Boolean).join(' ');
+    const linksText = linkLines.join(' • ');
+    return heading ? `${heading}\n\n${linksText}` : linksText;
   }
 }

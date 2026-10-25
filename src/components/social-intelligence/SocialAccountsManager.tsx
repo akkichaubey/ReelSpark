@@ -22,7 +22,10 @@ import {
   Hash,
   Check,
   Copy,
+  Info,
+  Key,
 } from 'lucide-react';
+import { OAuthCredentialsModal } from '../social-publishing/OAuthCredentialsModal';
 import {
   SocialAccount,
   SocialLinkPreferences,
@@ -36,6 +39,12 @@ import {
   resolveEligibleSocialLinks,
   formatSocialLinksBlock,
 } from '@/lib/social-intelligence/link-engine';
+import { CtaPresetsDropdown } from './CtaPresetsDropdown';
+import {
+  hasThreeDotsPrefix,
+  toggleThreeDotsPrefix,
+  applyThreeDotsPrefix,
+} from '@/lib/social-intelligence/cta-presets';
 
 export const SocialAccountsManager: React.FC = () => {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -57,13 +66,72 @@ export const SocialAccountsManager: React.FC = () => {
     updatedAt: new Date().toISOString(),
   });
   const [customHeading, setCustomHeading] = useState('');
+  const [threeDotsSpacer, setThreeDotsSpacer] = useState<boolean>(true);
   const [savingHeading, setSavingHeading] = useState(false);
   const [previewPlatform, setPreviewPlatform] = useState<SocialPlatformKey>('youtube');
   const [copiedPreview, setCopiedPreview] = useState(false);
 
+  // OAuth Publishing Connections State
+  const [oauthConnections, setOauthConnections] = useState<Record<string, any>>({});
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [configModalPlatform, setConfigModalPlatform] = useState<any>('instagram');
+
+  const fetchOAuthConnections = async () => {
+    try {
+      setOauthLoading(true);
+      const res = await fetch('/api/social-publishing/oauth/connections');
+      const data = await res.json();
+      if (data.success && data.connections) {
+        const map: any = {};
+        for (const c of data.connections) {
+          map[c.platform] = c;
+        }
+        setOauthConnections(map);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch OAuth connections:', e);
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const handleConnectOAuth = async (platform: string) => {
+    try {
+      const res = await fetch(
+        `/api/social-publishing/oauth/${platform}/connect?returnTo=/social-post?tab=accounts`,
+        { headers: { Accept: 'application/json' } }
+      );
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else if (data.requiresCredentials) {
+        setConfigModalPlatform(platform);
+        setIsConfigModalOpen(true);
+      } else {
+        showToast(data.error || 'Failed to initiate authorization');
+      }
+    } catch (e: any) {
+      setConfigModalPlatform(platform);
+      setIsConfigModalOpen(true);
+    }
+  };
+
+  const handleDisconnectOAuth = async (platform: string) => {
+    try {
+      await fetch(`/api/social-publishing/oauth/${platform}/disconnect`, { method: 'POST' });
+      await fetchOAuthConnections();
+      showToast(`Disconnected from ${platform}`);
+    } catch (e) {
+      console.error('Failed to disconnect:', e);
+    }
+  };
+
   // Fixed hashtags state
   const [newTagInput, setNewTagInput] = useState('');
   const [savingHashtags, setSavingHashtags] = useState(false);
+  const [copiedTagId, setCopiedTagId] = useState<string | null>(null);
+  const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
 
   // Drag-and-drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -87,13 +155,13 @@ export const SocialAccountsManager: React.FC = () => {
       const oA = orderMap.has(a.id.toLowerCase())
         ? orderMap.get(a.id.toLowerCase())!
         : orderMap.has(a.platform.toLowerCase())
-        ? orderMap.get(a.platform.toLowerCase())!
-        : 999;
+          ? orderMap.get(a.platform.toLowerCase())!
+          : 999;
       const oB = orderMap.has(b.id.toLowerCase())
         ? orderMap.get(b.id.toLowerCase())!
         : orderMap.has(b.platform.toLowerCase())
-        ? orderMap.get(b.platform.toLowerCase())!
-        : 999;
+          ? orderMap.get(b.platform.toLowerCase())!
+          : 999;
       return oA - oB;
     });
   };
@@ -101,6 +169,7 @@ export const SocialAccountsManager: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      fetchOAuthConnections();
       const [accRes, prefRes] = await Promise.all([
         fetch('/api/social-accounts'),
         fetch('/api/social-accounts/preferences'),
@@ -114,8 +183,19 @@ export const SocialAccountsManager: React.FC = () => {
       }
 
       if (prefData.success && prefData.preferences) {
-        setPreferences(prefData.preferences);
-        setCustomHeading(prefData.preferences.customHeading || '');
+        const excludeTarget = prefData.preferences.excludeTargetPlatform !== false;
+        setPreferences({
+          ...prefData.preferences,
+          excludeTargetPlatform: excludeTarget,
+        });
+        const raw = prefData.preferences.customHeading || '';
+        const clean = raw.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
+        setCustomHeading(clean);
+        const hasDots =
+          prefData.preferences.threeDotsSpacer !== undefined
+            ? prefData.preferences.threeDotsSpacer
+            : true;
+        setThreeDotsSpacer(hasDots);
         if (Array.isArray(prefData.preferences.linkOrder) && prefData.preferences.linkOrder.length > 0) {
           loadedAccounts = sortAccountsByOrder(loadedAccounts, prefData.preferences.linkOrder);
         }
@@ -331,7 +411,8 @@ export const SocialAccountsManager: React.FC = () => {
   const handleSaveHeading = async () => {
     try {
       setSavingHeading(true);
-      const updatedPrefs = { ...preferences, customHeading };
+      const cleanHeading = customHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
+      const updatedPrefs = { ...preferences, customHeading: cleanHeading, threeDotsSpacer };
       const res = await fetch('/api/social-accounts/preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -346,6 +427,26 @@ export const SocialAccountsManager: React.FC = () => {
       showToast('Error saving heading');
     } finally {
       setSavingHeading(false);
+    }
+  };
+
+  const handleToggleExcludeTarget = async () => {
+    const nextVal = preferences.excludeTargetPlatform === false ? true : false;
+    const updated = { ...preferences, excludeTargetPlatform: nextVal };
+    setPreferences(updated);
+    try {
+      await fetch('/api/social-accounts/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excludeTargetPlatform: nextVal }),
+      });
+      showToast(
+        nextVal
+          ? 'Target platform link is now excluded'
+          : 'Target platform link is now included'
+      );
+    } catch {
+      showToast('Error updating preference');
     }
   };
 
@@ -426,6 +527,21 @@ export const SocialAccountsManager: React.FC = () => {
     }
   };
 
+  const handleCopyHashtag = (tag: string, id: string) => {
+    const formattedTag = tag.startsWith('#') ? tag : `#${tag}`;
+    navigator.clipboard.writeText(formattedTag);
+    setCopiedTagId(id);
+    showToast(`Copied ${formattedTag} to clipboard!`);
+    setTimeout(() => setCopiedTagId(null), 2000);
+  };
+
+  const handleCopyUrl = (url: string, id: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedAccountId(id);
+    showToast('Account link copied to clipboard!');
+    setTimeout(() => setCopiedAccountId(null), 2000);
+  };
+
   const handleSaveHashtags = async () => {
     try {
       setSavingHashtags(true);
@@ -445,12 +561,12 @@ export const SocialAccountsManager: React.FC = () => {
   // Live preview string
   const previewEligibleLinks = resolveEligibleSocialLinks(
     accounts,
-    { ...preferences, customHeading },
+    { ...preferences, customHeading, threeDotsSpacer },
     previewPlatform
   );
   let previewFormattedText = formatSocialLinksBlock(
     previewEligibleLinks,
-    { ...preferences, customHeading }
+    { ...preferences, customHeading, threeDotsSpacer }
   );
 
   const activeFixedTags = (preferences.fixedHashtags || [])
@@ -498,6 +614,107 @@ export const SocialAccountsManager: React.FC = () => {
           <span>{error}</span>
         </div>
       )}
+
+      {/* Connected Social Publishing Accounts (OAuth 2.0) Section */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-4 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-400 flex items-center justify-center text-zinc-950 font-black shadow-md shadow-amber-400/20">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">
+                  Connected Social Publishing Accounts (OAuth 2.0)
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold">
+                  Direct API Publishing
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400">
+                Authorize your accounts once to publish Reels and Shorts directly without manual copy-pasting.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setConfigModalPlatform('instagram');
+              setIsConfigModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <Key className="w-3.5 h-3.5 text-amber-400" />
+            <span>Configure API Keys</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { platform: 'youtube', name: 'YouTube Shorts', desc: 'Google Data API v3' },
+            { platform: 'instagram', name: 'Instagram Reels', desc: 'Meta Graph API' },
+            { platform: 'facebook', name: 'Facebook Reels', desc: 'Meta Page Reels API' },
+            { platform: 'threads', name: 'Threads', desc: 'Official Threads API' },
+          ].map((item) => {
+            const conn = oauthConnections[item.platform];
+            const isConnected = Boolean(conn && conn.status === 'connected');
+
+            return (
+              <div
+                key={item.platform}
+                className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-3 transition-all ${
+                  isConnected
+                    ? 'bg-zinc-950 border-emerald-500/40 shadow-sm'
+                    : 'bg-zinc-950/60 border-zinc-800/90'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <SocialPlatformIcon platform={item.platform as any} size="sm" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white truncate">{item.name}</div>
+                      <div className="text-[10px] text-zinc-500">{item.desc}</div>
+                    </div>
+                  </div>
+                  {isConnected ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 shrink-0" />
+                  ) : null}
+                </div>
+
+                {isConnected ? (
+                  <div className="space-y-2 pt-1 border-t border-zinc-800/60">
+                    <div className="text-[11px] text-zinc-300 font-semibold truncate">
+                      {conn.accountHandle || conn.accountName}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="text-emerald-400 font-medium flex items-center gap-1">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>Connected</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectOAuth(item.platform)}
+                        className="text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleConnectOAuth(item.platform)}
+                    className="w-full text-center text-xs font-bold py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700 transition-all cursor-pointer block"
+                  >
+                    Connect Account
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
@@ -590,15 +807,14 @@ export const SocialAccountsManager: React.FC = () => {
                 onDragEnter={(e) => handleDragOver(e, idx)}
                 onDrop={(e) => handleDrop(e, idx)}
                 onDragEnd={handleDragEnd}
-                className={`group relative p-4 rounded-xl border transition-all duration-200 flex flex-col justify-between space-y-3 select-none ${
-                  draggedIndex === idx
-                    ? 'opacity-30 scale-[0.98] border-dashed border-amber-400 bg-amber-400/5 ring-2 ring-amber-400/40 cursor-grabbing'
-                    : dragOverIndex === idx
+                className={`group relative p-4 rounded-xl border transition-all duration-200 flex flex-col justify-between space-y-3 select-none ${draggedIndex === idx
+                  ? 'opacity-30 scale-[0.98] border-dashed border-amber-400 bg-amber-400/5 ring-2 ring-amber-400/40 cursor-grabbing'
+                  : dragOverIndex === idx
                     ? 'border-amber-400 bg-amber-400/10 shadow-lg shadow-amber-400/10 scale-[1.01] ring-2 ring-amber-400 cursor-move'
                     : acc.enabled
-                    ? 'bg-zinc-900/70 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/90 cursor-grab active:cursor-grabbing'
-                    : 'bg-zinc-950/40 border-zinc-900 opacity-60 cursor-grab active:cursor-grabbing'
-                }`}
+                      ? 'bg-zinc-900/70 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/90 cursor-grab active:cursor-grabbing'
+                      : 'bg-zinc-950/40 border-zinc-900 opacity-60 cursor-grab active:cursor-grabbing'
+                  }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -667,11 +883,10 @@ export const SocialAccountsManager: React.FC = () => {
                       type="button"
                       onClick={() => handleToggleEnable(acc)}
                       title={acc.enabled ? 'Click to disable' : 'Click to enable'}
-                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                        acc.enabled
-                          ? 'text-emerald-400 hover:bg-emerald-500/10'
-                          : 'text-zinc-600 hover:bg-zinc-800'
-                      }`}
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${acc.enabled
+                        ? 'text-emerald-400 hover:bg-emerald-500/10'
+                        : 'text-zinc-600 hover:bg-zinc-800'
+                        }`}
                     >
                       <Power className="w-3.5 h-3.5" />
                     </button>
@@ -696,18 +911,32 @@ export const SocialAccountsManager: React.FC = () => {
 
                 {/* URL & Link Preview */}
                 <div
-                  className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs"
+                  className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs gap-2"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <a
                     href={acc.accountUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-zinc-400 hover:text-amber-400 font-mono text-[11px] truncate flex items-center gap-1.5 transition-colors"
+                    className="text-zinc-400 hover:text-amber-400 font-mono text-[11px] truncate flex items-center gap-1.5 transition-colors flex-1 min-w-0"
                   >
                     <span className="truncate">{acc.accountUrl}</span>
                     <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
+
+                  {/* Copy Account Link Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl(acc.accountUrl, acc.id)}
+                    title={`Copy ${acc.platform} link`}
+                    className="p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-400/10 transition-colors cursor-pointer shrink-0"
+                  >
+                    {copiedAccountId === acc.id ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
                 </div>
               </div>
             ))}
@@ -780,11 +1009,10 @@ export const SocialAccountsManager: React.FC = () => {
               (preferences.fixedHashtags || []).map((ht) => (
                 <div
                   key={ht.id}
-                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                    ht.enabled
-                      ? 'bg-zinc-950/80 border-amber-400/30'
-                      : 'bg-zinc-950/30 border-zinc-900 opacity-60'
-                  }`}
+                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${ht.enabled
+                    ? 'bg-zinc-950/80 border-amber-400/30'
+                    : 'bg-zinc-950/30 border-zinc-900 opacity-60'
+                    }`}
                 >
                   {/* Tick / Checkbox */}
                   <button
@@ -793,11 +1021,10 @@ export const SocialAccountsManager: React.FC = () => {
                     className="flex items-center gap-2.5 text-left flex-1 cursor-pointer group"
                   >
                     <div
-                      className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
-                        ht.enabled
-                          ? 'bg-amber-400 border-amber-400 text-black'
-                          : 'bg-zinc-900 border-zinc-700 text-transparent group-hover:border-zinc-500'
-                      }`}
+                      className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${ht.enabled
+                        ? 'bg-amber-400 border-amber-400 text-black'
+                        : 'bg-zinc-900 border-zinc-700 text-transparent group-hover:border-zinc-500'
+                        }`}
                     >
                       <Check className="w-3 h-3 stroke-[3]" />
                     </div>
@@ -817,12 +1044,26 @@ export const SocialAccountsManager: React.FC = () => {
                     )}
                   </button>
 
+                  {/* Copy Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleCopyHashtag(ht.tag, ht.id)}
+                    title={`Copy ${ht.tag}`}
+                    className="p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-amber-400/10 transition-colors cursor-pointer shrink-0 ml-2"
+                  >
+                    {copiedTagId === ht.id ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
                   {/* Remove Button */}
                   <button
                     type="button"
                     onClick={() => handleDeleteHashtag(ht.id)}
                     title={`Remove ${ht.tag}`}
-                    className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0 ml-2"
+                    className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0 ml-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -860,45 +1101,113 @@ export const SocialAccountsManager: React.FC = () => {
           {/* Target Platform Simulation Selector */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] text-zinc-400">
-              <span>Simulate Target Platform:</span>
-              <span className="text-[10px] text-zinc-500 font-mono">Excludes target link</span>
-            </div>
-            <div className="grid grid-cols-4 gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-              {(['youtube', 'instagram', 'threads', 'facebook'] as SocialPlatformKey[]).map((pKey) => (
-                <button
-                  key={pKey}
-                  type="button"
-                  onClick={() => setPreviewPlatform(pKey)}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold capitalize text-center transition-all cursor-pointer ${
-                    previewPlatform === pKey
-                      ? 'bg-amber-400 text-black shadow-sm font-bold'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+              <span>{preferences.excludeTargetPlatform !== false ? 'Simulate Target Platform:' : 'Target Platform Exclusion:'}</span>
+              <button
+                type="button"
+                onClick={handleToggleExcludeTarget}
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md font-mono text-[10px] transition-all cursor-pointer border ${
+                  preferences.excludeTargetPlatform !== false
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                    : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-zinc-200 hover:border-zinc-600'
+                }`}
+                title="Click to toggle: When ON, the target platform's own link is excluded from post copy. When OFF, all links are included."
+              >
+                <div
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    preferences.excludeTargetPlatform !== false ? 'bg-emerald-400' : 'bg-zinc-500'
                   }`}
-                >
-                  {pKey}
-                </button>
-              ))}
+                />
+                <span>
+                  {preferences.excludeTargetPlatform !== false
+                    ? 'Excludes target link: ON'
+                    : 'Excludes target link: OFF'}
+                </span>
+              </button>
             </div>
+
+            {/* When excludeTargetPlatform is OFF, hide platform simulation buttons */}
+            {preferences.excludeTargetPlatform !== false && (
+              <div className="grid grid-cols-4 gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                {(['youtube', 'instagram', 'threads', 'facebook'] as SocialPlatformKey[]).map((pKey) => (
+                  <button
+                    key={pKey}
+                    type="button"
+                    onClick={() => setPreviewPlatform(pKey)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold capitalize text-center transition-all cursor-pointer ${
+                      previewPlatform === pKey
+                        ? 'bg-amber-400 text-black shadow-sm font-bold'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    {pKey}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Heading input placed directly above the output preview box */}
+          {/* Heading input placed directly above the output preview box with CTA dropdown & 3-dots spacer */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <label className="font-semibold text-zinc-300 flex items-center gap-1.5">
                 <LinkIcon className="w-3.5 h-3.5 text-amber-400" />
                 <span>Link Section Callout Heading</span>
               </label>
-              <span className="text-[11px] text-zinc-500">(Leave blank to omit heading)</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setThreeDotsSpacer((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                    threeDotsSpacer
+                      ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow-sm'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                  }`}
+                  title="Toggle 3 dots vertical spacer (. . .) above heading for Instagram & Reels captions"
+                >
+                  <span className="font-mono tracking-wider font-bold">•••</span>
+                  <span>3 Dots Spacer</span>
+                  {threeDotsSpacer && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
+                </button>
+                <span className="text-[11px] text-zinc-500 hidden sm:inline">(Leave blank to omit heading)</span>
+              </div>
             </div>
 
-            <div className="relative">
-              <input
-                type="text"
-                value={customHeading}
-                onChange={(e) => setCustomHeading(e.target.value)}
-                placeholder="e.g. Follow us or Connect with me:"
-                className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              {/* Left Side: Single-line input with heading text only and matching height */}
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={customHeading}
+                  onChange={(e) => {
+                    const cleanText = e.target.value.replace(/^(\s*[.·•]\s*\n)+\s*/, '');
+                    setCustomHeading(cleanText);
+                  }}
+                  placeholder="e.g. Follow for daily updates:"
+                  className="w-full h-9 bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl px-3.5 pr-8 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
+                />
+                {customHeading && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomHeading('')}
+                    title="Clear heading"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Right Side: Predefined CTA & Heading Dropdown with matching h-9 height */}
+              <div className="sm:w-[220px] w-full shrink-0">
+                <CtaPresetsDropdown
+                  currentValue={customHeading}
+                  onSelect={(text) => {
+                    const cleanText = text.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
+                    setCustomHeading(cleanText);
+                  }}
+                  placeholder="⚡ Predefined CTAs ▾"
+                />
+              </div>
             </div>
           </div>
 
@@ -907,7 +1216,11 @@ export const SocialAccountsManager: React.FC = () => {
             <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-2 border-b border-zinc-800/80">
               <div className="flex items-center gap-2">
                 <span className="capitalize">
-                  Output preview for <strong className="text-white font-semibold">{previewPlatform}</strong>:
+                  Output preview {preferences.excludeTargetPlatform !== false ? (
+                    <>for <strong className="text-white font-semibold">{previewPlatform}</strong>:</>
+                  ) : (
+                    <strong className="text-white font-semibold">(All Links)</strong>
+                  )}:
                 </span>
                 <span className="text-[10px] text-amber-400 font-mono bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.2 rounded font-semibold">
                   {previewEligibleLinks.length} link{previewEligibleLinks.length === 1 ? '' : 's'}
@@ -945,11 +1258,13 @@ export const SocialAccountsManager: React.FC = () => {
             )}
           </div>
 
-          {/* Target platform exclusion notice */}
-          <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20">
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Target {previewPlatform} link is excluded automatically from the snippet above.</span>
-          </div>
+          {/* Target platform exclusion notice - only shown when exclusion is active */}
+          {preferences.excludeTargetPlatform !== false && (
+            <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Target {previewPlatform} link is excluded automatically from the snippet above.</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1019,12 +1334,12 @@ export const SocialAccountsManager: React.FC = () => {
                     platform === 'youtube'
                       ? 'https://youtube.com/@channel'
                       : platform === 'instagram'
-                      ? 'https://instagram.com/handle'
-                      : platform === 'threads'
-                      ? 'https://threads.net/@handle'
-                      : platform === 'facebook'
-                      ? 'https://facebook.com/pagename'
-                      : 'https://yourwebsite.com'
+                        ? 'https://instagram.com/handle'
+                        : platform === 'threads'
+                          ? 'https://threads.net/@handle'
+                          : platform === 'facebook'
+                            ? 'https://facebook.com/pagename'
+                            : 'https://yourwebsite.com'
                   }
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400 font-mono transition-colors"
                 />
@@ -1083,6 +1398,14 @@ export const SocialAccountsManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Developer API Keys Configuration Modal */}
+      <OAuthCredentialsModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        initialPlatform={configModalPlatform}
+        onSaved={() => fetchOAuthConnections()}
+      />
     </div>
   );
 };

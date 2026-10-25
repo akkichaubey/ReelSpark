@@ -36,6 +36,13 @@
 
 For Google authentication setup and verification, see [Google sign-in](GOOGLE_SIGN_IN.md). Email/password login is retained; demo access is disabled by default.
 
+For direct social publishing configuration, security fixes, queue recovery and actual
+verification results, see [Social publishing verification](SOCIAL_PUBLISHING_REVIEW.md).
+Local callbacks follow localhost/127.0.0.1 automatically. Render deployments can
+detect their public URL, and the Blueprint generates a stable publishing key.
+Cloud credentials, migrations and provider-approved callbacks still require initial
+configuration. Check authenticated `/api/social-publishing/status` for missing setup.
+
 ### 1. Prerequisites
 - **Node.js**: `>=24.22.1 <25` (pinned to 24.22.1 via nvm).
 - **npm** package manager

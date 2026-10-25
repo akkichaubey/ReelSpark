@@ -1,4 +1,5 @@
 'use client';
+import { publishingProgress } from '@/lib/social-intelligence/publishing-progress';
 import { accountCache } from '@/lib/account-cache';
 
 // ReelSpark Smart Social Intelligence Studio — Updated 2026-10-22
@@ -27,6 +28,11 @@ import {
   Users,
   ShieldCheck,
   CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+  Upload,
+  Layers,
+  ExternalLink,
 } from 'lucide-react';
 import {
   SocialPostBundle,
@@ -49,8 +55,17 @@ import { SocialPlatformIcon } from '@/components/social-intelligence/SocialPlatf
 import { SocialAccountsManager } from '@/components/social-intelligence/SocialAccountsManager';
 import { PlatformGuidelinesViewer } from '@/components/social-intelligence/PlatformGuidelinesViewer';
 import { PostValidationCard } from '@/components/social-intelligence/PostValidationCard';
+import { getPlatformDescriptionLimit, PLATFORM_DESCRIPTION_LIMITS } from '@/lib/social-intelligence/platform-rules';
+import { PublishStudioModal } from '@/components/social-publishing/PublishStudioModal';
+import { PublishingHistoryView } from '@/components/social-publishing/PublishingHistoryView';
+import { OAuthCredentialsModal } from '@/components/social-publishing/OAuthCredentialsModal';
+import {
+  PublishingPlatformKey,
+  SafeOAuthConnection,
+  VideoAssetForPublishing,
+} from '@/lib/social-intelligence/publishing-types';
 
-type TabKey = 'generator' | 'accounts' | 'guidelines';
+type TabKey = 'generator' | 'accounts' | 'guidelines' | 'history';
 
 function SocialPostPageContent() {
   const searchParams = useSearchParams();
@@ -62,8 +77,10 @@ function SocialPostPageContent() {
     tabParam === 'preferences' || tabParam === 'accounts'
       ? 'accounts'
       : tabParam === 'guidelines'
-        ? 'guidelines'
-        : 'generator';
+      ? 'guidelines'
+      : tabParam === 'history'
+      ? 'history'
+      : 'generator';
 
   useEffect(() => {
     checkAuth();
@@ -100,6 +117,33 @@ function SocialPostPageContent() {
 
   // User Accounts (for fast client-side hints)
   const [userAccounts, setUserAccounts] = useState<SocialAccount[]>([]);
+
+  // Publishing Studio state
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState<boolean>(false);
+  const [publishInitialPlatform, setPublishInitialPlatform] = useState<PublishingPlatformKey | undefined>(undefined);
+  const [publishMode, setPublishMode] = useState<'single' | 'multi'>('single');
+  const [sourceVideoPath, setSourceVideoPath] = useState<string | undefined>(undefined);
+  const [sourceThumbnailPath, setSourceThumbnailPath] = useState<string | undefined>(undefined);
+
+  // Direct In-Place Publishing state (No modal popup required)
+  const [connections, setConnections] = useState<Record<PublishingPlatformKey, SafeOAuthConnection | null>>({
+    youtube: null,
+    instagram: null,
+    facebook: null,
+    threads: null,
+  });
+  const [availableVideos, setAvailableVideos] = useState<VideoAssetForPublishing[]>([]);
+  const [isDirectPublishing, setIsDirectPublishing] = useState<boolean>(false);
+  const [directPublishJobId, setDirectPublishJobId] = useState<string | null>(null);
+  const [publishStatus, setPublishStatus] = useState<{
+    status: 'idle' | 'uploading' | 'processing' | 'published' | 'failed';
+    message?: string;
+    postUrl?: string;
+  }>({ status: 'idle' });
+
+  // Developer API keys config modal (only opens if API credentials unconfigured)
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
+  const [configModalPlatform, setConfigModalPlatform] = useState<PublishingPlatformKey>('instagram');
 
   // Fetch user accounts once
   useEffect(() => {
@@ -144,6 +188,8 @@ function SocialPostPageContent() {
           if (storedContext.duration) initialDuration = storedContext.duration;
           if (storedContext.language) initialLang = storedContext.language;
           if (storedContext.clipId) setSourceClipId(storedContext.clipId);
+          if (storedContext.videoPath) setSourceVideoPath(storedContext.videoPath);
+          if (storedContext.thumbnailPath) setSourceThumbnailPath(storedContext.thumbnailPath);
         }
       }
     } catch (e) {
@@ -158,6 +204,8 @@ function SocialPostPageContent() {
         if (currentProject.audio?.duration) initialDuration = currentProject.audio.duration;
         if (currentProject.preferredLanguage) initialLang = currentProject.preferredLanguage;
         if (currentProject.sourceClipId) setSourceClipId(currentProject.sourceClipId);
+        if ((currentProject as any).outputVideoPath) setSourceVideoPath((currentProject as any).outputVideoPath);
+        if (currentProject.thumbnailUrl) setSourceThumbnailPath(currentProject.thumbnailUrl);
 
         if (initialLang === 'hi' && currentProject.rawTranscriptHindi) {
           initialTranscript = currentProject.rawTranscriptHindi;
@@ -302,6 +350,194 @@ function SocialPostPageContent() {
     }, 2500);
   };
 
+  // Pre-fetch OAuth connections and rendered video files for direct publishing
+  useEffect(() => {
+    const fetchPublishingAssets = async () => {
+      try {
+        const [connsRes, videosRes] = await Promise.all([
+          fetch('/api/social-publishing/oauth/connections'),
+          fetch('/api/social-publishing/videos'),
+        ]);
+        const connsData = await connsRes.json();
+        const videosData = await videosRes.json();
+
+        if (connsData.success && connsData.connections) {
+          const map: Record<PublishingPlatformKey, SafeOAuthConnection | null> = {
+            youtube: null,
+            instagram: null,
+            facebook: null,
+            threads: null,
+          };
+          for (const c of connsData.connections) {
+            map[c.platform as PublishingPlatformKey] = c;
+          }
+          setConnections(map);
+        }
+
+        if (videosData.success && videosData.videos?.length > 0) {
+          setAvailableVideos(videosData.videos);
+          if (!sourceVideoPath) {
+            setSourceVideoPath(videosData.videos[0].storagePath);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to pre-fetch publishing assets:', err);
+      }
+    };
+
+    fetchPublishingAssets();
+  }, [sourceVideoPath]);
+
+  // Reset direct publish status whenever active target platform changes
+  useEffect(() => {
+    setPublishStatus({ status: 'idle' });
+  }, [platform]);
+
+  // Polling for direct publishing job status
+  useEffect(() => {
+    if (!directPublishJobId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/social-publishing/jobs/${directPublishJobId}`);
+        const data = await res.json();
+        if (data.success && data.job) {
+          const job = data.job;
+          const progress = publishingProgress(job, 'all');
+          setPublishStatus({ status: progress.status, message: progress.message, postUrl: progress.postUrl });
+          if (progress.done) {
+            setIsDirectPublishing(false);
+            setDirectPublishJobId(null);
+          }
+        }
+      } catch (e) {
+        console.warn('Job polling error:', e);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [directPublishJobId, platform]);
+
+  const getPlatformTitle = (p: string) => {
+    switch (p) {
+      case 'youtube':
+        return 'YouTube Shorts';
+      case 'instagram':
+        return 'Instagram Reels';
+      case 'facebook':
+        return 'Facebook Reels';
+      case 'threads':
+        return 'Threads';
+      default:
+        return 'All Platforms';
+    }
+  };
+
+  const handleConnectPlatform = async (p: PublishingPlatformKey) => {
+    try {
+      const res = await fetch(`/api/social-publishing/oauth/${p}/connect?returnTo=/social-post`, {
+        headers: { Accept: 'application/json' },
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else if (data.requiresCredentials) {
+        setConfigModalPlatform(p);
+        setIsConfigModalOpen(true);
+      } else {
+        setPublishStatus({
+          status: 'failed',
+          message: data.error || `Failed to initiate ${p} authorization`,
+        });
+      }
+    } catch {
+      setConfigModalPlatform(p);
+      setIsConfigModalOpen(true);
+    }
+  };
+
+  const handleDirectPublish = async () => {
+    const targetPlatform = platform === 'all' ? undefined : (platform as PublishingPlatformKey);
+    const videoToUse = sourceVideoPath || availableVideos[0]?.storagePath;
+
+    if (!videoToUse) {
+      setPublishStatus({
+        status: 'failed',
+        message: 'No rendered reel video found. Please render a reel in Reel Maker first before publishing.',
+      });
+      return;
+    }
+
+    if (targetPlatform) {
+      const conn = connections[targetPlatform];
+      if (!conn || conn.status !== 'connected') {
+        handleConnectPlatform(targetPlatform);
+        return;
+      }
+    } else {
+      const connected = (['instagram', 'youtube', 'facebook', 'threads'] as PublishingPlatformKey[]).filter(
+        (k) => connections[k]?.status === 'connected'
+      );
+      if (connected.length === 0) {
+        setPublishStatus({
+          status: 'failed',
+          message: 'No connected social accounts found. Connect an account first to publish.',
+        });
+        return;
+      }
+    }
+
+    const selectedList = targetPlatform
+      ? [targetPlatform]
+      : (['instagram', 'youtube', 'facebook', 'threads'] as PublishingPlatformKey[]).filter(
+          (k) => connections[k]?.status === 'connected'
+        );
+
+    setIsDirectPublishing(true);
+    setPublishStatus({
+      status: 'uploading',
+      message: `Uploading to ${getPlatformTitle(selectedList[0])}...`,
+    });
+
+    try {
+      const res = await fetch('/api/social-publishing/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoPath: videoToUse,
+          thumbnailPath: sourceThumbnailPath?.replace('/api/files/', ''),
+          selectedPlatforms: selectedList,
+          defaultCaption: editedText,
+          defaultTitle: editedTitle || clipTitle || 'Reel #Shorts',
+          showOtherSocialProfiles: includeLinks,
+          platformOverrides: selectedList.includes('youtube')
+            ? {
+                youtube: {
+                  title: editedTitle || clipTitle || 'Reel #Shorts',
+                  description: editedText,
+                  privacyStatus: 'public',
+                  madeForKids: false,
+                },
+              }
+            : {},
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to initiate publishing');
+      }
+
+      setDirectPublishJobId(data.jobId);
+    } catch (err: any) {
+      setIsDirectPublishing(false);
+      setPublishStatus({
+        status: 'failed',
+        message: err.message || 'Direct publishing failed. Please try again.',
+      });
+    }
+  };
+
   if (!authLoading && !user) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col text-white">
@@ -363,20 +599,108 @@ function SocialPostPageContent() {
       breadcrumbs={[
         { label: 'Dashboard', href: '/' },
         { label: 'Social Intelligence', href: '/social-post' },
-        { label: activeTab === 'generator' ? 'Copy Generator' : activeTab === 'accounts' ? 'Social Accounts' : 'Platform Specs' },
+        { label: activeTab === 'generator' ? 'Copy Generator' : activeTab === 'history' ? 'Publishing History' : activeTab === 'accounts' ? 'Social Accounts & OAuth' : 'Platform Specs' },
       ]}
       headerActions={
-        <Link
-          href="/reel-maker"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
-          title="Return to AI Reel Maker"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Back to Caption Studio</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const targetP = platform === 'all' ? undefined : (platform as PublishingPlatformKey);
+              setPublishInitialPlatform(targetP);
+              setPublishMode(targetP ? 'single' : 'multi');
+              setIsPublishModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 text-xs font-black shadow-md shadow-amber-400/20 transition-all cursor-pointer active:scale-95"
+          >
+            <Upload className="w-3.5 h-3.5 text-zinc-950" />
+            <span>
+              {platform === 'all'
+                ? 'Publish Directly'
+                : `Post to ${
+                    platform === 'instagram'
+                      ? 'Instagram'
+                      : platform === 'youtube'
+                      ? 'YouTube'
+                      : platform === 'threads'
+                      ? 'Threads'
+                      : 'Facebook'
+                  }`}
+            </span>
+          </button>
+          <Link
+            href="/reel-maker"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Return to AI Reel Maker"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Back to Studio</span>
+          </Link>
+        </div>
       }
     >
       <div className="space-y-6 max-w-6xl mx-auto">
+        {/* Navigation Tabs Ribbon */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-md">
+          <div className="flex flex-wrap items-center gap-1">
+            <Link
+              href="/social-post"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'generator'
+                  ? 'bg-amber-400 text-zinc-950 shadow-sm font-black'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Copy Studio</span>
+            </Link>
+
+            <Link
+              href="/social-post?tab=history"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'history'
+                  ? 'bg-amber-400 text-zinc-950 shadow-sm font-black'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>Publishing History</span>
+            </Link>
+
+            <Link
+              href="/social-post?tab=accounts"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'accounts'
+                  ? 'bg-amber-400 text-zinc-950 shadow-sm font-black'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Accounts & OAuth</span>
+            </Link>
+
+            <Link
+              href="/social-post?tab=guidelines"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'guidelines'
+                  ? 'bg-amber-400 text-zinc-950 shadow-sm font-black'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>2026 Guidelines</span>
+            </Link>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsPublishModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-400" />
+            <span>Multi-Platform Studio</span>
+          </button>
+        </div>
         {/* Tab 1: AI Generator */}
         {activeTab === 'generator' && (
           <div className="space-y-6">
@@ -511,41 +835,47 @@ function SocialPostPageContent() {
                   {/* Content Type */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-zinc-400 font-medium">Type:</span>
-                    <select
-                      value={contentType}
-                      onChange={(e) => {
-                        const newType = e.target.value as PlatformContentType;
-                        setContentType(newType);
-                        handleGenerate(language, tone, platform, newType, includeLinks, captionStyle);
-                      }}
-                      className="bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2.5 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm"
-                    >
-                      <option value="reel">🎬 Reel / Short</option>
-                      <option value="post">📝 Standard Post</option>
-                      <option value="story">⚡ Story</option>
-                      <option value="video">📽️ Video Post</option>
-                    </select>
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={contentType}
+                        onChange={(e) => {
+                          const newType = e.target.value as PlatformContentType;
+                          setContentType(newType);
+                          handleGenerate(language, tone, platform, newType, includeLinks, captionStyle);
+                        }}
+                        className="appearance-none bg-zinc-950 border border-zinc-700/80 hover:border-zinc-600 text-xs text-zinc-200 rounded-lg pl-3 pr-8 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm transition-colors"
+                      >
+                        <option value="reel">🎬 Reel / Short</option>
+                        <option value="post">📝 Standard Post</option>
+                        <option value="story">⚡ Story</option>
+                        <option value="video">📽️ Video Post</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
 
                   {/* Tone */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-zinc-400 font-medium">Tone:</span>
-                    <select
-                      value={tone}
-                      onChange={(e) => {
-                        const newTone = e.target.value as ContentTone;
-                        setTone(newTone);
-                        handleGenerate(language, newTone, platform, contentType, includeLinks, captionStyle);
-                      }}
-                      className="bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2.5 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm"
-                    >
-                      <option value="motivational">🔥 Motivational</option>
-                      <option value="educational">💡 Educational</option>
-                      <option value="storytelling">📖 Storytelling</option>
-                      <option value="funny">😂 Funny / Viral</option>
-                      <option value="emotional">❤️ Emotional / Deep</option>
-                      <option value="professional">💼 Professional</option>
-                    </select>
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={tone}
+                        onChange={(e) => {
+                          const newTone = e.target.value as ContentTone;
+                          setTone(newTone);
+                          handleGenerate(language, newTone, platform, contentType, includeLinks, captionStyle);
+                        }}
+                        className="appearance-none bg-zinc-950 border border-zinc-700/80 hover:border-zinc-600 text-xs text-zinc-200 rounded-lg pl-3 pr-8 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm transition-colors"
+                      >
+                        <option value="motivational">🔥 Motivational</option>
+                        <option value="educational">💡 Educational</option>
+                        <option value="storytelling">📖 Storytelling</option>
+                        <option value="funny">😂 Funny / Viral</option>
+                        <option value="emotional">❤️ Emotional / Deep</option>
+                        <option value="professional">💼 Professional</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
 
                   {/* Language */}
@@ -582,26 +912,29 @@ function SocialPostPageContent() {
                     <label htmlFor="caption-style" className="text-xs text-zinc-400 font-medium">
                       Style:
                     </label>
-                    <select
-                      id="caption-style"
-                      value={captionStyle}
-                      onChange={(e) => {
-                        const newStyle = e.target.value as CaptionStyle;
-                        setCaptionStyle(newStyle);
-                        handleGenerate(language, tone, platform, contentType, includeLinks, newStyle);
-                      }}
-                      className="max-w-44 bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2.5 py-1.5 focus:border-amber-400 focus:outline-none cursor-pointer shadow-sm"
-                      title="Sets the hook, post structure, and call to action for the generated copy"
-                    >
-                      <option value="curiosity">🔎 Curiosity Hook</option>
-                      <option value="story">📖 Personal Story</option>
-                      <option value="quick_value">✅ Quick Value List</option>
-                      <option value="hinglish">🗣️ Relatable Hinglish</option>
-                      <option value="debate">💬 Debate Question</option>
-                      <option value="trend">⚡ Trend Reaction</option>
-                      <option value="educational">🎓 Educational Proof</option>
-                      <option value="comment_dm">✉️ Comment-to-DM CTA</option>
-                    </select>
+                    <div className="relative inline-flex items-center">
+                      <select
+                        id="caption-style"
+                        value={captionStyle}
+                        onChange={(e) => {
+                          const newStyle = e.target.value as CaptionStyle;
+                          setCaptionStyle(newStyle);
+                          handleGenerate(language, tone, platform, contentType, includeLinks, newStyle);
+                        }}
+                        className="appearance-none max-w-48 bg-zinc-950 border border-zinc-700/80 hover:border-zinc-600 text-xs text-zinc-200 rounded-lg pl-3 pr-8 py-1.5 focus:border-amber-400 focus:outline-none cursor-pointer shadow-sm transition-colors"
+                        title="Sets the hook, post structure, and call to action for the generated copy"
+                      >
+                        <option value="curiosity">🔎 Curiosity Hook</option>
+                        <option value="story">📖 Personal Story</option>
+                        <option value="quick_value">✅ Quick Value List</option>
+                        <option value="hinglish">🗣️ Relatable Hinglish</option>
+                        <option value="debate">💬 Debate Question</option>
+                        <option value="trend">⚡ Trend Reaction</option>
+                        <option value="educational">🎓 Educational Proof</option>
+                        <option value="comment_dm">✉️ Comment-to-DM CTA</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
 
                   {/* Include Links Toggle */}
@@ -739,115 +1072,373 @@ function SocialPostPageContent() {
                     </div>
                   </div>
 
-                  {/* 2. Variation Tabs for Complete Social Post */}
-                  <div className="space-y-2.5 pt-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-                        <MessageSquare className="w-4 h-4 text-amber-400" />
-                        <span>Complete Post Copy (Ready to Paste)</span>
-                      </label>
+                  {/* 2. Enhanced Post Description / Copy Area with 2026 Limits Reference */}
+                  {(() => {
+                    const platformDescLimit = getPlatformDescriptionLimit(platform);
+                    const charCount = editedText.length;
+                    const maxChars = platformDescLimit.max;
+                    const isOverLimit = charCount > maxChars;
+                    const isOptimal = charCount >= platformDescLimit.recMin && charCount <= platformDescLimit.recMax;
+                    const wordsCount = editedText.trim() ? editedText.trim().split(/\s+/).length : 0;
+                    const hashtagsInText = (editedText.match(/#[a-zA-Z0-9_\u0900-\u097F]+/g) || []).length;
+                    const percentUsed = Math.min(100, Math.round((charCount / maxChars) * 100));
+                    const originalVariationText = bundle.variations?.[selectedVariationIdx]?.fullText || '';
+                    const isModified = originalVariationText !== '' && editedText !== originalVariationText;
 
-                      {/* Variation Switcher */}
-                      <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs">
-                        {bundle.variations.map((v, vIdx) => (
-                          <button
-                            key={vIdx}
-                            type="button"
-                            onClick={() => handleSelectVariation(vIdx)}
-                            className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                              selectedVariationIdx === vIdx
-                                ? 'bg-amber-400 text-zinc-950 shadow-sm font-bold'
-                                : 'text-zinc-400 hover:text-white'
-                            }`}
-                          >
-                            {v.title}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    return (
+                      <div className="p-4 sm:p-5 bg-zinc-950/90 border border-zinc-800 rounded-2xl space-y-4 shadow-lg">
+                        {/* Header: Title, Target Platform Badge, and Live Character Limit Counter */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-zinc-800/60">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
+                              <MessageSquare className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs sm:text-sm font-bold text-zinc-100">
+                                  Complete Post Copy (Ready to Paste)
+                                </span>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/60 text-zinc-300">
+                                  {platformDescLimit.label}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-400">
+                                Recommended: <span className="text-zinc-200 font-semibold">{platformDescLimit.recMin}–{platformDescLimit.recMax} chars</span> · Pre-fold: <span className="text-zinc-300">~{platformDescLimit.preFold} chars</span>
+                              </p>
+                            </div>
+                          </div>
 
-                    {/* Editable Text Area for Selected Variation */}
-                    <div className="relative">
-                      <textarea
-                        rows={10}
-                        value={editedText}
-                        onChange={(e) => setEditedText(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-700/80 rounded-xl p-4 text-xs sm:text-sm text-zinc-200 font-sans leading-relaxed focus:outline-none focus:border-amber-400 resize-none shadow-inner"
-                        placeholder="Social media caption text..."
-                      />
+                          {/* Live Character Limit Counter Badge */}
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-xs font-bold transition-colors ${
+                                isOverLimit
+                                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                  : isOptimal
+                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                  : 'bg-zinc-900 border-zinc-700/80 text-zinc-300'
+                              }`}
+                              title={`Max limit: ${maxChars.toLocaleString()} chars | Optimal: ${platformDescLimit.recMin}–${platformDescLimit.recMax} chars`}
+                            >
+                              {isOverLimit ? (
+                                <>
+                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                  <span>{charCount.toLocaleString()} / {maxChars.toLocaleString()}</span>
+                                  <span className="text-[10px] font-sans text-rose-400 uppercase tracking-wide">
+                                    (+{charCount - maxChars} OVER)
+                                  </span>
+                                </>
+                              ) : isOptimal ? (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>{charCount.toLocaleString()} / {maxChars.toLocaleString()}</span>
+                                  <span className="text-[10px] font-sans text-emerald-400 uppercase tracking-wide">
+                                    (SWEET SPOT)
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>{charCount.toLocaleString()} / {maxChars.toLocaleString()}</span>
+                                  <span className="text-[10px] font-sans text-zinc-500 uppercase tracking-wide">
+                                    CHARS
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
-                      {/* Floating Copy Action on Textarea */}
-                      <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(editedText, 'full_post')}
-                          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
-                            copiedKey === 'full_post'
-                              ? 'bg-emerald-500 text-black'
-                              : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold shadow-amber-400/20 active:scale-95'
-                          }`}
-                        >
-                          {copiedKey === 'full_post' ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>Copied Full Post!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Copy Post</span>
-                            </>
+                        {/* Toolbar Ribbon: Variation Switcher & Content Metrics */}
+                        <div className="flex flex-wrap items-center justify-between gap-2.5">
+                          {/* Variation Switcher Tabs */}
+                          <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800 text-xs">
+                            {bundle.variations.map((v, vIdx) => (
+                              <button
+                                key={vIdx}
+                                type="button"
+                                onClick={() => handleSelectVariation(vIdx)}
+                                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                                  selectedVariationIdx === vIdx
+                                    ? 'bg-amber-400 text-zinc-950 shadow-md font-bold'
+                                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                                }`}
+                              >
+                                {v.title}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Content Stats Strip & Quick Reset */}
+                          <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+                            <span className="flex items-center gap-1">
+                              <span className="font-semibold text-zinc-200">{wordsCount}</span> words
+                            </span>
+                            <span className="text-zinc-600">·</span>
+                            <span className="flex items-center gap-1">
+                              <Hash className="w-3 h-3 text-amber-400/80" />
+                              <span className="font-semibold text-zinc-200">{hashtagsInText}</span> tags
+                            </span>
+                            {isModified && (
+                              <>
+                                <span className="text-zinc-600">·</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (bundle?.variations?.[selectedVariationIdx]) {
+                                      setEditedText(bundle.variations[selectedVariationIdx].fullText);
+                                    }
+                                  }}
+                                  className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-semibold cursor-pointer transition-colors"
+                                  title="Reset back to AI generated copy"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>Reset Copy</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Editor Box with Live Progress Bar & Action Button */}
+                        <div className="relative rounded-xl border border-zinc-700/80 bg-zinc-950 overflow-hidden shadow-inner focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/30 transition-all">
+                          {/* Progress Bar Header */}
+                          <div className="h-1.5 w-full bg-zinc-900 overflow-hidden relative">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                isOverLimit
+                                  ? 'bg-rose-500'
+                                  : isOptimal
+                                  ? 'bg-emerald-400'
+                                  : 'bg-amber-400'
+                              }`}
+                              style={{ width: `${percentUsed}%` }}
+                            />
+                          </div>
+
+                          {/* Textarea */}
+                          <textarea
+                            rows={11}
+                            value={editedText}
+                            onChange={(e) => setEditedText(e.target.value)}
+                            className="w-full bg-transparent p-4 text-xs sm:text-sm text-zinc-100 font-sans leading-relaxed focus:outline-none resize-y min-h-[220px]"
+                            placeholder="Social media caption text..."
+                          />
+
+                          {/* Floating Copy & Individual Post Actions on Textarea */}
+                          <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(editedText, 'full_post')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-md ${
+                                copiedKey === 'full_post'
+                                  ? 'bg-emerald-500 text-black'
+                                  : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 active:scale-95'
+                              }`}
+                            >
+                              {copiedKey === 'full_post' ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>Copy Post</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleDirectPublish}
+                              disabled={isDirectPublishing}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer shadow-md bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 shadow-amber-400/20 active:scale-95 disabled:opacity-50"
+                              title={`Publish this post directly to ${platform === 'all' ? 'All Platforms' : platform}`}
+                            >
+                              {isDirectPublishing ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-950" />
+                              ) : (
+                                <Upload className="w-3.5 h-3.5 text-zinc-950" />
+                              )}
+                              <span>
+                                {isDirectPublishing
+                                  ? 'Publishing...'
+                                  : platform === 'instagram'
+                                  ? 'Publish on Instagram'
+                                  : platform === 'youtube'
+                                  ? 'Publish on YouTube'
+                                  : platform === 'threads'
+                                  ? 'Publish on Threads'
+                                  : platform === 'facebook'
+                                  ? 'Publish on Facebook'
+                                  : 'Publish on All Platforms'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Direct 1-Click Publishing Bar (Replaces Limits Boxes — No Modal Needed) */}
+                        <div className="pt-3 border-t border-zinc-800/80">
+                          <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-wrap items-center justify-between gap-3 shadow-inner">
+                            {/* Left: Account Connection Status & Video Info */}
+                            <div className="flex items-center gap-3">
+                              {platform !== 'all' ? (
+                                <>
+                                  <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                                    <SocialPlatformIcon platform={platform} size="sm" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-zinc-100 capitalize">
+                                        {getPlatformTitle(platform)}
+                                      </span>
+                                      {connections[platform as PublishingPlatformKey]?.status === 'connected' ? (
+                                        <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3" />
+                                          <span>
+                                            @{connections[platform as PublishingPlatformKey]?.accountHandle ||
+                                              connections[platform as PublishingPlatformKey]?.accountName}
+                                          </span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                                          Not Connected
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                                      {availableVideos.length > 0 || sourceVideoPath
+                                        ? `Ready to publish: ${(availableVideos.find(v => v.storagePath === sourceVideoPath) || availableVideos[0])?.title || 'Current Reel'}`
+                                        : 'No rendered reel video found in storage'}
+                                    </p>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
+                                    <Upload className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <span className="text-xs font-bold text-zinc-100">
+                                      All Platforms Mode
+                                    </span>
+                                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                                      Publish directly across all connected social media accounts simultaneously
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Right: Direct 1-Click Publish Action Button */}
+                            <div className="flex items-center gap-2">
+                              {/* If publishing is in progress */}
+                              {isDirectPublishing ? (
+                                <div className="flex items-center gap-2.5 px-4 py-2 bg-amber-400/15 border border-amber-400/40 rounded-xl text-xs font-bold text-amber-300">
+                                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                                  <span>{publishStatus.message || 'Publishing now...'}</span>
+                                </div>
+                              ) : publishStatus.status === 'published' ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    <span>Published!</span>
+                                  </span>
+                                  {publishStatus.postUrl && (
+                                    <a
+                                      href={publishStatus.postUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors shadow-sm"
+                                    >
+                                      <span>Open Post</span>
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </a>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setPublishStatus({ status: 'idle' })}
+                                    className="text-[11px] text-zinc-400 hover:text-white px-2 py-1 cursor-pointer transition-colors"
+                                  >
+                                    Publish Again
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* If account is not connected, offer 1-click connect */}
+                                  {platform !== 'all' &&
+                                  connections[platform as PublishingPlatformKey]?.status !== 'connected' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConnectPlatform(platform as PublishingPlatformKey)}
+                                      className="flex items-center gap-1.5 px-4 py-2 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+                                    >
+                                      <SocialPlatformIcon platform={platform} size="sm" />
+                                      <span>Connect {getPlatformTitle(platform)}</span>
+                                    </button>
+                                  ) : null}
+
+                                  {/* Main Direct Publish Button */}
+                                  <button
+                                    type="button"
+                                    onClick={handleDirectPublish}
+                                    disabled={
+                                      isDirectPublishing ||
+                                      (!availableVideos.length && !sourceVideoPath) ||
+                                      (platform !== 'all' &&
+                                        connections[platform as PublishingPlatformKey]?.status !== 'connected')
+                                    }
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-black rounded-xl text-xs transition-all shadow-md shadow-amber-400/25 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                  >
+                                    <Upload className="w-4 h-4 text-zinc-950" />
+                                    <span>
+                                      {platform === 'instagram'
+                                        ? 'Publish on Instagram'
+                                        : platform === 'youtube'
+                                        ? 'Publish on YouTube'
+                                        : platform === 'threads'
+                                        ? 'Publish on Threads'
+                                        : platform === 'facebook'
+                                        ? 'Publish on Facebook'
+                                        : 'Publish on All Platforms'}
+                                    </span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Failure / Error Banner */}
+                          {publishStatus.status === 'failed' && (
+                            <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-3 text-xs text-rose-300 animate-in fade-in">
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                                <span>{publishStatus.message || 'Publishing failed'}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleDirectPublish}
+                                className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                              >
+                                Retry
+                              </button>
+                            </div>
                           )}
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
-                  {/* 3. Live Smart Post Validation Card */}
+                  {/* 3. Live Smart Post Validation Card (Collapsible Accordion with Diagnostics & Hashtags) */}
                   <PostValidationCard
                     report={validationReport}
                     targetPlatform={platform === 'all' ? 'instagram' : platform}
                     loading={validating}
+                    hashtags={bundle.hashtags}
+                    onCopyHashtag={(tag, key) => handleCopy(tag, key)}
+                    onCopyAllHashtags={() => handleCopy(bundle.hashtags.join(' '), 'hashtags_only')}
+                    copiedKey={copiedKey}
                   />
-
-                  {/* 4. Hashtags Cloud Section */}
-                  <div className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                        <Hash className="w-4 h-4 text-amber-400" />
-                        <span>Target Hashtags ({bundle.hashtags.length})</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(bundle.hashtags.join(' '), 'hashtags_only')}
-                        className="flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer"
-                      >
-                        {copiedKey === 'hashtags_only' ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-emerald-400">Hashtags Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Copy All Hashtags</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {bundle.hashtags.map((tag, tIdx) => (
-                        <span
-                          key={tIdx}
-                          onClick={() => handleCopy(tag, `tag_${tIdx}`)}
-                          className="px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors"
-                          title="Click to copy this hashtag"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
                 </>
               ) : (
                 <div className="py-16 flex flex-col items-center justify-center space-y-3 text-center">
@@ -875,23 +1466,26 @@ function SocialPostPageContent() {
                   Back to Reel Maker
                 </Link>
                 {bundle && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(editedText, 'full_post')}
-                    className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold rounded-xl text-xs transition-all shadow-md shadow-amber-400/20 active:scale-95 cursor-pointer"
-                  >
-                    {copiedKey === 'full_post' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Full Post</span>
-                      </>
-                    )}
-                  </button>
+                  <>
+                    {/* Copy Full Post Action */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(editedText, 'full_post')}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold rounded-xl text-xs transition-all border border-zinc-700 active:scale-95 cursor-pointer shadow-sm"
+                    >
+                      {copiedKey === 'full_post' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                          <span>Copied Full Post!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Copy Post</span>
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -911,6 +1505,50 @@ function SocialPostPageContent() {
             <PlatformGuidelinesViewer />
           </div>
         )}
+
+        {/* Tab 4: Publishing History */}
+        {activeTab === 'history' && (
+          <div className="p-5 sm:p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 shadow-xl w-full">
+            <PublishingHistoryView />
+          </div>
+        )}
+
+        {/* Multi-Platform Publish Studio Modal */}
+        <PublishStudioModal
+          isOpen={isPublishModalOpen}
+          onClose={() => setIsPublishModalOpen(false)}
+          defaultVideoPath={sourceVideoPath}
+          defaultThumbnailPath={sourceThumbnailPath}
+          defaultTitle={editedTitle || clipTitle}
+          defaultCaption={editedText}
+          initialPlatform={publishInitialPlatform}
+          initialMode={publishMode}
+        />
+
+        {/* Developer API Keys Configuration Modal */}
+        <OAuthCredentialsModal
+          isOpen={isConfigModalOpen}
+          onClose={() => setIsConfigModalOpen(false)}
+          initialPlatform={configModalPlatform}
+          onSaved={async () => {
+            try {
+              const res = await fetch('/api/social-publishing/oauth/connections');
+              const data = await res.json();
+              if (data.success && data.connections) {
+                const map: Record<PublishingPlatformKey, SafeOAuthConnection | null> = {
+                  youtube: null,
+                  instagram: null,
+                  facebook: null,
+                  threads: null,
+                };
+                for (const c of data.connections) {
+                  map[c.platform as PublishingPlatformKey] = c;
+                }
+                setConnections(map);
+              }
+            } catch {}
+          }}
+        />
       </div>
     </DashboardLayout>
   );

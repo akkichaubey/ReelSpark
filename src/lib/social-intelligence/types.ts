@@ -36,6 +36,7 @@ export interface SocialLinkPreferences {
   includeOtherSocials: boolean;
   excludeTargetPlatform: boolean;
   customHeading: string;
+  threeDotsSpacer?: boolean; // When true, prepends 3 vertical dots spacer (. . .) above heading in post descriptions
   displaySeparateLines: boolean;
   linkOrder: string[]; // Ordered platform or account IDs
   eligibleAccountIds: string[]; // Specific IDs enabled

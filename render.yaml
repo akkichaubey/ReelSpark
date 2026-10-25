@@ -17,18 +17,21 @@ services:
         value: production
       - key: ALLOW_DEMO_LOGIN
         value: "false"
+      - key: REELSPARK_ALLOW_REMOTE
+        value: "true"
       - key: CLOUD_PROJECT_METADATA_ENABLED
         value: "false"
       - key: CLOUD_PRIVATE_MEDIA_ENABLED
         value: "false"
       - key: CLOUD_MEDIA_LIFECYCLE_ENABLED
         value: "false"
-      - key: AUTH_URL
-        sync: false
+      # AUTH_URL may be set for a custom domain; otherwise RENDER_EXTERNAL_URL is detected.
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: OAUTH_ENCRYPTION_KEY
+        generateValue: true
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_API_TOKEN
@@ -36,4 +39,4 @@ services:
       - key: CLOUDFLARE_D1_DATABASE_ID
         sync: false
     # No persistent disk: Render Free does not support one.
-    # Keep the remote-host guard enabled until multi-user authorization is audited.
+    # Public requests still require application authentication and account ownership.

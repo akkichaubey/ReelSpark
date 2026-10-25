@@ -15,6 +15,12 @@ import {
 import { SocialLinkPreferences, SocialAccount, SocialPlatformKey } from '@/lib/social-intelligence/types';
 import { SocialPlatformIcon } from './SocialPlatformIcon';
 import { formatSocialLinksBlock, resolveEligibleSocialLinks } from '@/lib/social-intelligence/link-engine';
+import { CtaPresetsDropdown } from './CtaPresetsDropdown';
+import {
+  hasThreeDotsPrefix,
+  toggleThreeDotsPrefix,
+  applyThreeDotsPrefix,
+} from '@/lib/social-intelligence/cta-presets';
 
 interface LinkPreferencesPanelProps {
   onSaved?: (prefs: SocialLinkPreferences) => void;
@@ -60,7 +66,11 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
         }
 
         if (prefData.success && prefData.preferences) {
-          setPreferences(prefData.preferences);
+          const excludeTarget = prefData.preferences.excludeTargetPlatform !== false;
+          setPreferences({
+            ...prefData.preferences,
+            excludeTargetPlatform: excludeTarget,
+          });
         }
       } catch (err: any) {
         setErrorMessage(err?.message || 'Failed to load link preferences');
@@ -182,21 +192,57 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Callout Heading & Account Selection */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Heading Formatting */}
+          {/* Heading Formatting with 3-Dots Spacer */}
           <div className="p-5 bg-zinc-900/70 border border-zinc-800/80 rounded-2xl space-y-3">
-            <h3 className="text-sm font-semibold text-zinc-200 uppercase tracking-wider">
-              Link Section Callout Heading
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-200 uppercase tracking-wider">
+                Link Section Callout Heading
+              </h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setPreferences({
+                    ...preferences,
+                    threeDotsSpacer: preferences.threeDotsSpacer === false ? true : false,
+                  })
+                }
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  preferences.threeDotsSpacer !== false
+                    ? 'bg-purple-500/20 border-purple-500 text-purple-300 shadow-sm'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+                }`}
+                title="Toggle 3 dots vertical spacer (. . .) above heading for Instagram & Reels captions"
+              >
+                <span className="font-mono tracking-wider font-bold">•••</span>
+                <span>3 Dots Spacer</span>
+                {preferences.threeDotsSpacer !== false && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+              </button>
+            </div>
             <p className="text-xs text-zinc-400">
               The heading displayed directly before your social links in generated posts. Leave blank to omit heading.
             </p>
-            <input
-              type="text"
-              value={preferences.customHeading}
-              onChange={(e) => setPreferences({ ...preferences, customHeading: e.target.value })}
-              placeholder="e.g. Connect with me: or Visit my links:"
-              className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-purple-500"
-            />
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              <input
+                type="text"
+                value={preferences.customHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '')}
+                onChange={(e) => {
+                  const cleanText = e.target.value.replace(/^(\s*[.·•]\s*\n)+\s*/, '');
+                  setPreferences({ ...preferences, customHeading: cleanText });
+                }}
+                placeholder="e.g. Connect with me: or Visit my links:"
+                className="flex-1 h-9 bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-4 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-purple-500"
+              />
+              <div className="sm:w-[220px] w-full shrink-0">
+                <CtaPresetsDropdown
+                  currentValue={preferences.customHeading}
+                  onSelect={(text) => {
+                    const cleanText = text.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
+                    setPreferences({ ...preferences, customHeading: cleanText });
+                  }}
+                  placeholder="⚡ Predefined CTAs ▾"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Account Eligibility & Multi-Account Selection */}

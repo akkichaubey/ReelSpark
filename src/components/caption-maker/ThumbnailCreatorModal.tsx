@@ -581,10 +581,14 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         role="switch"
                         aria-checked={settings.badgeEnabled !== false}
                         onClick={() =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            badgeEnabled: prev.badgeEnabled === false ? true : false,
-                          }))
+                          setSettings((prev) => {
+                            const nextVal = prev.badgeEnabled === false ? true : false;
+                            return {
+                              ...prev,
+                              badgeEnabled: nextVal,
+                              badgeText: (nextVal && !prev.badgeText) ? "DON'T MISS" : prev.badgeText,
+                            };
+                          })
                         }
                         className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
                           settings.badgeEnabled !== false ? 'bg-amber-400' : 'bg-zinc-700'

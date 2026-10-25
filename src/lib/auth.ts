@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from './config';
 import { createHash, randomBytes } from 'node:crypto';
+import { runtimeOrigin } from './runtime-origin';
 
 export function isDemoLoginAllowed(): boolean {
   return process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEMO_LOGIN === 'true';
@@ -20,7 +21,7 @@ export function isDemoLoginAllowed(): boolean {
 export function isSameOriginAuthRequest(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return true;
-  try { return origin === new URL(process.env.AUTH_URL || req.url).origin; }
+  try { return origin === runtimeOrigin(req.url); }
   catch { return false; }
 }
 

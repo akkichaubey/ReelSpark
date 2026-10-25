@@ -3,10 +3,11 @@ require('./check-node.cjs');
 require('@next/env').loadEnvConfig(process.cwd());
 const has = key => Boolean(process.env[key]?.trim() && !process.env[key].startsWith('your-'));
 let httpsOrigin = false;
-try { httpsOrigin = new URL(process.env.AUTH_URL).protocol === 'https:'; } catch {}
+try { httpsOrigin = new URL(process.env.AUTH_URL || (process.env.RENDER === 'true' ? process.env.RENDER_EXTERNAL_URL : '')).protocol === 'https:'; } catch {}
 const checks = {
   nodeSecurityBaseline: true,
   productionHttpsOrigin: httpsOrigin,
+  publishingEncryption: process.env.OAUTH_ENCRYPTION_KEY?.trim() ? process.env.OAUTH_ENCRYPTION_KEY.trim().length >= 32 : (process.env.AUTH_SECRET?.trim().length || 0) >= 32,
   googleCredentials: has('GOOGLE_CLIENT_ID') && has('GOOGLE_CLIENT_SECRET'),
   d1Credentials: ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_D1_DATABASE_ID', 'CLOUDFLARE_API_TOKEN'].every(has),
   privateR2Credentials: ['CLOUDFLARE_R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'].every(has),

@@ -6,16 +6,18 @@ import { assertSafePath } from '@/lib/storage';
 import { getRequestUser } from '@/lib/auth';
 import { canReadMedia } from '@/lib/media-access';
 import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
+import { verifyMediaIngest } from '@/lib/social-intelligence/media-presigner';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    const user = await getRequestUser(req);
-    if (!user) return new NextResponse('Authentication required', { status: 401 });
     const { path: pathSegments } = await params;
     const relativePath = pathSegments.join('/');
+    const signedUserId = req.nextUrl.searchParams.has('ingest_token') ? verifyMediaIngest(new URL(req.url), relativePath) : null;
+    const user = signedUserId ? { id: signedUserId } : await getRequestUser(req);
+    if (!user) return new NextResponse('Authentication required', { status: 401 });
     const fullPath = path.join(APP_CONFIG.storageRoot, relativePath);
 
     // Security: Check path traversal

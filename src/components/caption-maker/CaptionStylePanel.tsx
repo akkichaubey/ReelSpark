@@ -41,6 +41,7 @@ import {
   BookmarkPlus,
   BookmarkCheck,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   POPULAR_GOOGLE_FONTS,
@@ -414,13 +415,17 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
             </div>
 
             {/* Quick Active & Primary Colors Customizer for Selected Preset */}
-            <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+            <div className="p-3.5 bg-zinc-950/90 border border-zinc-800/90 rounded-2xl space-y-3.5 shadow-md">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Palette className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-semibold text-zinc-200">
-                    Active & Primary Colors
-                  </span>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shadow-sm">
+                    <Palette className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-zinc-100 tracking-tight">
+                      Active &amp; Primary Colors
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -436,61 +441,72 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                           : style.glowColor,
                     });
                   }}
-                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-400 hover:text-amber-300 hover:bg-zinc-800 border border-zinc-700/60 transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 border border-zinc-800 hover:border-zinc-700 text-[10px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
                   title="Reset colors back to preset defaults"
                 >
-                  Reset to Default
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>Reset to Default</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 {/* 1. Active Spoken Word Color */}
-                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-amber-400">
+                <div className="p-3 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-sm" />
+                    <span className="text-xs font-bold text-amber-400">
                       Active Spoken Word
                     </span>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      {style.importantColor}
-                    </span>
                   </div>
+
+                  {/* Color Swatch Tile + Integrated Hex Input */}
                   <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={
-                        style.importantColor?.startsWith('#') && style.importantColor.length === 7
-                          ? style.importantColor
-                          : '#FCD905'
-                      }
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        update({
-                          importantColor: val,
-                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
-                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
-                        });
-                      }}
-                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
-                      title="Choose active spoken word color"
-                    />
-                    <input
-                      type="text"
-                      value={style.importantColor}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        update({
-                          importantColor: val,
-                          glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
-                          activeWordBgColor: style.activeWordBgColor ? val : undefined,
-                        });
-                      }}
-                      maxLength={7}
-                      placeholder="#FCD905"
-                      className="w-full bg-zinc-950 border border-zinc-700/80 text-amber-300 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase font-semibold"
-                    />
+                    <div
+                      className="relative w-8 h-8 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
+                      style={{ backgroundColor: style.importantColor || '#FCD905' }}
+                      title="Click to open color picker"
+                    >
+                      <input
+                        type="color"
+                        value={
+                          style.importantColor?.startsWith('#') && style.importantColor.length === 7
+                            ? style.importantColor
+                            : '#FCD905'
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          update({
+                            importantColor: val,
+                            glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                            activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                          });
+                        }}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </div>
+                    <div className="relative flex-1 flex items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 h-8 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
+                      <span className="text-zinc-500 font-mono text-xs select-none mr-1 font-bold">#</span>
+                      <input
+                        type="text"
+                        value={style.importantColor ? style.importantColor.replace(/^#/, '') : 'FCD905'}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6);
+                          const val = `#${raw}`;
+                          update({
+                            importantColor: val,
+                            glowColor: style.textEffect === 'neon-glow' ? val : style.glowColor,
+                            activeWordBgColor: style.activeWordBgColor ? val : undefined,
+                          });
+                        }}
+                        maxLength={6}
+                        placeholder="FCD905"
+                        className="w-full bg-transparent font-mono text-xs text-amber-300 font-bold focus:outline-none uppercase tracking-wider"
+                      />
+                    </div>
                   </div>
-                  {/* Quick Active Color Swatches */}
-                  <div className="flex items-center gap-1.5 pt-0.5">
+
+                  {/* Symmetrical Quick Color Swatches (8 dots) */}
+                  <div className="flex items-center justify-between pt-1">
                     {[
                       { col: '#FCD905', title: 'Viral Gold (Default)' },
                       { col: '#00F2FE', title: 'Neon Cyan' },
@@ -500,88 +516,103 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       { col: '#C084FC', title: 'Purple' },
                       { col: '#EF4444', title: 'Alert Red' },
                       { col: '#FFFFFF', title: 'Pure White' },
-                    ].map((s) => (
-                      <button
-                        key={s.col}
-                        type="button"
-                        onClick={() => {
-                          update({
-                            importantColor: s.col,
-                            glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
-                            activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
-                          });
-                        }}
-                        style={{ backgroundColor: s.col }}
-                        title={s.title}
-                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
-                          style.importantColor?.toUpperCase() === s.col.toUpperCase()
-                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
-                            : 'border-zinc-700'
-                        }`}
-                      />
-                    ))}
+                    ].map((s) => {
+                      const isSelected = style.importantColor?.toUpperCase() === s.col.toUpperCase();
+                      return (
+                        <button
+                          key={s.col}
+                          type="button"
+                          onClick={() => {
+                            update({
+                              importantColor: s.col,
+                              glowColor: style.textEffect === 'neon-glow' ? s.col : style.glowColor,
+                              activeWordBgColor: style.activeWordBgColor ? s.col : undefined,
+                            });
+                          }}
+                          style={{ backgroundColor: s.col }}
+                          title={s.title}
+                          className={`w-5 h-5 rounded-full cursor-pointer transition-all hover:scale-125 border ${
+                            isSelected
+                              ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900 border-white scale-110 shadow-lg'
+                              : 'border-zinc-700/80 hover:border-zinc-400'
+                          }`}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* 2. Primary / Normal Text Color */}
-                <div className="p-2 bg-zinc-900/70 border border-zinc-800/80 rounded-lg space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-zinc-300">
-                      Primary Text (Default)
+                <div className="p-3 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-white shadow-sm" />
+                    <span className="text-xs font-bold text-zinc-200">
+                      Primary Text
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => update({ textColor: '#FFFFFF' })}
-                      className="text-[9px] font-mono text-zinc-500 hover:text-white cursor-pointer"
-                      title="Keep primary text default #FFFFFF"
-                    >
-                      Default: #FFF
-                    </button>
                   </div>
+
+                  {/* Color Swatch Tile + Integrated Hex Input */}
                   <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={
-                        style.textColor?.startsWith('#') && style.textColor.length === 7
-                          ? style.textColor
-                          : '#FFFFFF'
-                      }
-                      onChange={(e) => update({ textColor: e.target.value })}
-                      className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
-                      title="Choose primary text color"
-                    />
-                    <input
-                      type="text"
-                      value={style.textColor}
-                      onChange={(e) => update({ textColor: e.target.value })}
-                      maxLength={7}
-                      placeholder="#FFFFFF"
-                      className="w-full bg-zinc-950 border border-zinc-700/80 text-zinc-200 font-mono text-[11px] px-2 py-1 rounded focus:outline-none focus:border-amber-400 uppercase"
-                    />
+                    <div
+                      className="relative w-8 h-8 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
+                      style={{ backgroundColor: style.textColor || '#FFFFFF' }}
+                      title="Click to open color picker"
+                    >
+                      <input
+                        type="color"
+                        value={
+                          style.textColor?.startsWith('#') && style.textColor.length === 7
+                            ? style.textColor
+                            : '#FFFFFF'
+                        }
+                        onChange={(e) => update({ textColor: e.target.value })}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </div>
+                    <div className="relative flex-1 flex items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 h-8 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
+                      <span className="text-zinc-500 font-mono text-xs select-none mr-1 font-bold">#</span>
+                      <input
+                        type="text"
+                        value={style.textColor ? style.textColor.replace(/^#/, '') : 'FFFFFF'}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6);
+                          update({ textColor: `#${raw}` });
+                        }}
+                        maxLength={6}
+                        placeholder="FFFFFF"
+                        className="w-full bg-transparent font-mono text-xs text-zinc-100 font-bold focus:outline-none uppercase tracking-wider"
+                      />
+                    </div>
                   </div>
-                  {/* Quick Primary Text Swatches */}
-                  <div className="flex items-center gap-1.5 pt-0.5">
+
+                  {/* Symmetrical Quick Color Swatches (8 dots matching active card) */}
+                  <div className="flex items-center justify-between pt-1">
                     {[
                       { col: '#FFFFFF', title: 'Pure White (Default)' },
                       { col: '#FFFBEB', title: 'Warm Cream' },
+                      { col: '#E2E8F0', title: 'Silver Slate' },
                       { col: '#D1D5DB', title: 'Soft Gray' },
                       { col: '#93C5FD', title: 'Ice Blue' },
+                      { col: '#FEF08A', title: 'Pale Gold' },
                       { col: '#FDF6E2', title: 'Retro Beige' },
-                      { col: '#000000', title: 'Deep Black' },
-                    ].map((s) => (
-                      <button
-                        key={s.col}
-                        type="button"
-                        onClick={() => update({ textColor: s.col })}
-                        style={{ backgroundColor: s.col }}
-                        title={s.title}
-                        className={`w-4 h-4 rounded-full border cursor-pointer transition-transform hover:scale-125 ${
-                          style.textColor?.toUpperCase() === s.col.toUpperCase()
-                            ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white'
-                            : 'border-zinc-700'
-                        }`}
-                      />
-                    ))}
+                      { col: '#18181B', title: 'Deep Black' },
+                    ].map((s) => {
+                      const isSelected = style.textColor?.toUpperCase() === s.col.toUpperCase();
+                      return (
+                        <button
+                          key={s.col}
+                          type="button"
+                          onClick={() => update({ textColor: s.col })}
+                          style={{ backgroundColor: s.col }}
+                          title={s.title}
+                          className={`w-5 h-5 rounded-full cursor-pointer transition-all hover:scale-125 border ${
+                            isSelected
+                              ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900 border-white scale-110 shadow-lg'
+                              : 'border-zinc-700/80 hover:border-zinc-400'
+                          }`}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               </div>

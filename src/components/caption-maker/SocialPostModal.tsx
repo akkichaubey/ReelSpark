@@ -15,8 +15,12 @@ import {
   Share2,
   Info,
   Loader2,
+  AlertTriangle,
+  RotateCcw,
+  ChevronDown,
 } from 'lucide-react';
 import { SocialPostBundle, ContentTone, SocialPlatform } from '@/app/api/caption-maker/generate-social/route';
+import { getPlatformDescriptionLimit, PLATFORM_DESCRIPTION_LIMITS } from '@/lib/social-intelligence/platform-rules';
 
 interface SocialPostModalProps {
   isOpen: boolean;
@@ -167,22 +171,25 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
             {/* Tone Selector */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-zinc-400 font-medium">Tone:</span>
-              <select
-                value={tone}
-                onChange={(e) => {
-                  const newTone = e.target.value as ContentTone;
-                  setTone(newTone);
-                  handleGenerate(language, newTone, platform);
-                }}
-                className="bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2.5 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer"
-              >
-                <option value="motivational">🔥 Motivational</option>
-                <option value="educational">💡 Educational</option>
-                <option value="storytelling">📖 Storytelling</option>
-                <option value="funny">😂 Funny / Viral</option>
-                <option value="emotional">❤️ Emotional / Deep</option>
-                <option value="professional">💼 Professional</option>
-              </select>
+              <div className="relative inline-flex items-center">
+                <select
+                  value={tone}
+                  onChange={(e) => {
+                    const newTone = e.target.value as ContentTone;
+                    setTone(newTone);
+                    handleGenerate(language, newTone, platform);
+                  }}
+                  className="appearance-none bg-zinc-900 border border-zinc-700/80 hover:border-zinc-600 text-xs text-zinc-200 rounded-lg pl-3 pr-8 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm transition-colors"
+                >
+                  <option value="motivational">🔥 Motivational</option>
+                  <option value="educational">💡 Educational</option>
+                  <option value="storytelling">📖 Storytelling</option>
+                  <option value="funny">😂 Funny / Viral</option>
+                  <option value="emotional">❤️ Emotional / Deep</option>
+                  <option value="professional">💼 Professional</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+              </div>
             </div>
 
             {/* Language Selector */}
@@ -217,20 +224,23 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
             {/* Platform Filter */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-zinc-400 font-medium">Platform:</span>
-              <select
-                value={platform}
-                onChange={(e) => {
-                  const newPlatform = e.target.value as SocialPlatform;
-                  setPlatform(newPlatform);
-                  handleGenerate(language, tone, newPlatform);
-                }}
-                className="bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2.5 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer"
-              >
-                <option value="all">🌐 All Platforms</option>
-                <option value="instagram">📸 Instagram Reels</option>
-                <option value="youtube">▶️ YouTube Shorts</option>
-                <option value="tiktok">🎵 TikTok</option>
-              </select>
+              <div className="relative inline-flex items-center">
+                <select
+                  value={platform}
+                  onChange={(e) => {
+                    const newPlatform = e.target.value as SocialPlatform;
+                    setPlatform(newPlatform);
+                    handleGenerate(language, tone, newPlatform);
+                  }}
+                  className="appearance-none bg-zinc-900 border border-zinc-700/80 hover:border-zinc-600 text-xs text-zinc-200 rounded-lg pl-3 pr-8 py-1.5 focus:border-amber-400 focus:outline-none capitalize cursor-pointer shadow-sm transition-colors"
+                >
+                  <option value="all">🌐 All Platforms</option>
+                  <option value="instagram">📸 Instagram Reels</option>
+                  <option value="youtube">▶️ YouTube Shorts</option>
+                  <option value="tiktok">🎵 TikTok</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+              </div>
             </div>
           </div>
 
@@ -316,69 +326,170 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                 </div>
               </div>
 
-              {/* 2. Variation Tabs for Complete Social Post */}
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Complete Post Copy (Ready to Paste)</span>
-                  </label>
+              {/* 2. Enhanced Post Description / Copy Area with Limits Reference */}
+              {(() => {
+                const platformDescLimit = getPlatformDescriptionLimit(platform);
+                const charCount = editedText.length;
+                const maxChars = platformDescLimit.max;
+                const isOverLimit = charCount > maxChars;
+                const isOptimal = charCount >= platformDescLimit.recMin && charCount <= platformDescLimit.recMax;
+                const wordsCount = editedText.trim() ? editedText.trim().split(/\s+/).length : 0;
+                const hashtagsInText = (editedText.match(/#[a-zA-Z0-9_\u0900-\u097F]+/g) || []).length;
+                const percentUsed = Math.min(100, Math.round((charCount / maxChars) * 100));
+                const originalVariationText = bundle.variations?.[selectedVariationIdx]?.fullText || '';
+                const isModified = originalVariationText !== '' && editedText !== originalVariationText;
 
-                  {/* Variation Switcher */}
-                  <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-[11px]">
-                    {bundle.variations.map((v, vIdx) => (
-                      <button
-                        key={vIdx}
-                        type="button"
-                        onClick={() => handleSelectVariation(vIdx)}
-                        className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                          selectedVariationIdx === vIdx
-                            ? 'bg-amber-400 text-black shadow-sm font-bold'
-                            : 'text-zinc-400 hover:text-white'
+                return (
+                  <div className="p-3.5 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+                    {/* Header: Title, Platform Label, and Live Limits Counter */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-zinc-800/60">
+                      <div className="flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-xs font-bold text-zinc-200">
+                          Complete Post Copy (Ready to Paste)
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/60 text-zinc-300">
+                          {platformDescLimit.label}
+                        </span>
+                      </div>
+
+                      {/* Live Counter Badge */}
+                      <div
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-mono text-[11px] font-bold ${
+                          isOverLimit
+                            ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                            : isOptimal
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-300'
                         }`}
                       >
-                        {v.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                        {isOverLimit ? (
+                          <>
+                            <AlertTriangle className="w-3 h-3 text-rose-400" />
+                            <span>{charCount.toLocaleString()}/{maxChars.toLocaleString()}</span>
+                            <span className="text-[9px] font-sans text-rose-400 uppercase">
+                              (+{charCount - maxChars} OVER)
+                            </span>
+                          </>
+                        ) : isOptimal ? (
+                          <>
+                            <Sparkles className="w-3 h-3 text-emerald-400" />
+                            <span>{charCount.toLocaleString()}/{maxChars.toLocaleString()}</span>
+                            <span className="text-[9px] font-sans text-emerald-400 uppercase">
+                              (SWEET SPOT)
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{charCount.toLocaleString()}/{maxChars.toLocaleString()}</span>
+                            <span className="text-[9px] font-sans text-zinc-500 uppercase">
+                              CHARS
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
 
-                {/* Editable Text Area for Selected Variation */}
-                <div className="relative">
-                  <textarea
-                    rows={8}
-                    value={editedText}
-                    onChange={(e) => setEditedText(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-700/80 rounded-xl p-3.5 text-xs text-zinc-200 font-sans leading-relaxed focus:outline-none focus:border-amber-400 resize-none shadow-inner"
-                    placeholder="Social media caption text..."
-                  />
+                    {/* Toolbar Ribbon: Variation Switcher & Stats */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      {/* Variation Switcher */}
+                      <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+                        {bundle.variations.map((v, vIdx) => (
+                          <button
+                            key={vIdx}
+                            type="button"
+                            onClick={() => handleSelectVariation(vIdx)}
+                            className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                              selectedVariationIdx === vIdx
+                                ? 'bg-amber-400 text-black shadow-sm font-bold'
+                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            {v.title}
+                          </button>
+                        ))}
+                      </div>
 
-                  {/* Floating Copy Action on Textarea */}
-                  <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(editedText, 'full_post')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
-                        copiedKey === 'full_post'
-                          ? 'bg-emerald-500 text-black'
-                          : 'bg-amber-400 hover:bg-amber-300 text-black shadow-amber-400/20 active:scale-95'
-                      }`}
-                    >
-                      {copiedKey === 'full_post' ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Copied Full Post!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Post</span>
-                        </>
-                      )}
-                    </button>
+                      {/* Metrics Strip */}
+                      <div className="flex items-center gap-2.5 text-[10px] text-zinc-400">
+                        <span><strong className="text-zinc-200">{wordsCount}</strong> words</span>
+                        <span className="text-zinc-600">·</span>
+                        <span><strong className="text-zinc-200">{hashtagsInText}</strong> tags</span>
+                        <span className="text-zinc-600">·</span>
+                        <span className="text-zinc-300">Rec: {platformDescLimit.recMin}–{platformDescLimit.recMax}</span>
+                        {isModified && (
+                          <>
+                            <span className="text-zinc-600">·</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (bundle?.variations?.[selectedVariationIdx]) {
+                                  setEditedText(bundle.variations[selectedVariationIdx].fullText);
+                                }
+                              }}
+                              className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
+                              title="Reset to AI copy"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              <span>Reset</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Editable Text Area for Selected Variation with Progress Bar */}
+                    <div className="relative rounded-xl border border-zinc-700/80 bg-zinc-950 overflow-hidden shadow-inner focus-within:border-amber-400">
+                      {/* Progress Bar Header */}
+                      <div className="h-1 w-full bg-zinc-900 overflow-hidden relative">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            isOverLimit
+                              ? 'bg-rose-500'
+                              : isOptimal
+                              ? 'bg-emerald-400'
+                              : 'bg-amber-400'
+                          }`}
+                          style={{ width: `${percentUsed}%` }}
+                        />
+                      </div>
+
+                      <textarea
+                        rows={8}
+                        value={editedText}
+                        onChange={(e) => setEditedText(e.target.value)}
+                        className="w-full bg-transparent p-3.5 text-xs text-zinc-200 font-sans leading-relaxed focus:outline-none resize-none shadow-inner"
+                        placeholder="Social media caption text..."
+                      />
+
+                      {/* Floating Copy Action on Textarea */}
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(editedText, 'full_post')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
+                            copiedKey === 'full_post'
+                              ? 'bg-emerald-500 text-black'
+                              : 'bg-amber-400 hover:bg-amber-300 text-black shadow-amber-400/20 active:scale-95'
+                          }`}
+                        >
+                          {copiedKey === 'full_post' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Copied Full Post!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy Post</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* 3. Hashtags Cloud Section */}
               <div className="p-3.5 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-2">

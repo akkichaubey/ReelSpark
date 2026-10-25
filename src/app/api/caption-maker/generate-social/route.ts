@@ -489,6 +489,7 @@ export async function POST(req: NextRequest) {
       includeLinks = true,
       captionStyle = 'curiosity',
       explicitAccountId,
+      customHeading,
       model,
     } = body;
 
@@ -521,15 +522,23 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
+    const effectivePreferences: typeof preferences = {
+      ...preferences,
+      customHeading:
+        typeof customHeading === 'string' && customHeading.trim() !== ''
+          ? customHeading.trim()
+          : preferences.customHeading,
+    };
+
     const eligibleLinks = resolveEligibleSocialLinks(
       accounts,
-      preferences,
+      effectivePreferences,
       platform,
       explicitAccountId
     );
 
     const linksBlock = includeLinks && eligibleLinks.length > 0
-      ? formatSocialLinksBlock(eligibleLinks, preferences)
+      ? formatSocialLinksBlock(eligibleLinks, effectivePreferences)
       : '';
 
     const cleanTranscript = transcript.trim();

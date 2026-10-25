@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-access';
 import { checkFfmpegStatus, checkOllamaStatus, checkGeminiStatus, getAiProvider, loadAppSettings } from '@/lib/config';
+import { publishingRuntimeStatus } from '@/lib/social-intelligence/publishing-runtime';
 
 export async function GET(req: Request) {
   try {
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       status: 'ok',
+      publishing: publishingRuntimeStatus(req.url),
       provider,
       ffmpeg: {
         available: ffmpeg.available,
