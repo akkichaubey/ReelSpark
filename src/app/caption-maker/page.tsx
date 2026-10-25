@@ -785,6 +785,11 @@ function CaptionMakerPageContent() {
       return {
         ...prev,
         image: normalizedImage,
+        mediaAssets: [...new Map([
+          ...(prev.mediaAssets || []).map((asset) => [asset.id, asset] as const),
+          ...(prev.image ? [[prev.image.id, prev.image] as const] : []),
+          [normalizedImage.id, normalizedImage] as const,
+        ]).values()],
         updatedAt: new Date().toISOString(),
       };
     });
@@ -1268,36 +1273,49 @@ function CaptionMakerPageContent() {
 
   const handleFitModeChange = (mode: ImageFitMode) => {
     if (!project.image) return;
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      image: prev.image
-        ? {
-            ...prev.image,
-            fitMode: mode,
-            position: prev.image.position || 'bottom-left',
-            scale: prev.image.scale ?? 100,
-          }
-        : undefined,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      const image = prev.image
+        ? { ...prev.image, fitMode: mode, position: prev.image.position || 'bottom-left', scale: prev.image.scale ?? 100 }
+        : undefined;
+      return {
+        ...prev,
+        image,
+        mediaAssets: image
+          ? [...new Map([...(prev.mediaAssets || []), image].map((asset) => [asset.id, asset] as const)).values()]
+          : prev.mediaAssets,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const handleImagePositionChange = (position: ImagePosition) => {
     if (!project.image) return;
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      image: prev.image ? { ...prev.image, position } : undefined,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      const image = prev.image ? { ...prev.image, position } : undefined;
+      return {
+        ...prev,
+        image,
+        mediaAssets: image
+          ? [...new Map([...(prev.mediaAssets || []), image].map((asset) => [asset.id, asset] as const)).values()]
+          : prev.mediaAssets,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const handleImageScaleChange = (scale: number) => {
     if (!project.image) return;
-    updateProjectWithHistory((prev) => ({
-      ...prev,
-      image: prev.image ? { ...prev.image, scale } : undefined,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateProjectWithHistory((prev) => {
+      const image = prev.image ? { ...prev.image, scale } : undefined;
+      return {
+        ...prev,
+        image,
+        mediaAssets: image
+          ? [...new Map([...(prev.mediaAssets || []), image].map((asset) => [asset.id, asset] as const)).values()]
+          : prev.mediaAssets,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
 
@@ -2040,6 +2058,7 @@ function CaptionMakerPageContent() {
             {leftTab === 'assets' ? (
               <AssetUploadSection
                 image={project.image}
+                mediaAssets={project.mediaAssets || (project.image ? [project.image] : [])}
                 audio={project.audio}
                 onImageChange={(img) => {
                   if (img) handleImageUploaded(img);

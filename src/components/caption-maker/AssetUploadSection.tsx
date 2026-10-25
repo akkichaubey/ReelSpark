@@ -57,6 +57,7 @@ import {
 
 interface AssetUploadSectionProps {
   image?: ImageAsset;
+  mediaAssets?: ImageAsset[];
   audio?: AudioAsset;
   bgMusic?: BgMusicTrack;
   voiceVolume?: number;
@@ -120,6 +121,7 @@ const CONTAIN_POSITIONS: {
 
 export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   image,
+  mediaAssets = [],
   audio,
   bgMusic,
   voiceVolume = 1.0,
@@ -162,6 +164,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isUploadingBgm, setIsUploadingBgm] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ media: 0, audio: 0, bgm: 0 });
+  const [mediaQueueStatus, setMediaQueueStatus] = useState<{ current: number; total: number; fileName: string } | null>(null);
   const [customBgmTracks, setCustomBgmTracks] = useState<BgMusicTrack[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const uploadAbortControllers = useRef<Record<'media' | 'audio' | 'bgm', AbortController | null>>({
@@ -169,8 +172,16 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     audio: null,
     bgm: null,
   });
+  const mediaQueueRef = useRef<File[]>([]);
+  const mediaQueueProcessingRef = useRef(false);
+  const mediaQueueCompletedRef = useRef(0);
+  const mediaQueueTotalRef = useRef(0);
+  const mediaQueueErrorsRef = useRef<string[]>([]);
 
   const cancelUpload = (kind: 'media' | 'audio' | 'bgm') => {
+    if (kind === 'media') {
+      mediaQueueRef.current = [];
+    }
     uploadAbortControllers.current[kind]?.abort();
   };
 
@@ -279,44 +290,109 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const handleMediaFile = async (file: File) => {
-    if (uploadAbortControllers.current.media) return;
-    setUploadError(null);
-    setIsUploadingMedia(true);
-    setUploadProgress((current) => ({ ...current, media: 0 }));
-    const controller = new AbortController();
-    uploadAbortControllers.current.media = controller;
-    try {
-      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-      const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
-      const isImageFile = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
-      if (!isVideoFile && !isImageFile) {
-        throw new Error('Please select a video file (MP4, MOV, WEBM) or image file (JPG, PNG, WEBP) for the background.');
-      }
-      const data = await uploadFileWithProgress<{
-        success?: boolean;
-        error?: string;
-        asset?: ImageAsset;
-      }>('/api/caption-maker/upload', file, (media) => {
-        setUploadProgress((current) => ({ ...current, media }));
-      }, isVideoFile ? 'video' : 'image', controller.signal);
-      if (!data.success || !data.asset) {
-        throw new Error(data.error || 'Failed to upload background media');
-      }
+  const processMediaQueue = async () => {
+    if (mediaQueueProcessingRef.current) return;
+    mediaQueueProcessingRef.current = true;
 
-      onImageChange(data.asset);
-      setUploadProgress((current) => ({ ...current, media: 100 }));
-    } catch (err: any) {
-      if (err instanceof UploadCancelledError) {
+    try {
+      while (mediaQueueRef.current.length > 0) {
+        const file = mediaQueueRef.current.shift();
+        if (!file) continue;
+
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
+        const isImageFile = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+        const itemNumber = mediaQueueCompletedRef.current + 1;
+        setMediaQueueStatus({ current: itemNumber, total: mediaQueueTotalRef.current, fileName: file.name });
         setUploadProgress((current) => ({ ...current, media: 0 }));
-        setUploadError(null);
-      } else {
-        setUploadError(err.message);
+
+        if (!isVideoFile && !isImageFile) {
+          mediaQueueErrorsRef.current.push(`${file.name}: unsupported format`);
+          mediaQueueCompletedRef.current += 1;
+          continue;
+        }
+
+        const controller = new AbortController();
+        uploadAbortControllers.current.media = controller;
+        try {
+          const data = await uploadFileWithProgress<{
+            success?: boolean;
+            error?: string;
+            asset?: ImageAsset;
+          }>('/api/caption-maker/upload', file, (media) => {
+            setUploadProgress((current) => ({ ...current, media }));
+          }, isVideoFile ? 'video' : 'image', controller.signal);
+          if (!data.success || !data.asset) {
+            throw new Error(data.error || 'Failed to upload background media');
+          }
+
+          // Keep every completed upload in the project library while selecting it on the canvas.
+          onImageChange(data.asset);
+        } catch (err: unknown) {
+          if (err instanceof UploadCancelledError) {
+            mediaQueueRef.current = [];
+            setUploadProgress((current) => ({ ...current, media: 0 }));
+            setUploadError(null);
+            break;
+          }
+          mediaQueueErrorsRef.current.push(`${file.name}: ${err instanceof Error ? err.message : 'Upload failed'}`);
+        } finally {
+          if (uploadAbortControllers.current.media === controller) {
+            uploadAbortControllers.current.media = null;
+          }
+          mediaQueueCompletedRef.current += 1;
+        }
       }
     } finally {
-      uploadAbortControllers.current.media = null;
+      mediaQueueProcessingRef.current = false;
       setIsUploadingMedia(false);
+      setMediaQueueStatus(null);
+      const errors = mediaQueueErrorsRef.current;
+      if (errors.length) {
+        setUploadError(`${errors.length} file${errors.length === 1 ? '' : 's'} could not be uploaded. ${errors.slice(0, 2).join(' • ')}`);
+      } else {
+        setUploadError(null);
+      }
+      if (mediaQueueRef.current.length > 0) {
+        setIsUploadingMedia(true);
+        void processMediaQueue();
+      } else {
+        mediaQueueCompletedRef.current = 0;
+        mediaQueueTotalRef.current = 0;
+        mediaQueueErrorsRef.current = [];
+      }
     }
+  };
+
+  const handleMediaFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (!files.length) return;
+
+    const validExtensions = ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.webp'];
+    const validFiles = files.filter((file) => validExtensions.includes(file.name.substring(file.name.lastIndexOf('.')).toLowerCase()));
+    const invalidCount = files.length - validFiles.length;
+    if (!mediaQueueProcessingRef.current && mediaQueueRef.current.length === 0) {
+      mediaQueueCompletedRef.current = 0;
+      mediaQueueTotalRef.current = 0;
+      mediaQueueErrorsRef.current = [];
+      setUploadError(null);
+    }
+    if (invalidCount) {
+      mediaQueueErrorsRef.current.push(`${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Use MP4, MOV, WEBM, MKV, AVI, JPG, PNG, or WEBP.`);
+    }
+    if (!validFiles.length) {
+      setUploadError(mediaQueueErrorsRef.current.join(' • '));
+      return;
+    }
+    mediaQueueRef.current.push(...validFiles);
+    mediaQueueTotalRef.current += validFiles.length;
+    setIsUploadingMedia(true);
+    setMediaQueueStatus((current) => ({
+      current: current?.current || mediaQueueCompletedRef.current + 1,
+      total: mediaQueueTotalRef.current,
+      fileName: current?.fileName || validFiles[0].name,
+    }));
+    void processMediaQueue();
   };
 
   const handleAudioFile = async (file: File) => {
@@ -399,7 +475,15 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       )}
 
       {/* 1. Background Media (Video / Image) Asset Card */}
-      <div className="rounded-2xl bg-zinc-900/90 border border-white/10 p-4 space-y-3 shadow-lg">
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer.files?.length) handleMediaFiles(e.dataTransfer.files);
+        }}
+        className="rounded-2xl bg-zinc-900/90 border border-white/10 p-4 space-y-3 shadow-lg"
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <div className={`p-1.5 rounded-lg border ${
@@ -426,6 +510,18 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </span>
           )}
         </div>
+
+        {isUploadingMedia && image && (
+          <div role="status" aria-live="polite" className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-semibold text-amber-200">
+                Uploading {mediaQueueStatus?.current || 1} of {mediaQueueStatus?.total || 1}: {mediaQueueStatus?.fileName || 'background media'} ({uploadProgress.media}%)
+              </p>
+              <p className="text-[9px] text-zinc-500">Additional files are queued and uploaded one at a time.</p>
+            </div>
+            <button type="button" onClick={() => cancelUpload('media')} className="shrink-0 rounded border border-red-500/30 px-2 py-1 text-[9px] font-semibold text-red-300 hover:bg-red-500/10">Cancel queue</button>
+          </div>
+        )}
 
         {image ? (
           <div className="space-y-3">
@@ -642,11 +738,6 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           </div>
         ) : (
           <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (e.dataTransfer.files?.[0]) handleMediaFile(e.dataTransfer.files[0]);
-            }}
             className="border-2 border-dashed border-white/10 hover:border-amber-500/40 rounded-xl p-4 text-center transition-all bg-zinc-950/40 hover:bg-zinc-900/50 flex flex-col items-center justify-center space-y-2.5 group"
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
@@ -659,9 +750,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             <div>
               <p className="text-xs font-bold text-zinc-200">
                 {isUploadingMedia
-                  ? uploadProgress.media >= 100
-                    ? 'Processing background media…'
-                    : `Uploading Background Media (${uploadProgress.media}%)...`
+                  ? `${uploadProgress.media >= 100 ? 'Processing' : 'Uploading'} ${mediaQueueStatus?.current || 1} of ${mediaQueueStatus?.total || 1}: ${mediaQueueStatus?.fileName || 'background media'} (${uploadProgress.media}%)...`
                   : 'Choose Background Video or Image'}
               </p>
               <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
@@ -683,22 +772,23 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <button
                 type="button"
                 onClick={() => videoInputRef.current?.click()}
-                disabled={isUploadingMedia}
                 className="flex-1 py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <Film className="w-3.5 h-3.5 text-amber-400" />
-                <span>Upload Video</span>
+                <span>{isUploadingMedia ? 'Add Videos' : 'Upload Video'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={isUploadingMedia}
                 className="flex-1 py-1.5 px-2 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-sky-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
-                <span>Upload Image</span>
+                <span>{isUploadingMedia ? 'Add Images' : 'Upload Image'}</span>
               </button>
             </div>
+            <button type="button" onClick={() => anyMediaInputRef.current?.click()} className="text-[10px] font-semibold text-zinc-400 underline decoration-white/20 underline-offset-2 hover:text-white">
+              Select multiple images and videos
+            </button>
             <p className="text-[9px] text-zinc-500 font-mono">
               MP4, MOV, WEBM or JPG, PNG, WEBP (Reel visual background)
             </p>
@@ -708,36 +798,76 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         <input
           ref={imageInputRef}
           type="file"
+          multiple
           accept="image/jpeg,image/png,image/webp"
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = Array.from(e.target.files || []);
             e.target.value = '';
-            if (file) handleMediaFile(file);
+            if (files?.length) handleMediaFiles(files);
           }}
         />
         <input
           ref={videoInputRef}
           type="file"
+          multiple
           accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = Array.from(e.target.files || []);
             e.target.value = '';
-            if (file) handleMediaFile(file);
+            if (files?.length) handleMediaFiles(files);
           }}
         />
         <input
           ref={anyMediaInputRef}
           type="file"
+          multiple
           accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = Array.from(e.target.files || []);
             e.target.value = '';
-            if (file) handleMediaFile(file);
+            if (files?.length) handleMediaFiles(files);
           }}
         />
+
+        {mediaAssets.length > 0 && (
+          <section className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2" aria-label="Uploaded project media">
+            <div className="flex items-center justify-between gap-2">
+              <h5 className="text-[11px] font-bold text-zinc-200">Project Media</h5>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-zinc-500">{mediaAssets.length} uploaded</span>
+                <button type="button" onClick={() => anyMediaInputRef.current?.click()} className="rounded border border-amber-500/30 px-2 py-1 text-[9px] font-semibold text-amber-300 hover:bg-amber-500/10">Add Media</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto">
+              {mediaAssets.map((asset) => {
+                const active = asset.id === image?.id;
+                const assetIsVideo = asset.mediaType === 'video';
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => onImageChange(asset)}
+                    className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                      active
+                        ? 'border-amber-400/60 bg-amber-500/10 text-amber-200'
+                        : 'border-white/10 bg-zinc-900 text-zinc-300 hover:border-white/20 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {assetIsVideo ? <Film className="h-3.5 w-3.5 shrink-0 text-amber-400" /> : <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-400" />}
+                    <span className="min-w-0 flex-1 truncate text-[10px]">{asset.fileName}</span>
+                    <span className="shrink-0 text-[9px] uppercase text-zinc-500">{assetIsVideo ? 'Video' : 'Image'}</span>
+                    {active && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label="Active background" />}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[9px] text-zinc-500">Choose which uploaded image or video to use as the active background.</p>
+          </section>
+        )}
       </div>
 
       {/* 2. Audio Voice Recording Asset Card */}

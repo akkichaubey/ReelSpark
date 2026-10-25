@@ -346,6 +346,8 @@ export interface CaptionProject {
   id: string;
   title: string;
   image?: ImageAsset;
+  /** Uploaded background choices retained with the project; image remains the active canvas source. */
+  mediaAssets?: ImageAsset[];
   audio?: AudioAsset;
   transcript: TranscriptWord[];
   captionGroups: CaptionGroup[];
