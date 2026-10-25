@@ -145,6 +145,7 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
 
   // Status & feedback
   const [isLoadingSettings, setIsLoadingSettings] = useState<boolean>(false);
+  const [ollamaUnavailableReason, setOllamaUnavailableReason] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -171,9 +172,14 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Unable to load server settings');
         if (active && data.success) {
-          if (data.provider) {
-            setProvider(data.provider);
-          }
+          const unavailableReason = typeof data.ollamaUnavailableReason === 'string'
+            ? data.ollamaUnavailableReason
+            : null;
+          setOllamaUnavailableReason(unavailableReason);
+          const requestedProvider = currentModel
+            ? currentModel.startsWith('gemini') ? 'gemini' : 'ollama'
+            : data.provider || 'ollama';
+          setProvider(requestedProvider === 'ollama' && unavailableReason ? 'gemini' : requestedProvider);
           if (data.baseUrl) {
             setBaseUrlInput(data.baseUrl);
           }
@@ -187,10 +193,8 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
           // If currentModel is passed, determine which provider it belongs to
           if (currentModel) {
             if (currentModel.startsWith('gemini')) {
-              setProvider('gemini');
               setGeminiModel(currentModel);
             } else {
-              setProvider('ollama');
               const isPredefined = OLLAMA_MODELS.some((m) => m.id === currentModel);
               if (isPredefined) {
                 setOllamaModel(currentModel);
@@ -357,14 +361,16 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
               setProvider('ollama');
               setTestResult(null);
             }}
+            disabled={Boolean(ollamaUnavailableReason)}
+            title={ollamaUnavailableReason || undefined}
             className={`flex-1 py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer ${
               provider === 'ollama'
                 ? 'bg-amber-400 text-zinc-950 border-amber-400 shadow-md'
                 : 'bg-zinc-900/80 text-zinc-400 border-white/10 hover:text-white hover:bg-zinc-800'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-50`}
           >
             <Cpu className="w-4 h-4" />
-            <span>Ollama (100% Free & Local — No API Key)</span>
+            <span>{ollamaUnavailableReason ? 'Ollama (Not available on this host)' : 'Ollama (Free & Local — No API Key)'}</span>
           </button>
 
           <button
@@ -383,6 +389,16 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
             <span>Google Gemini (Add Your Key)</span>
           </button>
         </div>
+
+        {ollamaUnavailableReason && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-100 flex items-start gap-2 text-xs">
+            <AlertCircle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <span className="font-semibold">Ollama is unavailable in the hosted app.</span>{' '}
+              {ollamaUnavailableReason} The <code className="font-mono">127.0.0.1</code> address refers to the Render server here, not your computer. Ollama remains available when ReelSpark runs locally beside Ollama.
+            </p>
+          </div>
+        )}
 
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">

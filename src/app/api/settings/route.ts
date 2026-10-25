@@ -8,6 +8,8 @@ import {
   OLLAMA_AVAILABLE_MODELS,
   GEMINI_AVAILABLE_MODELS,
   getAiProvider,
+  isHostedRuntime,
+  isLoopbackOllamaUrl,
 } from '@/lib/config';
 import { testOllamaConnection } from '@/lib/ollama';
 import { testGeminiConnection } from '@/lib/gemini';
@@ -28,7 +30,11 @@ export async function GET(req: NextRequest) {
     if (denied) return denied;
     const status = await checkOllamaStatus();
     const settings = loadAppSettings();
-    const provider = getAiProvider();
+    const savedProvider = getAiProvider();
+    const ollamaUnavailableReason = isHostedRuntime() && isLoopbackOllamaUrl(status.baseUrl)
+      ? 'This hosted ReelSpark server cannot reach Ollama on your PC through 127.0.0.1. Use Gemini with your API key, or configure a securely reachable Ollama server.'
+      : null;
+    const provider = ollamaUnavailableReason && savedProvider === 'ollama' ? 'gemini' : savedProvider;
 
     return NextResponse.json({
       success: true,
@@ -39,6 +45,8 @@ export async function GET(req: NextRequest) {
       ollamaModel: status.model,
       baseUrl: status.baseUrl,
       configured: status.configured,
+      hostedRuntime: isHostedRuntime(),
+      ollamaUnavailableReason,
       availableOllamaModels: OLLAMA_AVAILABLE_MODELS,
       // Gemini details (User's personal key)
       geminiModel: settings.geminiModel || 'gemini-2.5-flash',
@@ -60,6 +68,13 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return NextResponse.json({ success: false, error: 'Invalid settings' }, { status: 400 });
     const body = parsed.data;
     const { action, provider = 'ollama', model, baseUrl, apiKey } = body;
+
+    if (provider === 'ollama' && isHostedRuntime() && isLoopbackOllamaUrl(baseUrl || getOllamaBaseUrl())) {
+      return NextResponse.json({
+        success: false,
+        error: 'Ollama at 127.0.0.1 is not available from the hosted ReelSpark server. Use Gemini with your API key, or configure a securely reachable Ollama server.',
+      }, { status: 400 });
+    }
 
     if (action === 'test') {
       if (provider === 'gemini') {

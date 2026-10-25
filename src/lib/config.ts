@@ -247,6 +247,21 @@ export function getOllamaBaseUrl(): string {
   return settings.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl;
 }
 
+/** True when this process runs inside Render rather than on the user's computer. */
+export function isHostedRuntime(): boolean {
+  return process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
+}
+
+/** A loopback Ollama URL points to this process's machine, not the browser user's machine. */
+export function isLoopbackOllamaUrl(baseUrl: string): boolean {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check whether Ollama is active and return model status.
  */
