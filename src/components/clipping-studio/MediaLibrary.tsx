@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { formatMsToTimestamp, MediaAsset } from '@/lib/clipping-studio/contracts';
-import { ProgressCircle } from '@/components/ProgressCircle';
+import { UploadProgressIndicator } from '@/components/ProgressCircle';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 export const MediaLibrary: React.FC = () => {
@@ -125,7 +125,7 @@ export const MediaLibrary: React.FC = () => {
           />
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
             {isUploading ? (
-              <ProgressCircle value={uploadProgress} size={36} strokeWidth={3.5} label="Media upload and inspection" />
+              <UploadProgressIndicator progress={uploadProgress} processing={uploadProgress >= 100} size={36} strokeWidth={3.5} label="Media upload and inspection" />
             ) : (
               <UploadCloud className="w-6 h-6" />
             )}

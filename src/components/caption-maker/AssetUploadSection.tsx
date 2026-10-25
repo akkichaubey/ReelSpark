@@ -26,6 +26,7 @@ import {
   Maximize2,
   Film,
   Check,
+  CheckCircle2,
   Volume2,
   VolumeX,
   Waves,
@@ -34,7 +35,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { ProgressCircle } from '@/components/ProgressCircle';
+import { UploadProgressIndicator } from '@/components/ProgressCircle';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 import {
   AudioAsset,
@@ -650,7 +651,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
               {isUploadingMedia ? (
-                <ProgressCircle value={uploadProgress.media} size={30} strokeWidth={3} label="Background media upload" />
+                <UploadProgressIndicator progress={uploadProgress.media} processing={uploadProgress.media >= 100} size={30} label="Background media upload" />
               ) : (
                 <UploadCloud className="w-5 h-5" />
               )}
@@ -1081,7 +1082,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           >
             <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-400 group-hover:scale-105 transition-all">
               {isUploadingAudio ? (
-                <ProgressCircle value={uploadProgress.audio} size={30} strokeWidth={3} label="Spoken audio upload" />
+              <UploadProgressIndicator progress={uploadProgress.audio} processing={uploadProgress.audio >= 100} size={30} label="Spoken audio upload" />
               ) : (
                 <UploadCloud className="w-5 h-5" />
               )}
@@ -1298,6 +1299,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                         <span className="text-xs truncate">{customTrack.title}</span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" aria-label="Upload complete" role="img" />
                         {isSelected && <Check className="w-3.5 h-3.5 text-purple-400" />}
                         <button
                           type="button"
@@ -1323,7 +1325,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             className="w-full py-2 px-3 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500/60 bg-purple-950/20 hover:bg-purple-950/40 text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 disabled:opacity-50"
           >
             {isUploadingBgm ? (
-              <ProgressCircle value={uploadProgress.bgm} size={26} strokeWidth={3} label="Background music upload" className="text-purple-400" />
+              <UploadProgressIndicator progress={uploadProgress.bgm} processing={uploadProgress.bgm >= 100} size={26} label="Background music upload" className="text-purple-400" />
             ) : (
               <UploadCloud className="w-4 h-4 text-purple-400" />
             )}

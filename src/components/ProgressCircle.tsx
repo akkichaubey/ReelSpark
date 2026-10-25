@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 
 interface ProgressCircleProps {
   value: number;
@@ -67,4 +67,40 @@ export const ProgressCircle: React.FC<ProgressCircleProps> = ({
       )}
     </span>
   );
+};
+
+interface UploadProgressIndicatorProps extends Omit<ProgressCircleProps, 'value' | 'completed'> {
+  progress: number;
+  processing?: boolean;
+  complete?: boolean;
+}
+
+/** Consistent upload feedback: percentage while transferring, spinner while the server works, check on success. */
+export const UploadProgressIndicator: React.FC<UploadProgressIndicatorProps> = ({
+  progress,
+  processing = false,
+  complete = false,
+  size = 28,
+  strokeWidth = 3,
+  label = 'Upload',
+  className = 'text-amber-400',
+}) => {
+  if (complete) {
+    return <ProgressCircle value={100} size={size} strokeWidth={strokeWidth} label={label} completed />;
+  }
+
+  if (processing) {
+    return (
+      <span
+        role="status"
+        aria-label={`${label} processing`}
+        className={`inline-flex shrink-0 items-center justify-center ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <Loader2 aria-hidden="true" className="h-[68%] w-[68%] animate-spin" />
+      </span>
+    );
+  }
+
+  return <ProgressCircle value={progress} size={size} strokeWidth={strokeWidth} label={label} className={className} completed={false} />;
 };

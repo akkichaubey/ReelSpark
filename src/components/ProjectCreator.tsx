@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film, X, Loader2 } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
-import { ProgressCircle } from '@/components/ProgressCircle';
+import { UploadProgressIndicator } from '@/components/ProgressCircle';
 import { readJsonResponse, uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 interface ProjectCreatorProps {
@@ -17,7 +17,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitProgress, setSubmitProgress] = useState(0);
-  const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading' | 'finalizing'>('idle');
+  const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading' | 'finalizing' | 'complete'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   // Studio Settings (Defaults)
@@ -132,6 +132,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
       }
 
       setSubmitProgress(100);
+      setSubmitStage('complete');
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
       onProjectCreated(projectId);
     } catch (err: any) {
       if (err instanceof UploadCancelledError) {
@@ -358,12 +360,14 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                   {submitStage === 'creating' ? (
                     <Loader2 className="h-[30px] w-[30px] animate-spin text-zinc-900" aria-hidden="true" />
                   ) : (
-                    <ProgressCircle
-                      value={submitProgress}
+                    <UploadProgressIndicator
+                      progress={submitProgress}
                       size={30}
                       strokeWidth={3.5}
                       label="File transfer"
                       className="text-zinc-900"
+                      processing={submitStage === 'finalizing'}
+                      complete={submitStage === 'complete'}
                     />
                   )}
                   <span aria-live="polite">
@@ -371,6 +375,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                       ? 'Preparing project…'
                       : submitStage === 'finalizing'
                       ? 'Checking uploaded media…'
+                      : submitStage === 'complete'
+                      ? 'Opening project…'
                       : submitProgress >= 100
                       ? 'Finishing upload…'
                       : `Uploading (${submitProgress}%)...`}

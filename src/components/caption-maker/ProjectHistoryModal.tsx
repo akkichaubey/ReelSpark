@@ -27,6 +27,8 @@ import {
   FileCode,
   AlertCircle,
 } from 'lucide-react';
+import { UploadProgressIndicator } from '@/components/ProgressCircle';
+import { readFileAsTextWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 interface ProjectHistoryModalProps {
   isOpen: boolean;
@@ -47,14 +49,20 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
   const [customLabel, setCustomLabel] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<number | null>(null);
+  const [importComplete, setImportComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setSnapshots(getProjectSnapshots());
       setStatusNotice(null);
       setErrorNotice(null);
+      setImportProgress(null);
+      setImportComplete(false);
     }
+    return () => importAbortController.current?.abort();
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -118,29 +126,35 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
     showNotice('⬇️ Exported .reelproj backup file');
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (!content) return;
-      const res = importProjectFromJson(content);
-      if (res.success && res.project) {
-        onRestoreProject(res.project);
-        saveProjectSnapshot(res.project, 'Imported Backup');
-        showNotice(`⬆️ Imported project: "${res.project.title}"`);
-        setTimeout(() => onClose(), 600);
-      } else {
-        showError(res.error || 'Failed to import project file');
-      }
-    };
-    reader.onerror = () => {
-      showError('Failed to read file from disk');
-    };
-    reader.readAsText(file);
     e.target.value = '';
+    if (!file) return;
+    if (importAbortController.current) return;
+
+    const controller = new AbortController();
+    importAbortController.current = controller;
+    setImportProgress(0);
+    setImportComplete(false);
+    setErrorNotice(null);
+    try {
+      const content = await readFileAsTextWithProgress(file, setImportProgress, controller.signal);
+      const res = importProjectFromJson(content);
+      if (!res.success || !res.project) throw new Error(res.error || 'Failed to import project file');
+      onRestoreProject(res.project);
+      saveProjectSnapshot(res.project, 'Imported Backup');
+      setImportComplete(true);
+      showNotice(`⬆️ Imported project: "${res.project.title}"`);
+      setTimeout(() => onClose(), 600);
+    } catch (error) {
+      if (!(error instanceof UploadCancelledError)) {
+        showError(error instanceof Error ? error.message : 'Failed to read file from disk');
+      }
+      setImportProgress(null);
+      setImportComplete(false);
+    } finally {
+      importAbortController.current = null;
+    }
   };
 
   return (
@@ -228,15 +242,39 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
                 <span>Export Backup (.reelproj)</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Restore from a downloaded .reelproj file"
-              >
-                <Upload className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Import Backup</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importProgress !== null}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-60 text-zinc-300 hover:text-white border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Restore from a downloaded .reelproj file"
+                >
+                  {importProgress !== null || importComplete ? (
+                    <UploadProgressIndicator
+                      progress={importProgress ?? 100}
+                      size={18}
+                      label="Project backup import"
+                      complete={importComplete}
+                      processing={importProgress !== null && importProgress >= 100 && !importComplete}
+                    />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                  )}
+                  <span>
+                    {importComplete ? 'Imported' : importProgress !== null ? `Reading backup (${importProgress}%)` : 'Import Backup'}
+                  </span>
+                </button>
+                {importProgress !== null && !importComplete && (
+                  <button
+                    type="button"
+                    onClick={() => importAbortController.current?.abort()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                  >
+                    <X className="h-3 w-3" /> Cancel
+                  </button>
+                )}
+              </div>
 
               <input
                 ref={fileInputRef}

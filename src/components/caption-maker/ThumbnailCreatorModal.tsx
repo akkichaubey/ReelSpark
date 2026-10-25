@@ -17,7 +17,7 @@ import {
 } from '@/lib/caption-maker/google-fonts';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
 import { normalizeHookWord } from '@/lib/caption-maker/hook-quality';
-import { ProgressCircle } from '@/components/ProgressCircle';
+import { UploadProgressIndicator } from '@/components/ProgressCircle';
 import { readFileAsDataUrlWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 import {
   X,
@@ -1382,7 +1382,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                       <div className="flex items-center gap-2">
                         <label className={`flex flex-1 items-center justify-center gap-2 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-300 text-xs font-semibold transition-colors ${customBgProgress !== null ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
                           {customBgProgress !== null ? (
-                            <ProgressCircle value={customBgProgress} size={18} strokeWidth={2.5} label="Background photo read" />
+                            <UploadProgressIndicator progress={customBgProgress} size={18} strokeWidth={2.5} label="Background photo read" />
                           ) : customBgDataUrl ? (
                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
                           ) : (

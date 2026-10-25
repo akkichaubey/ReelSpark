@@ -105,6 +105,55 @@ export function readFileAsDataUrlWithProgress(
   });
 }
 
+/** Read a local text file with measurable progress and an optional cancel signal. */
+export function readFileAsTextWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+
+    const reader = new FileReader();
+    const cleanupAbortListener = () => signal?.removeEventListener('abort', abortRead);
+    const abortRead = () => reader.abort();
+
+    reader.addEventListener('progress', (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      const percent = Math.round(Math.max(0, Math.min(1, event.loaded / event.total)) * 100);
+      onProgress(Math.min(99, percent));
+    });
+    reader.addEventListener('load', () => {
+      cleanupAbortListener();
+      if (typeof reader.result !== 'string') {
+        reject(new Error('The selected project file could not be read. Please choose it again.'));
+        return;
+      }
+      onProgress(100);
+      resolve(reader.result);
+    });
+    reader.addEventListener('error', () => {
+      cleanupAbortListener();
+      reject(new Error('The selected project file could not be read. Please choose it again.'));
+    });
+    reader.addEventListener('abort', () => {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    });
+
+    signal?.addEventListener('abort', abortRead, { once: true });
+    if (signal?.aborted) {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    } else {
+      reader.readAsText(file);
+    }
+  });
+}
+
 /** Upload a File as a raw request stream so the server never buffers a multipart copy. */
 export function uploadFileWithProgress<T>(
   url: string,

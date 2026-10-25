@@ -18,7 +18,7 @@ import {
   Cpu,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
-import { ProgressCircle } from '@/components/ProgressCircle';
+import { ProgressCircle, UploadProgressIndicator } from '@/components/ProgressCircle';
 
 interface ProjectHeaderProps {
   project: Project;
@@ -228,7 +228,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-zinc-950 font-bold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
               {isUploadingLocalFile ? (
-                <ProgressCircle value={localUploadProgress} size={26} strokeWidth={3} label="Local source video upload" className="text-zinc-950" />
+                <UploadProgressIndicator progress={localUploadProgress} size={26} label="Local source video upload" className="text-zinc-950" processing={localUploadProgress >= 100} />
               ) : (
                 <Upload className="w-4 h-4" />
               )}
@@ -251,6 +251,13 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {project.sourceType === 'youtube' && project.localVideoPath && (
+        <div role="status" className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-950/30 px-3 py-2 text-xs font-semibold text-emerald-300">
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+          Local source video ready
         </div>
       )}
 
