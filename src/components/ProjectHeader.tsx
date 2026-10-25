@@ -3,7 +3,7 @@
 import React, { useRef } from 'react';
 import {
   Play,
-  Sparkles,
+  BrainCircuit,
   Download,
   Clock,
   Maximize2,
@@ -159,7 +159,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" />
+                    <BrainCircuit className="w-4 h-4" />
                     <span>Run Full AI Analysis</span>
                   </>
                 )}

@@ -24,7 +24,6 @@ import {
   Settings2,
   Film,
   Layers,
-  Sparkles,
   Gauge,
   Sliders,
   HardDrive,
@@ -326,7 +325,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-zinc-300 font-medium flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Tv className="w-3.5 h-3.5 text-amber-400" />
               <span>Resolution Tier</span>
             </label>
             <span className="text-[10px] font-mono text-zinc-400">

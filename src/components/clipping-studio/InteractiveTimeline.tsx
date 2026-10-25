@@ -9,7 +9,6 @@ import {
   Scissors,
   Check,
   Clock,
-  Sparkles,
   Play,
   Pause,
 } from 'lucide-react';

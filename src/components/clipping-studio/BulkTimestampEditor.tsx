@@ -10,7 +10,7 @@ import {
   Trash2,
   HelpCircle,
   Edit2,
-  Sparkles,
+  ListPlus,
   Copy,
   Check,
   Clock,
@@ -203,7 +203,7 @@ export const BulkTimestampEditor: React.FC = () => {
       {/* Quick Preset Buttons Bar */}
       <div className="flex items-center flex-wrap gap-2 text-xs">
         <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1 mr-1">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <ListPlus className="w-3.5 h-3.5 text-amber-400" />
           <span>Quick Inserts:</span>
         </span>
 

@@ -4,7 +4,7 @@ import { accountCache } from '@/lib/account-cache';
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Sparkles,
+  Info,
   CheckCircle2,
   AlertCircle,
   FolderOpen,
@@ -613,7 +613,7 @@ function DashboardPageContent() {
           >
             {toastMessage.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
             {toastMessage.type === 'error' && <AlertCircle className="w-4 h-4 text-red-400" />}
-            {toastMessage.type === 'info' && <Sparkles className="w-4 h-4 text-white" />}
+            {toastMessage.type === 'info' && <Info className="w-4 h-4 text-white" />}
             <span>{toastMessage.text}</span>
           </div>
         </div>

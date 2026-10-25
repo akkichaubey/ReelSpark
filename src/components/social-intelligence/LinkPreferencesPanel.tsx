@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Loader2,
   HelpCircle,
-  Sparkles,
+  Link,
   ExternalLink,
 } from 'lucide-react';
 import { SocialLinkPreferences, SocialAccount, SocialPlatformKey } from '@/lib/social-intelligence/types';
@@ -311,7 +311,7 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
           <div className="p-5 bg-gradient-to-br from-zinc-900/90 to-purple-950/20 border border-purple-500/20 rounded-2xl space-y-4 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400" />
+                <Link className="w-4 h-4 text-purple-400" />
                 Live Link Engine Preview
               </h3>
             </div>

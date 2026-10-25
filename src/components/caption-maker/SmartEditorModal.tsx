@@ -18,7 +18,6 @@ import {
 import {
   X,
   Scissors,
-  Sparkles,
   Zap,
   Flame,
   CheckCircle2,
@@ -193,7 +192,7 @@ export const SmartEditorModal: React.FC<SmartEditorModalProps> = ({
         <div className="p-4 bg-zinc-950/80 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+              <Scissors className="w-4 h-4 text-amber-400" />
             </div>
             <div>
               <h3 className="font-semibold text-zinc-100 text-sm">

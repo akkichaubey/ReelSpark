@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Scissors,
-  Sparkles,
+  Film,
   User,
   LogOut,
   ChevronDown,
@@ -54,7 +54,7 @@ export const StudioNavbar: React.FC = () => {
               href="/reel-maker"
               className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
             >
-              <Sparkles className="w-3 h-3 text-amber-400" />
+              <Film className="w-3 h-3 text-amber-400" />
               <span>AI Reel Maker</span>
             </Link>
             <Link

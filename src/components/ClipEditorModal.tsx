@@ -9,7 +9,7 @@ import {
   Pause,
   RotateCcw,
   Download,
-  Sparkles,
+  ShieldCheck,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -754,7 +754,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                 }`}
                 title="Preview only the selected trim range (loops between In and Out points)"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <Play className="w-3.5 h-3.5 text-amber-400" />
                 <span>{isAuditioning ? 'Auditioning Clip...' : 'Audition Trim'}</span>
               </button>
             </div>
@@ -1154,7 +1154,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
           <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-white/10 space-y-1.5 text-xs">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-zinc-300 flex items-center space-x-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
                 <span>Live AI Context Verification</span>
               </span>
               <span className="font-mono font-bold text-emerald-400">

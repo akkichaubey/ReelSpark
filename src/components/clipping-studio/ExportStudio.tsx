@@ -15,7 +15,6 @@ import {
   Copy,
   Folder,
   Sliders,
-  Sparkles,
   Info,
   Check,
   ChevronRight,
@@ -236,7 +235,7 @@ export const ExportStudio: React.FC = () => {
             {/* Quick Platform Presets */}
             <div className="space-y-2">
               <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <Smartphone className="w-3.5 h-3.5 text-amber-400" />
                 <span>Quick Platform Presets</span>
               </label>
 

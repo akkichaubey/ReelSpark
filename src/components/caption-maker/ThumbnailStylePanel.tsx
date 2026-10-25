@@ -19,8 +19,8 @@ import {
   Palette,
   Wand2,
   Tag,
+  Highlighter,
   Layout,
-  Sparkles,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -196,7 +196,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
       {/* Header */}
       <div className="p-3.5 bg-zinc-950/70 border-b border-zinc-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400" />
+          <ImageIcon className="w-4 h-4 text-amber-400" />
           <h3 className="font-semibold text-zinc-100 text-sm tracking-wide">
             Thumbnail Style & Cover Hook
           </h3>
@@ -211,7 +211,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
         {[
           { id: 'presets', label: 'Presets', icon: Wand2 },
           { id: 'content', label: 'Text', icon: Type },
-          { id: 'typography', label: 'Typography', icon: Sparkles },
+          { id: 'typography', label: 'Typography', icon: Type },
           { id: 'badge', label: 'Badge', icon: Square },
           { id: 'layout', label: 'Position', icon: Layout },
         ].map((tab) => {
@@ -244,7 +244,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>Customize Active Elements</span>
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono">
@@ -410,7 +410,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-zinc-200 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <Highlighter className="w-3.5 h-3.5 text-amber-400" />
                     Word Highlights ({settings.highlightColor || '#FCD905'})
                   </span>
                   <span className="text-[10px] text-zinc-500">
@@ -540,7 +540,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   onClick={() => update({ badgeEnabled: true, badgeText: settings.badgeText || "DON'T MISS" })}
                   className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5 mt-1 cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Tag className="w-3.5 h-3.5" />
                   <span>Enable Badge Element</span>
                 </button>
               </div>

@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   Loader2,
   Clock,
-  Sparkles,
+  ScanSearch,
   Zap,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
@@ -95,7 +95,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <span>Analyzing Video Content</span>
-            <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+            <ScanSearch className="w-5 h-5 text-amber-400 animate-pulse" />
           </h3>
         </div>
 
@@ -207,7 +207,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
           )}
 
           <span className="bg-zinc-900/80 px-2.5 py-1 rounded-lg border border-white/5 text-zinc-300 flex items-center space-x-1">
-            <Sparkles className="w-3 h-3 text-sky-400" />
+            <BrainCircuit className="w-3 h-3 text-sky-400" />
             <span>Engine: {project.settings?.aiModel || 'gemini-3.8-flash'}</span>
           </span>
         </div>

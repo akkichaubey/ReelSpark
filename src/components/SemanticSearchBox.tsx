@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Sparkles } from 'lucide-react';
+import { Search, TextSearch } from 'lucide-react';
 import { SearchMatch } from '@/lib/types';
 
 interface SemanticSearchBoxProps {
@@ -59,7 +59,7 @@ export const SemanticSearchBox: React.FC<SemanticSearchBoxProps> = ({
   return (
     <div className="w-full glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
       <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">
-        <Sparkles className="w-4 h-4 text-zinc-200" />
+        <TextSearch className="w-4 h-4 text-zinc-200" />
         <span>Semantic Transcript Search</span>
       </div>
 

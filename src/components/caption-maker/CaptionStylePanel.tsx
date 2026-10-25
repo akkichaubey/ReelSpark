@@ -22,7 +22,7 @@ import {
 import {
   Type,
   Palette,
-  Sparkles,
+  Move,
   Layout,
   AlignLeft,
   AlignCenter,
@@ -161,7 +161,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
         {[
           { id: 'presets', label: 'Presets', icon: Wand2 },
           { id: 'typography', label: 'Text', icon: Type },
-          { id: 'effects', label: 'Effects', icon: Sparkles },
+          { id: 'effects', label: 'Effects', icon: SlidersHorizontal },
           { id: 'background', label: 'Badge', icon: Square },
           { id: 'layout', label: 'Position', icon: Layout },
         ].map((tab) => {
@@ -1179,7 +1179,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-zinc-300 font-medium mb-1.5 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <Move className="w-3.5 h-3.5 text-amber-400" />
                   Motion Preset
                 </label>
                 <select

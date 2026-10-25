@@ -3,7 +3,7 @@ import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect } from 'react';
 import {
-  Sparkles,
+  Save,
   X,
   CheckCircle2,
   AlertCircle,
@@ -643,7 +643,7 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
               disabled={isSaving}
               className="px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
             >
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               <span>Save & Apply Settings</span>
             </button>
           </div>

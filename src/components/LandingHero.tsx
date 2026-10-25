@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import {
-  Sparkles,
+  BrainCircuit,
+  Captions,
   Film,
   ArrowRight,
   CheckCircle2,
@@ -78,7 +79,7 @@ export const LandingHero: React.FC = () => {
         {/* Release Pill Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900/90 border border-white/10 text-xs font-semibold text-zinc-300 shadow-xl backdrop-blur-md">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <BrainCircuit className="w-3.5 h-3.5 text-amber-400" />
           <span>Cloudflare D1 & Workers AI Engine</span>
         </div>
 
@@ -128,7 +129,7 @@ export const LandingHero: React.FC = () => {
           {/* Card 2 */}
           <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/10 hover:border-amber-400/30 transition-all group backdrop-blur-md">
             <div className="w-10 h-10 rounded-xl bg-sky-400/10 border border-sky-400/20 text-sky-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Sparkles className="w-5 h-5" />
+              <Captions className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-white mb-1">Animated Karaoke</h3>
             <p className="text-xs text-zinc-400 leading-relaxed">

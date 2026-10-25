@@ -18,12 +18,15 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Sparkles,
   Zap,
   ShieldCheck,
   Gauge,
   Sliders,
   HardDrive,
+  ImagePlus,
+  Share2,
+  Code2,
+  Combine,
 } from 'lucide-react';
 
 interface ExportModalProps {
@@ -241,7 +244,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
                 {renderResult.thumbnailMerged && (
                   <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <ImagePlus className="w-3 h-3 text-amber-400" />
                     Cover Merged
                   </span>
                 )}
@@ -332,7 +335,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   }}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500/15 to-amber-600/15 hover:from-amber-500/25 hover:to-amber-600/25 text-amber-300 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-md"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <Share2 className="w-4 h-4 text-amber-400" />
                   <span>Generate Social Media Post & Hashtags</span>
                 </button>
               )}
@@ -346,7 +349,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   }}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 hover:text-white font-semibold rounded-xl text-xs border border-zinc-700/80 transition-all cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                  <ImagePlus className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Create Reel Cover Thumbnail</span>
                 </button>
               )}
@@ -416,7 +419,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-1.5 text-amber-400 font-semibold text-xs">
-                          <Sparkles className="w-3.5 h-3.5" />
+                          <Code2 className="w-3.5 h-3.5" />
                           Remotion + GSAP
                         </div>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wider">
@@ -569,7 +572,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       className="accent-amber-400 rounded w-4 h-4 cursor-pointer"
                     />
                     <span className="font-semibold text-xs text-zinc-100 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <Combine className="w-3.5 h-3.5 text-amber-400" />
                       Auto-merge Thumbnail / Cover into Video
                     </span>
                   </label>
@@ -723,7 +726,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 >
                   {engine === 'remotion' ? (
                     <>
-                      <Sparkles className="w-3.5 h-3.5 fill-current" />
+                      <Film className="w-3.5 h-3.5" />
                       Render Remotion + GSAP
                     </>
                   ) : (

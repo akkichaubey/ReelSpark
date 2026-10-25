@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Info,
   Clock,
-  Sparkles,
   Settings2,
   Check,
   ChevronDown,

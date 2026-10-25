@@ -47,7 +47,7 @@ import {
 } from '@/lib/caption-maker/thumbnail-presets';
 import {
   Film,
-  Sparkles,
+  Palette,
   Undo2,
   Redo2,
   Save,
@@ -1637,7 +1637,7 @@ function CaptionMakerPageContent() {
         <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 sticky top-0 backdrop-blur-md">
           <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black font-black shadow-md shadow-amber-400/20">
-              <Sparkles className="w-4 h-4 fill-black" />
+              <Film className="w-4 h-4 fill-black" />
             </div>
             <div>
               <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
@@ -1659,7 +1659,7 @@ function CaptionMakerPageContent() {
         <main className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
           <div className="max-w-md space-y-4 relative z-10">
             <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-400/5">
-              <Sparkles className="w-6 h-6" />
+              <Film className="w-6 h-6" />
             </div>
             <h2 className="text-2xl font-bold">Sign In to Use AI Reel Maker</h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
@@ -2171,7 +2171,7 @@ function CaptionMakerPageContent() {
                   }`}
                   title="Switch to Live Thumbnail Cover Output"
                 >
-                  <Sparkles className={`w-3.5 h-3.5 ${centerViewMode === 'thumbnail' ? 'fill-black' : 'text-amber-400'}`} />
+                  <ImageIcon className={`w-3.5 h-3.5 ${centerViewMode === 'thumbnail' ? 'fill-black' : 'text-amber-400'}`} />
                   <span>Thumbnail Cover</span>
                 </button>
               </div>
@@ -2270,7 +2270,7 @@ function CaptionMakerPageContent() {
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Palette className="w-3.5 h-3.5 text-amber-400" />
               <span>Thumbnail Style</span>
             </button>
           </div>

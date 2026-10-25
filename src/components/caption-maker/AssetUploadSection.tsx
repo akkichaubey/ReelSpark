@@ -7,7 +7,8 @@ import {
   Music,
   Trash2,
   RefreshCw,
-  Sparkles,
+  AudioWaveform,
+  Loader2,
   Sliders,
   Move,
   AlertCircle,
@@ -807,7 +808,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-950/60 to-purple-950/60 border border-purple-500/30 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    <AudioWaveform className="w-3.5 h-3.5 text-purple-400" />
                     Gemini Audio Insights
                   </span>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-700/50 capitalize">
@@ -859,7 +860,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     onClick={onOpenSmartEditor}
                     className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
                     <span>Open Smart Studio</span>
                   </button>
                 )}
@@ -953,8 +954,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             {/* AI Status / Re-transcribe Trigger Button */}
             {isTranscribing ? (
               <div className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs animate-pulse">
-                <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
-                <span>✨ AI Analyzing Voice & Synchronizing Captions...</span>
+                <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+                <span>AI Analyzing Voice & Synchronizing Captions...</span>
               </div>
             ) : (
               <button
@@ -962,7 +963,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 onClick={onTranscribe}
                 className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
               >
-                <Sparkles className="w-4 h-4 fill-current" />
+                <AudioWaveform className="w-4 h-4" />
                 <span>
                   Re-analyze Audio & Sync Captions ({preferredLanguage === 'hi' ? 'हिन्दी' : preferredLanguage === 'hinglish' ? 'Hinglish' : 'English'})
                 </span>
@@ -1081,10 +1082,10 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-purple-500/20 to-indigo-500/20 hover:from-purple-500/30 hover:to-indigo-500/30 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center justify-between transition-all cursor-pointer shadow-sm active:scale-95"
           >
             <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Music className="w-3.5 h-3.5 text-amber-400" />
               <span>AI Auto-Match: {PRESET_BGM_TRACKS.find((t) => t.id === audioAnalysis.recommendedBgmId)?.title}</span>
             </span>
-            <span className="text-[10px] font-mono font-bold text-amber-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-700/50">Apply ✨</span>
+            <span className="text-[10px] font-mono font-bold text-amber-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-700/50">Apply</span>
           </button>
         )}
 

@@ -13,7 +13,6 @@ import {
   X,
   Power,
   Link as LinkIcon,
-  Sparkles,
   ShieldCheck,
   Save,
   GripVertical,
@@ -1082,7 +1081,7 @@ export const SocialAccountsManager: React.FC = () => {
           {/* Card Title Bar */}
           <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
             <div className="flex items-center gap-2 min-w-0">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <LinkIcon className="w-4 h-4 text-amber-400 shrink-0" />
               <h3 className="text-xs font-bold text-white uppercase tracking-wider truncate">
                 Live Link Engine Preview
               </h3>

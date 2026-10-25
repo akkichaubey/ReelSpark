@@ -20,7 +20,9 @@ import {
   detectImportantWords,
 } from '@/lib/caption-maker/important-words';
 import {
-  Sparkles,
+  AudioLines,
+  Loader2,
+  ScanSearch,
   Split,
   Merge,
   Trash2,
@@ -302,7 +304,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                   : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 shrink-0 fill-current" />
+              {isTranscribing ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <AudioLines className="w-3.5 h-3.5 shrink-0" />}
               <span>{isTranscribing ? 'AI Transcribing...' : 'Auto-Detect Speech (AI)'}</span>
             </button>
           )}
@@ -312,7 +314,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             title="Auto-detect emotional/motivational keywords"
             className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap"
           >
-            <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <ScanSearch className="w-3.5 h-3.5 shrink-0 text-amber-400" />
             <span>Detect Keywords</span>
           </button>
           <button
@@ -382,8 +384,8 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                   disabled={isTranscribing}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
                 >
-                  <Sparkles className="w-4 h-4 fill-current" />
-                  <span>{isTranscribing ? '✨ AI Transcribing Audio...' : '✨ Auto-Detect Transcript (AI)'}</span>
+                  {isTranscribing ? <Loader2 className="w-4 h-4 animate-spin" /> : <AudioLines className="w-4 h-4" />}
+                  <span>{isTranscribing ? 'AI Transcribing Audio...' : 'Auto-Detect Transcript (AI)'}</span>
                 </button>
               )}
               <button

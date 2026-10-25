@@ -12,7 +12,8 @@ import {
   RotateCw,
   Award,
   Clock,
-  Sparkles,
+  Film,
+  MessageSquareText,
   Sliders,
   Copy,
   Check,
@@ -328,7 +329,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
 
         {/* Sparkle Explanation in Selected Language */}
         <div className="mt-3 flex items-start space-x-2 text-xs text-zinc-300">
-          <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+          <MessageSquareText className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="leading-relaxed text-zinc-300">{bData.explanation}</p>
         </div>
 
@@ -426,7 +427,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 font-semibold text-xs border border-amber-500/40 shadow-sm shadow-amber-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
             title="Open in AI Reel Maker to create animated caption video"
           >
-            <Sparkles className={`w-3.5 h-3.5 text-amber-400 fill-amber-400/20 ${isCreatingReel ? 'animate-spin' : ''}`} />
+            <Film className={`w-3.5 h-3.5 text-amber-400 ${isCreatingReel ? 'animate-pulse' : ''}`} />
             <span>{isCreatingReel ? 'Preparing...' : 'Create Reel'}</span>
           </button>
         </div>

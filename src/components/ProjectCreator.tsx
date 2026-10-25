@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileVideo, Sparkles, AlertCircle, Music, Film } from 'lucide-react';
+import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
 
 interface ProjectCreatorProps {
@@ -322,7 +322,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
+                  <FolderPlus className="w-4 h-4" />
                   <span>Launch Project</span>
                 </>
               )}

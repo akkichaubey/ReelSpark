@@ -11,7 +11,6 @@ import {
   Copy,
   Trash2,
   Edit2,
-  Sparkles,
   Clock,
   Search,
   ExternalLink,
@@ -403,7 +402,7 @@ export const ClipsLibrary: React.FC = () => {
                           {bridgingClipId === clip.id ? (
                             <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
                           ) : (
-                            <Sparkles className="w-3 h-3" />
+                            <Film className="w-3 h-3" />
                           )}
                         </button>
                         <button
@@ -593,7 +592,7 @@ export const ClipsLibrary: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <Film className="w-3 h-3 text-amber-400" />
                         <span className="hidden sm:inline">Caption Reel</span>
                       </>
                     )}

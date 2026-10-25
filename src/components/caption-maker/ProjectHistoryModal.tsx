@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   FileCode,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react';
 
 interface ProjectHistoryModalProps {

@@ -17,7 +17,6 @@ import {
   Target,
   X,
   Trash2,
-  Sparkles,
 } from 'lucide-react';
 import {
   nudgeWordTiming,
@@ -304,7 +303,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition-all cursor-pointer shadow-sm"
               title="Open AI Smart Silence Trimmer & Viral Hook Studio"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Scissors className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Smart Edit</span>
             </button>
           )}

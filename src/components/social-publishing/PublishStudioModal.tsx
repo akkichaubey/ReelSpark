@@ -10,7 +10,7 @@ import {
   RotateCw,
   Video,
   Layers,
-  Sparkles,
+  Captions,
   Link as LinkIcon,
   Globe,
   Loader2,
@@ -611,7 +611,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
           <div className="p-4 rounded-xl bg-zinc-900/70 border border-zinc-800 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5 uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Captions className="w-4 h-4 text-amber-400" />
                 <span>3. Post Caption & Metadata</span>
               </span>
 

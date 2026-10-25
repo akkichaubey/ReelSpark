@@ -21,7 +21,7 @@ import {
   X,
   Download,
   Image as ImageIcon,
-  Sparkles,
+  Highlighter,
   Type,
   Palette,
   Layout,
@@ -273,7 +273,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
         <div className="px-5 py-3.5 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black font-black shadow-md shadow-amber-400/20">
-              <Sparkles className="w-4 h-4 fill-black" />
+              <ImageIcon className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
@@ -515,7 +515,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-zinc-200 flex items-center gap-1">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <Highlighter className="w-3.5 h-3.5 text-amber-400" />
                           Word Highlights ({settings.highlightColor || '#FCD905'})
                         </span>
                         <span className="text-[10px] text-zinc-500">

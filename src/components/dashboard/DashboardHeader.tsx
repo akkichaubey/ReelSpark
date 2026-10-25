@@ -6,7 +6,8 @@ import {
   Menu,
   CheckCircle2,
   AlertTriangle,
-  Sparkles,
+  BrainCircuit,
+  Cpu,
   PlusCircle,
   ChevronDown,
   User,
@@ -137,11 +138,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             }
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 hover:border-amber-400/40 text-xs transition-all cursor-pointer group shadow-sm"
           >
-            <Sparkles
-              className={`w-3.5 h-3.5 ${
-                isGemini ? 'text-sky-400' : 'text-amber-400'
-              } group-hover:scale-110 transition-transform shrink-0`}
-            />
+            {isGemini ? (
+              <BrainCircuit className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform shrink-0" />
+            ) : (
+              <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
+            )}
             <span className="font-semibold text-zinc-200">
               {isGemini ? 'Gemini' : 'Ollama'}:
             </span>

@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
-  Sparkles,
   Copy,
   Check,
   RotateCw,
@@ -651,7 +650,7 @@ function SocialPostPageContent() {
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
               }`}
             >
-              <Sparkles className="w-4 h-4" />
+              <Copy className="w-4 h-4" />
               <span>Copy Studio</span>
             </Link>
 
@@ -1130,7 +1129,7 @@ function SocialPostPageContent() {
                                 </>
                               ) : isOptimal ? (
                                 <>
-                                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                                   <span>{charCount.toLocaleString()} / {maxChars.toLocaleString()}</span>
                                   <span className="text-[10px] font-sans text-emerald-400 uppercase tracking-wide">
                                     (SWEET SPOT)

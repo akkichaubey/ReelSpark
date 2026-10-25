@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ChevronDown,
-  Sparkles,
+  MessageSquareText,
   UserPlus,
   Heart,
   Bookmark,
@@ -37,7 +37,7 @@ const CATEGORY_ICONS: Record<CtaCategoryKey, React.ComponentType<{ className?: s
   save: Bookmark,
   comment: MessageSquare,
   watch_more: PlaySquare,
-  motivational: Sparkles,
+  motivational: Heart,
   viral: Flame,
 };
 
@@ -169,7 +169,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
           <div className="p-3 border-b border-zinc-800 bg-zinc-950/70">
             <div className="flex items-center justify-between pb-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <MessageSquareText className="w-3.5 h-3.5 text-amber-400" />
                 <span>Reels Description Headings & CTAs</span>
               </div>
               <button
@@ -242,7 +242,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
             ) : (
               groupedPresets.map((group) => {
                 const categoryMeta = CTA_CATEGORIES[group.category];
-                const IconComponent = CATEGORY_ICONS[group.category] || Sparkles;
+                const IconComponent = CATEGORY_ICONS[group.category] || MessageSquare;
 
                 return (
                   <div key={group.category} className="pt-2 first:pt-0 space-y-1">

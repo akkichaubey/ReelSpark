@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Film,
-  Sparkles,
+  BrainCircuit,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
@@ -86,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Sparkles className="w-3 h-3 text-amber-400" />
+              <Film className="w-3 h-3 text-amber-400" />
               <span>AI Reel Maker</span>
             </Link>
             <Link
@@ -150,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 hover:border-amber-400/40 text-xs transition-all group cursor-pointer shadow-sm"
                 >
                   {isGemini ? (
-                    <Sparkles className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+                    <BrainCircuit className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform flex-shrink-0" />
                   ) : (
                     <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform flex-shrink-0" />
                   )}

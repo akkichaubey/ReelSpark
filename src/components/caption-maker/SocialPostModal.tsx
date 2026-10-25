@@ -4,9 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   X,
-  Sparkles,
+  FileText,
   Copy,
   Check,
+  CheckCircle2,
   RotateCw,
   Hash,
   Flame,
@@ -134,7 +135,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 bg-zinc-950/80 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-black font-bold shadow-md shadow-amber-500/20">
-              <Sparkles className="w-4 h-4 fill-black" />
+              <FileText className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -373,7 +374,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                           </>
                         ) : isOptimal ? (
                           <>
-                            <Sparkles className="w-3 h-3 text-emerald-400" />
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                             <span>{charCount.toLocaleString()}/{maxChars.toLocaleString()}</span>
                             <span className="text-[9px] font-sans text-emerald-400 uppercase">
                               (SWEET SPOT)

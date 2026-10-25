@@ -67,7 +67,7 @@ export const CTA_CATEGORIES: Record<CtaCategoryKey, CtaCategoryMeta> = {
     key: 'motivational',
     labelEn: 'Motivational',
     labelHi: 'प्रेरणादायक',
-    icon: 'Sparkles',
+    icon: 'Heart',
   },
   viral: {
     key: 'viral',

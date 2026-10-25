@@ -16,7 +16,7 @@ import {
   Scissors,
   Layers,
   Download,
-  Sparkles,
+  ScanSearch,
   Edit2,
   Undo2,
   Redo2,
@@ -285,7 +285,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <ScanSearch className="w-3 h-3 text-amber-400" />
                   <span>AI Moments</span>
                 </button>
               </div>
