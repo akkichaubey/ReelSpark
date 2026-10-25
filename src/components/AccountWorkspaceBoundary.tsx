@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ACCOUNT_IDENTITY_EVENT_KEY } from '@/lib/account-cache';
+import { SiteLoader } from '@/components/SiteLoader';
 
 /** Do not restore private editor caches before the session identity is known. */
 export function AccountWorkspaceBoundary({ children }: { children: ReactNode }) {
@@ -26,6 +27,6 @@ export function AccountWorkspaceBoundary({ children }: { children: ReactNode }) 
       window.removeEventListener('pageshow', restore);
     };
   }, [checkAuth]);
-  if (isLoading) return <div role="status" className="p-6 text-zinc-400">Loading workspace…</div>;
+  if (isLoading) return <SiteLoader label="Preparing ReelSpark…" />;
   return children;
 }
