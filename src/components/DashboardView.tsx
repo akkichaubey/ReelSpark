@@ -49,7 +49,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Welcome back, <span className="text-amber-400">{userName}</span> 👋
             </h2>
             <p className="text-sm text-zinc-400 leading-relaxed">
-              Create viral animated reels, trim and merge multi-track video clips, and generate high-converting social post captions with 100% free local AI.
+              Create animated reels, trim and merge video clips, and write social captions with smart tools built for your creative workflow.
             </p>
           </div>
 

@@ -4,9 +4,9 @@ import { AccountWorkspaceBoundary } from '@/components/AccountWorkspaceBoundary'
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ReelMaker — Local Video to Reels & Shorts Studio',
+  title: 'ReelMaker — Video to Reels & Shorts Studio',
   description:
-    'Identify and render the best short viral and philosophical clips under 60 seconds from long speeches, podcasts, and interviews with synchronized subtitles and local FFmpeg processing.',
+    'Find engaging moments in long videos, create short reels with synchronized captions, and prepare social-ready video covers.',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },
@@ -20,7 +20,6 @@ export const metadata: Metadata = {
     'Reels Studio',
     'Osho Speeches',
     'Video to Shorts',
-    'FFmpeg Clip Maker',
     'Subtitles Generator',
     'Speech to Text',
   ],

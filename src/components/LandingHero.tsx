@@ -80,7 +80,7 @@ export const LandingHero: React.FC = () => {
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900/90 border border-white/10 text-xs font-semibold text-zinc-300 shadow-xl backdrop-blur-md">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
           <BrainCircuit className="w-3.5 h-3.5 text-amber-400" />
-          <span>Cloudflare D1 & Workers AI Engine</span>
+          <span>Your All-in-One Creator Studio</span>
         </div>
 
         {/* Main Headline */}
@@ -100,14 +100,14 @@ export const LandingHero: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
             onClick={() => openAuthModal('login')}
-            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white hover:bg-zinc-200 text-zinc-950 font-black text-sm shadow-xl shadow-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-sm shadow-xl shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Sign In to Access Studio</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <button
             onClick={() => openAuthModal('register')}
-            className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold text-sm border border-white/10 hover:border-white/20 transition-all cursor-pointer backdrop-blur-md"
+            className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-transparent hover:bg-amber-400/10 text-amber-300 font-bold text-sm border border-amber-400/50 hover:border-amber-300 transition-all cursor-pointer"
           >
             <span>Create Free Account</span>
           </button>
@@ -168,11 +168,11 @@ export const LandingHero: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Cloudflare D1 & R2 Powered</span>
+            <span>Made for Reels & Shorts</span>
           </div>
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>1080p MP4 Hardware Render</span>
+            <span>Fast, High-Quality Exports</span>
           </div>
         </div>
       </section>
@@ -190,7 +190,7 @@ export const LandingHero: React.FC = () => {
             <span>Contact & Support</span>
           </button>
           <span>•</span>
-          <span className="text-zinc-500">100% Private Local Processing</span>
+          <span className="text-zinc-500">Built for Creators</span>
         </div>
       </footer>
 

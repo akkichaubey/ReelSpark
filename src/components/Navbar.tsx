@@ -49,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const { user, checkAuth, logout, openAuthModal } = useAuthStore();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const isPublicHome = pathname === '/' && !user;
 
   useEffect(() => {
     checkAuth();
@@ -56,7 +57,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-    <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 sticky top-0 backdrop-blur-md">
+    <header className={`h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 ${
+      isPublicHome ? 'fixed inset-x-0 top-0' : 'sticky top-0'
+    } ${
+      isPublicHome ? 'border-b border-transparent bg-transparent' : 'border-b border-zinc-800 bg-zinc-900/90 backdrop-blur-md'
+    }`}>
+      <div className={isPublicHome ? 'mx-auto flex w-full max-w-5xl items-center justify-between' : 'flex w-full items-center justify-between'}>
       {/* Brand & Studio Navigation */}
       <div className="flex items-center gap-3">
         {/* Brand Logo */}
@@ -225,7 +231,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           /* When NOT logged in: Keep only Login / Register button on top right */
           <button
             onClick={() => openAuthModal('login')}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <User className="w-3.5 h-3.5 text-zinc-950" />
             <span>Login / Register</span>
@@ -233,7 +239,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </div>
 
+      </div>
     </header>
+    {isPublicHome && <div aria-hidden="true" className="h-14 shrink-0" />}
     <AuthModal />
     </>
   );
