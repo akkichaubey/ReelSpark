@@ -327,7 +327,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           </div>
         </div>
 
-        {/* Sparkle Explanation in Selected Language */}
+        {/* Clip Explanation in Selected Language */}
         <div className="mt-3 flex items-start space-x-2 text-xs text-zinc-300">
           <MessageSquareText className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="leading-relaxed text-zinc-300">{bData.explanation}</p>
