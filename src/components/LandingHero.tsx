@@ -70,7 +70,7 @@ export const LandingHero: React.FC = () => {
   return (
     <main className="flex-1 flex flex-col items-center justify-center relative overflow-hidden bg-zinc-950 text-zinc-100 selection:bg-amber-400 selection:text-black">
       {/* Background Decorative Ambient Glows */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[520px] bg-gradient-to-b from-amber-500/15 via-amber-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 -left-40 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -right-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 

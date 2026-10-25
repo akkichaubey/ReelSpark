@@ -241,7 +241,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       </div>
     </header>
-    {isPublicHome && <div aria-hidden="true" className="h-14 shrink-0" />}
     <AuthModal />
     </>
   );
