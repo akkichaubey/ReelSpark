@@ -2,11 +2,11 @@ import { requireProjectAccess } from '@/lib/project-access';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
+import { randomUUID } from 'node:crypto';
 import { getProjectDirs, loadProject, sanitizeFilename, saveProject } from '@/lib/storage';
 import { probeVideo } from '@/lib/ffmpeg';
 import { validateUpload } from '@/lib/media-validation';
+import { getIncomingUploadMetadata, streamRequestBodyToFile, UploadRequestError } from '@/lib/stream-upload';
 
 export async function POST(
   req: NextRequest,
@@ -21,30 +21,43 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-
-    if (!file) {
-      return NextResponse.json({ success: false, error: 'No video file provided' }, { status: 400 });
-    }
-    const uploadError = validateUpload(file, ['video', 'audio']);
+    const { filename, expectedSize } = getIncomingUploadMetadata(req);
+    const uploadError = validateUpload({ name: filename, size: expectedSize }, ['video', 'audio']);
     if (uploadError) {
       return NextResponse.json({ success: false, error: uploadError }, { status: 400 });
     }
 
     const dirs = getProjectDirs(project.id);
-    const safeName = sanitizeFilename(file.name || 'uploaded_video.mp4');
+    const safeName = sanitizeFilename(filename || 'uploaded_video.mp4');
     const targetFilePath = path.join(dirs.originalDir, safeName);
+    const stagingFilePath = path.join(dirs.originalDir, `.incoming-${randomUUID()}`);
 
     project.status = 'UPLOADING';
     project.progress = 10;
-    project.statusMessage = `Saving ${file.name} to local workspace...`;
+    project.statusMessage = `Saving ${filename} to local workspace...`;
     await saveProject(project);
 
-    // Stream file to disk
-    const nodeStream = Readable.fromWeb(file.stream() as any);
-    const writeStream = fs.createWriteStream(targetFilePath);
-    await pipeline(nodeStream, writeStream);
+    // Stream raw request bytes to a temporary file, then atomically install them.
+    let fileSize = 0;
+    try {
+      fileSize = await streamRequestBodyToFile(req, stagingFilePath);
+      if (process.platform === 'win32' && fs.existsSync(targetFilePath)) {
+        const previousFilePath = `${targetFilePath}.previous-${randomUUID()}`;
+        await fs.promises.rename(targetFilePath, previousFilePath);
+        try {
+          await fs.promises.rename(stagingFilePath, targetFilePath);
+        } catch (error) {
+          await fs.promises.rename(previousFilePath, targetFilePath).catch(() => undefined);
+          throw error;
+        }
+        await fs.promises.rm(previousFilePath, { force: true });
+      } else {
+        await fs.promises.rename(stagingFilePath, targetFilePath);
+      }
+    } catch (error) {
+      await fs.promises.rm(stagingFilePath, { force: true }).catch(() => undefined);
+      throw error;
+    }
 
     project.progress = 40;
     project.statusMessage = 'Inspecting video format and streams with FFprobe...';
@@ -54,7 +67,7 @@ export async function POST(
     const metadata = await probeVideo(targetFilePath);
 
     project.localVideoPath = targetFilePath;
-    project.originalFileName = file.name;
+    project.originalFileName = filename;
     project.videoMetadata = metadata;
     project.status = 'QUEUED';
     project.progress = 100;
@@ -76,6 +89,6 @@ export async function POST(
     });
   } catch (err: any) {
     console.error('Upload handler error:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message }, { status: err instanceof UploadRequestError ? err.status : 500 });
   }
 }

@@ -37,7 +37,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
-import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress } from '@/lib/upload-with-progress';
 
 function DashboardPageContent() {
   const router = useRouter();
@@ -269,14 +269,11 @@ function DashboardPageContent() {
     setLocalUploadProgress(0);
     try {
       showToast(`Uploading source video (${file.name})...`, 'info');
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const data = await uploadFormDataWithProgress<{
+      const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         project?: Project;
-      }>(`/api/projects/${activeProject.id}/upload`, formData, setLocalUploadProgress);
+      }>(`/api/projects/${activeProject.id}/upload`, file, setLocalUploadProgress);
       if (data.success && data.project) {
         setLocalUploadProgress(100);
         setActiveProject(data.project);

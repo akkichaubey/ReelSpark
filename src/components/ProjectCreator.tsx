@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { readJsonResponse, uploadFormDataWithProgress } from '@/lib/upload-with-progress';
+import { readJsonResponse, uploadFileWithProgress } from '@/lib/upload-with-progress';
 
 interface ProjectCreatorProps {
   onProjectCreated: (projectId: string) => void;
@@ -112,15 +112,12 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
       if (!projectId) throw new Error('The server created no project ID. Please retry.');
 
       // Step 2: Upload file
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
       setSubmitStage('uploading');
       setSubmitProgress(0);
-      const uploadData = await uploadFormDataWithProgress<{
+      const uploadData = await uploadFileWithProgress<{
         success: boolean;
         error?: string;
-      }>(`/api/projects/${projectId}/upload`, formData, (uploadPercent) => {
+      }>(`/api/projects/${projectId}/upload`, selectedFile, (uploadPercent) => {
         setSubmitProgress(uploadPercent);
         if (uploadPercent >= 100) setSubmitStage('finalizing');
       });

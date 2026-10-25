@@ -35,7 +35,7 @@ import {
   Flame,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress } from '@/lib/upload-with-progress';
 import {
   AudioAsset,
   ImageAsset,
@@ -199,16 +199,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     try {
       setIsUploadingBgm(true);
       setUploadProgress((current) => ({ ...current, bgm: 0 }));
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'audio');
-      const data = await uploadFormDataWithProgress<{
+      const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: ImageAsset | AudioAsset;
-      }>('/api/caption-maker/upload', formData, (bgm) => {
+      }>('/api/caption-maker/upload', file, (bgm) => {
         setUploadProgress((current) => ({ ...current, bgm }));
-      });
+      }, 'audio');
       if (!data?.success || !data.asset) {
         throw new Error(data?.error || 'Unable to upload background music');
       }
@@ -268,17 +265,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       if (!isVideoFile && !isImageFile) {
         throw new Error('Please select a video file (MP4, MOV, WEBM) or image file (JPG, PNG, WEBP) for the background.');
       }
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', isVideoFile ? 'video' : 'image');
-
-      const data = await uploadFormDataWithProgress<{
+      const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: ImageAsset;
-      }>('/api/caption-maker/upload', formData, (media) => {
+      }>('/api/caption-maker/upload', file, (media) => {
         setUploadProgress((current) => ({ ...current, media }));
-      });
+      }, isVideoFile ? 'video' : 'image');
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to upload background media');
       }
@@ -297,17 +290,13 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     setIsUploadingAudio(true);
     setUploadProgress((current) => ({ ...current, audio: 0 }));
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'audio');
-
-      const data = await uploadFormDataWithProgress<{
+      const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: AudioAsset;
-      }>('/api/caption-maker/upload', formData, (audio) => {
+      }>('/api/caption-maker/upload', file, (audio) => {
         setUploadProgress((current) => ({ ...current, audio }));
-      });
+      }, 'audio');
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to process audio or extract from video');
       }

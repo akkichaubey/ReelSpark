@@ -10,26 +10,22 @@ import { randomUUID } from 'node:crypto';
 import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
 import { recordMediaOwner } from '@/lib/media-access';
 import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import { getIncomingUploadMetadata, streamRequestBodyToFile, UploadRequestError } from '@/lib/stream-upload';
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getRequestUser(req);
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     if (!isSameOriginAuthRequest(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const type = formData.get('type') as 'image' | 'video' | 'audio' | null;
-
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-    }
+    const { filename, mediaType, expectedSize } = getIncomingUploadMetadata(req, true);
+    const type = mediaType!;
     const permittedKinds = type === 'image' ? ['image'] as const : type === 'video' ? ['video'] as const : ['audio', 'video'] as const;
-    const uploadError = validateUpload(file, [...permittedKinds]);
+    const uploadError = validateUpload({ name: filename, size: expectedSize }, [...permittedKinds]);
     if (uploadError) {
       return NextResponse.json({ error: uploadError }, { status: 400 });
     }
 
-    const safeName = sanitizeFilename(file.name);
+    const safeName = sanitizeFilename(filename);
     const ext = path.extname(safeName).toLowerCase();
 
     // Check allowed extensions
@@ -71,22 +67,19 @@ export async function POST(req: NextRequest) {
     await recordMediaOwner(uploadDir, user.id);
 
     const targetFilePath = path.join(uploadDir, safeName);
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await fs.promises.writeFile(targetFilePath, buffer);
+    const fileSize = await streamRequestBodyToFile(req, targetFilePath);
     await backupPrivateMedia(user.id, targetFilePath);
 
     const relativePath = `caption-maker/${assetId}/${safeName}`;
     const fileUrl = `/api/files/${relativePath}`;
 
-    if (isVideo) {
-      // 1. Probe video duration
+    if (isVideo && type === 'audio') {
+      // Extract audio only when the user uploaded a video as spoken audio.
       const duration = await probeAudioDuration(targetFilePath);
-
-      // Attempt high-quality MP3 audio extraction from the video
       let companionAudioPath = targetFilePath;
       let companionAudioUrl = fileUrl;
       let companionFormat = ext.replace('.', '').toUpperCase();
-      let companionSize = file.size;
+      let companionSize = fileSize;
       let companionDuration = duration;
 
       try {
@@ -100,38 +93,40 @@ export async function POST(req: NextRequest) {
         companionFormat = 'MP3';
         companionSize = extractedStat.size;
         companionDuration = extractedDuration;
-      } catch (err: any) {
-        console.warn('Companion audio extraction note:', err?.message || err);
+      } catch (error) {
+        // Preserve the uploaded source as the audio asset if optional extraction fails.
+        console.warn('Companion audio extraction note:', error instanceof Error ? error.message : error);
       }
 
       const audioAsset: AudioAsset = {
         id: `aud_${assetId}`,
         fileUrl: companionAudioUrl,
         storagePath: companionAudioPath,
-        fileName: `${file.name} (Audio)`,
+        fileName: `${filename} (Audio)`,
         fileSize: companionSize,
         duration: Math.round(companionDuration * 100) / 100,
         format: companionFormat,
         sourceType: 'video',
-        originalVideoFileName: file.name,
+        originalVideoFileName: filename,
       };
 
-      // If user specifically uploaded this file to Spoken Audio, return it as the primary audio asset
-      if (type === 'audio') {
-        return NextResponse.json({
-          success: true,
-          asset: audioAsset,
-          audioAsset,
-          type: 'audio',
-        });
-      }
+      return NextResponse.json({
+        success: true,
+        asset: audioAsset,
+        audioAsset,
+        type: 'audio',
+      });
+    }
 
+    if (isVideo) {
+      // Background videos are rendered as visuals; avoid an unused audio transcode.
+      const duration = await probeAudioDuration(targetFilePath);
       const videoAsset: ImageAsset = {
         id: assetId,
         fileUrl,
         storagePath: targetFilePath,
-        fileName: file.name,
-        fileSize: file.size,
+        fileName: filename,
+        fileSize,
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
@@ -145,7 +140,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         asset: videoAsset,
-        audioAsset,
         type: 'video',
       });
     } else if (isImage) {
@@ -154,8 +148,8 @@ export async function POST(req: NextRequest) {
         id: assetId,
         fileUrl,
         storagePath: targetFilePath,
-        fileName: file.name,
-        fileSize: file.size,
+        fileName: filename,
+        fileSize,
         width: 1080,
         height: 1920,
         format: ext.replace('.', '').toUpperCase(),
@@ -172,8 +166,8 @@ export async function POST(req: NextRequest) {
         id: assetId,
         fileUrl,
         storagePath: targetFilePath,
-        fileName: file.name,
-        fileSize: file.size,
+        fileName: filename,
+        fileSize,
         duration: Math.round(duration * 100) / 100,
         format: ext.replace('.', '').toUpperCase(),
       };
@@ -183,7 +177,7 @@ export async function POST(req: NextRequest) {
     console.error('Caption Maker upload failed:', err);
     return NextResponse.json(
       { error: err.message || 'File upload failed' },
-      { status: 500 }
+      { status: err instanceof UploadRequestError ? err.status : 500 }
     );
   }
 }

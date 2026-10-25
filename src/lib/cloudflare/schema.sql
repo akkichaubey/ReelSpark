@@ -21,6 +21,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
+-- ─── Private media recovery catalog ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS private_media (
+  relative_path TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  object_key TEXT NOT NULL UNIQUE,
+  size_bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_private_media_owner ON private_media(owner_user_id);
+
 -- ─── User Profiles (Extended Details & Customization) ────────────────────────
 CREATE TABLE IF NOT EXISTS user_profiles (
   user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

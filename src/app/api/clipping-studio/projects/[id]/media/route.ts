@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
+import { randomUUID } from 'node:crypto';
 import { probeVideo } from '@/lib/ffmpeg';
 import { APP_CONFIG } from '@/lib/config';
 import { sanitizeFilename, assertSafePath } from '@/lib/storage';
@@ -11,6 +10,7 @@ import { MediaAsset } from '@/lib/clipping-studio/contracts';
 import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
 import { canReadMedia } from '@/lib/media-access';
 import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import { getIncomingUploadMetadata, streamRequestBodyToFile, UploadRequestError } from '@/lib/stream-upload';
 
 // Permitted media extensions
 const ALLOWED_EXTS = new Set([
@@ -58,20 +58,14 @@ export async function POST(
     let originalFilename = '';
     let fileSizeBytes = 0;
 
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await req.formData();
-      const file = formData.get('file') as File | null;
-
-      if (!file) {
-        return NextResponse.json({ success: false, error: 'No media file provided' }, { status: 400 });
-      }
-
-      const uploadError = validateUpload(file, ['video', 'audio']);
+    if (contentType.includes('application/octet-stream')) {
+      const { filename, expectedSize } = getIncomingUploadMetadata(req);
+      const uploadError = validateUpload({ name: filename, size: expectedSize }, ['video', 'audio']);
       if (uploadError) {
         return NextResponse.json({ success: false, error: uploadError }, { status: 400 });
       }
 
-      const ext = path.extname(file.name).toLowerCase();
+      const ext = path.extname(filename).toLowerCase();
       if (!ALLOWED_EXTS.has(ext)) {
         return NextResponse.json({
           success: false,
@@ -79,17 +73,24 @@ export async function POST(
         }, { status: 400 });
       }
 
-      const safeName = sanitizeFilename(file.name);
+      const safeName = sanitizeFilename(filename);
       const mediaDir = getProjectMediaDir(projectId);
       targetFilePath = getAvailableManagedPath(mediaDir, safeName);
-      originalFilename = file.name;
-      fileSizeBytes = file.size;
+      originalFilename = filename;
 
-      // Stream file to local workspace
-      const nodeStream = Readable.fromWeb(file.stream() as any);
-      const writeStream = fs.createWriteStream(targetFilePath);
-      await pipeline(nodeStream, writeStream);
+      // Stream raw request bytes to a staging file so large uploads stay off the heap.
+      const stagingPath = path.join(mediaDir, `.incoming-${randomUUID()}`);
+      try {
+        fileSizeBytes = await streamRequestBodyToFile(req, stagingPath);
+        await fs.promises.rename(stagingPath, targetFilePath);
+      } catch (error) {
+        await fs.promises.rm(stagingPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
     } else {
+      if (contentType.includes('multipart/form-data')) {
+        throw new UploadRequestError('This page is using an older upload format. Refresh the page and upload again.', 415);
+      }
       // JSON body with localFilePath
       const body = await req.json();
       const { localFilePath } = body;
@@ -163,7 +164,7 @@ export async function POST(
     });
   } catch (err: any) {
     console.error('[Clipping Media Import Error]', err);
-    return NextResponse.json({ success: false, error: err.message || 'Media import failed' }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message || 'Media import failed' }, { status: err instanceof UploadRequestError ? err.status : 500 });
   }
 }
 

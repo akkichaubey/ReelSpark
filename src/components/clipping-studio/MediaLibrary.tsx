@@ -17,7 +17,7 @@ import {
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { formatMsToTimestamp, MediaAsset } from '@/lib/clipping-studio/contracts';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { uploadFormDataWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress } from '@/lib/upload-with-progress';
 
 export const MediaLibrary: React.FC = () => {
   const {
@@ -45,14 +45,11 @@ export const MediaLibrary: React.FC = () => {
     setUploadError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const data = await uploadFormDataWithProgress<{
+      const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: MediaAsset;
-      }>(`/api/clipping-studio/projects/${activeProject.id}/media`, formData, setUploadProgress);
+      }>(`/api/clipping-studio/projects/${activeProject.id}/media`, file, setUploadProgress);
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to import media file');
       }

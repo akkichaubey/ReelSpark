@@ -8,9 +8,9 @@ const MEDIA_EXTENSIONS = {
   audio: new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']),
 };
 
-export function validateUpload(file: File, kinds: Array<keyof typeof MEDIA_EXTENSIONS>): string | null {
-  if (!file.size) return 'The uploaded file is empty.';
-  if (file.size > MAX_UPLOAD_BYTES) {
+export function validateUpload(file: { name: string; size?: number }, kinds: Array<keyof typeof MEDIA_EXTENSIONS>): string | null {
+  if (file.size === 0) return 'The uploaded file is empty.';
+  if (file.size !== undefined && file.size > MAX_UPLOAD_BYTES) {
     return `Files larger than ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB are not supported.`;
   }
   const extension = path.extname(file.name).toLowerCase();
