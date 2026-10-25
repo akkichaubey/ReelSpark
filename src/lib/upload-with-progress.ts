@@ -50,15 +50,78 @@ export async function readJsonResponse<T>(response: Response): Promise<T> {
 
 export type UploadMediaType = 'image' | 'video' | 'audio';
 
+export class UploadCancelledError extends Error {
+  constructor() {
+    super('Upload cancelled.');
+    this.name = 'UploadCancelledError';
+  }
+}
+
+/** Read a local image file with measurable progress and an optional cancel signal. */
+export function readFileAsDataUrlWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+
+    const reader = new FileReader();
+    const cleanupAbortListener = () => signal?.removeEventListener('abort', abortRead);
+    const abortRead = () => reader.abort();
+
+    reader.addEventListener('progress', (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      onProgress(Math.round(Math.max(0, Math.min(1, event.loaded / event.total)) * 100));
+    });
+    reader.addEventListener('load', () => {
+      cleanupAbortListener();
+      if (typeof reader.result !== 'string') {
+        reject(new Error('The selected image could not be read. Please choose it again.'));
+        return;
+      }
+      onProgress(100);
+      resolve(reader.result);
+    });
+    reader.addEventListener('error', () => {
+      cleanupAbortListener();
+      reject(new Error('The selected image could not be read. Please choose it again.'));
+    });
+    reader.addEventListener('abort', () => {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    });
+
+    signal?.addEventListener('abort', abortRead, { once: true });
+    if (signal?.aborted) {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    } else {
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
 /** Upload a File as a raw request stream so the server never buffers a multipart copy. */
 export function uploadFileWithProgress<T>(
   url: string,
   file: File,
   onProgress: (percent: number) => void,
   mediaType?: UploadMediaType,
+  signal?: AbortSignal,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+
     const request = new XMLHttpRequest();
+    const cleanupAbortListener = () => signal?.removeEventListener('abort', abortRequest);
+    const abortRequest = () => request.abort();
     request.open('POST', url);
     request.responseType = 'text';
     request.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -72,6 +135,7 @@ export function uploadFileWithProgress<T>(
     });
 
     request.addEventListener('load', () => {
+      cleanupAbortListener();
       const body = request.responseText || '';
       if (!body.trim()) {
         reject(responseError(request.status, body));
@@ -95,10 +159,20 @@ export function uploadFileWithProgress<T>(
     });
 
     request.addEventListener('error', () => {
+      cleanupAbortListener();
       reject(new Error('Network connection ended before the upload finished. Check your connection and try again.'));
     });
-    request.addEventListener('abort', () => reject(new Error('The upload was cancelled.')));
-    request.send(file);
+    request.addEventListener('abort', () => {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    });
+    signal?.addEventListener('abort', abortRequest, { once: true });
+    if (signal?.aborted) {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    } else {
+      request.send(file);
+    }
   });
 }
 
@@ -106,10 +180,18 @@ export function uploadFileWithProgress<T>(
 export function uploadFormDataWithProgress<T>(
   url: string,
   formData: FormData,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+
     const request = new XMLHttpRequest();
+    const cleanupAbortListener = () => signal?.removeEventListener('abort', abortRequest);
+    const abortRequest = () => request.abort();
     request.open('POST', url);
     request.responseType = 'text';
 
@@ -120,6 +202,7 @@ export function uploadFormDataWithProgress<T>(
     });
 
     request.addEventListener('load', () => {
+      cleanupAbortListener();
       const body = request.responseText || '';
       if (!body.trim()) {
         reject(responseError(request.status, body));
@@ -143,9 +226,19 @@ export function uploadFormDataWithProgress<T>(
     });
 
     request.addEventListener('error', () => {
+      cleanupAbortListener();
       reject(new Error('Network connection ended before the upload finished. Check your connection and try again.'));
     });
-    request.addEventListener('abort', () => reject(new Error('The upload was cancelled.')));
-    request.send(formData);
+    request.addEventListener('abort', () => {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    });
+    signal?.addEventListener('abort', abortRequest, { once: true });
+    if (signal?.aborted) {
+      cleanupAbortListener();
+      reject(new UploadCancelledError());
+    } else {
+      request.send(formData);
+    }
   });
 }

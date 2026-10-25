@@ -1,7 +1,7 @@
 'use client';
 import { accountCache } from '@/lib/account-cache';
 
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Info,
@@ -37,7 +37,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly, triggerBrowserDownload } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
-import { uploadFileWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 function DashboardPageContent() {
   const router = useRouter();
@@ -67,6 +67,7 @@ function DashboardPageContent() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [localUploadProgress, setLocalUploadProgress] = useState<number | null>(null);
+  const localUploadAbortController = useRef<AbortController | null>(null);
   const [renderingClipIds, setRenderingClipIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -267,24 +268,35 @@ function DashboardPageContent() {
   const handleUploadLocalFileForYouTube = async (file: File) => {
     if (!activeProject) return;
     setLocalUploadProgress(0);
+    const controller = new AbortController();
+    localUploadAbortController.current = controller;
     try {
       showToast(`Uploading source video (${file.name})...`, 'info');
       const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         project?: Project;
-      }>(`/api/projects/${activeProject.id}/upload`, file, setLocalUploadProgress);
+      }>(`/api/projects/${activeProject.id}/upload`, file, setLocalUploadProgress, undefined, controller.signal);
       if (data.success && data.project) {
         setLocalUploadProgress(100);
         setActiveProject(data.project);
-        showToast('Source video uploaded! Starting transcription...', 'success');
         refreshActiveProject(activeProject.id);
       } else {
         throw new Error(data.error || 'Upload failed');
       }
     } catch (err: any) {
-      showToast(err.message, 'error');
+      if (err instanceof UploadCancelledError) {
+        try {
+          await fetch(`/api/projects/${activeProject.id}/upload`, { method: 'DELETE' });
+        } catch {
+          // The incomplete stream is removed by the upload route; the next refresh can reconcile status.
+        }
+        showToast('Source video upload cancelled.', 'info');
+      } else {
+        showToast(err.message, 'error');
+      }
     } finally {
+      localUploadAbortController.current = null;
       setLocalUploadProgress(null);
     }
   };
@@ -684,6 +696,7 @@ function DashboardPageContent() {
             onRenderAllSelected={handleRenderAllSelected}
             onExportZip={handleExportZip}
             onUploadLocalFileForYouTube={handleUploadLocalFileForYouTube}
+            onCancelLocalFileUpload={() => localUploadAbortController.current?.abort()}
             isUploadingLocalFile={localUploadProgress !== null}
             localUploadProgress={localUploadProgress ?? 0}
             isAnalyzing={isAnalyzing}

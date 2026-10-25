@@ -4,20 +4,19 @@ import React, { useState, useRef } from 'react';
 import {
   UploadCloud,
   Film,
-  Music,
   Trash2,
   AlertTriangle,
   Link2,
-  CheckCircle2,
   Play,
   FileVideo,
   FileAudio,
-  Info,
+  X,
+  CheckCircle2,
 } from 'lucide-react';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { formatMsToTimestamp, MediaAsset } from '@/lib/clipping-studio/contracts';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { uploadFileWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 export const MediaLibrary: React.FC = () => {
   const {
@@ -37,19 +36,22 @@ export const MediaLibrary: React.FC = () => {
   const [newRelinkPath, setNewRelinkPath] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortController = useRef<AbortController | null>(null);
 
   const handleFileUpload = async (file: File) => {
-    if (!activeProject) return;
+    if (!activeProject || uploadAbortController.current) return;
     setIsUploading(true);
     setUploadProgress(0);
     setUploadError(null);
+    const controller = new AbortController();
+    uploadAbortController.current = controller;
 
     try {
       const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: MediaAsset;
-      }>(`/api/clipping-studio/projects/${activeProject.id}/media`, file, setUploadProgress);
+      }>(`/api/clipping-studio/projects/${activeProject.id}/media`, file, setUploadProgress, undefined, controller.signal);
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to import media file');
       }
@@ -57,8 +59,14 @@ export const MediaLibrary: React.FC = () => {
       addMediaAsset(data.asset);
       setUploadProgress(100);
     } catch (err: any) {
-      setUploadError(err.message || 'Media import failed');
+      if (err instanceof UploadCancelledError) {
+        setUploadProgress(0);
+        setUploadError(null);
+      } else {
+        setUploadError(err.message || 'Media import failed');
+      }
     } finally {
+      uploadAbortController.current = null;
       setIsUploading(false);
     }
   };
@@ -92,7 +100,9 @@ export const MediaLibrary: React.FC = () => {
       {/* Upload Zone */}
       <div className="w-full">
         <div
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            if (!isUploading) fileInputRef.current?.click();
+          }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -107,9 +117,9 @@ export const MediaLibrary: React.FC = () => {
             type="file"
             accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/mkv,audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg,audio/m4a,audio/flac"
             onChange={(e) => {
-              if (e.target.files?.[0]) {
-                handleFileUpload(e.target.files[0]);
-              }
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) handleFileUpload(file);
             }}
             className="hidden"
           />
@@ -124,13 +134,26 @@ export const MediaLibrary: React.FC = () => {
             <p className="text-sm font-bold text-white">
               {isUploading
                 ? uploadProgress >= 100
-                  ? `Inspecting Media with FFprobe (upload ${uploadProgress}%)...`
+                  ? 'Inspecting media with FFprobe…'
                   : `Uploading Media (${uploadProgress}%)...`
                 : 'Drop video or audio file here, or browse'}
             </p>
             <p className="text-xs text-zinc-400 mt-1">
               Supports MP4, MOV, WEBM, MKV, AVI, MP3, WAV, M4A, AAC, OGG (Original remains untouched)
             </p>
+            {isUploading && uploadProgress < 100 && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  uploadAbortController.current?.abort();
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <X className="h-3 w-3" />
+                Cancel upload
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -199,6 +222,12 @@ export const MediaLibrary: React.FC = () => {
                         </p>
                       </div>
                     </div>
+
+                    <CheckCircle2
+                      className="h-4 w-4 shrink-0 text-emerald-400"
+                      aria-label="Media upload complete"
+                      role="img"
+                    />
 
                     {isSelected && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap">

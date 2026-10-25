@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ThumbnailSettings,
   THUMBNAIL_PRESETS,
@@ -14,6 +14,8 @@ import {
   loadFontBatch,
 } from '@/lib/caption-maker/google-fonts';
 import { assessHookQuality, normalizeHookWord } from '@/lib/caption-maker/hook-quality';
+import { ProgressCircle } from '@/components/ProgressCircle';
+import { readFileAsDataUrlWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 import {
   Type,
   Palette,
@@ -31,6 +33,7 @@ import {
   CheckCircle2,
   SlidersHorizontal,
   Square,
+  X,
 } from 'lucide-react';
 
 export type ThumbnailSubTab =
@@ -87,6 +90,9 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
   const [isFontPickerOpen, setIsFontPickerOpen] = useState<boolean>(false);
   const [fontSearchQuery, setFontSearchQuery] = useState<string>('');
   const [appliedNotice, setAppliedNotice] = useState<boolean>(false);
+  const [customBgProgress, setCustomBgProgress] = useState<number | null>(null);
+  const [customBgError, setCustomBgError] = useState<string | null>(null);
+  const customBgReadController = useRef<AbortController | null>(null);
 
   // Extract quick suggested titles from project transcript
   const suggestedTitles = useMemo(() => {
@@ -162,21 +168,26 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
     update({ highlightWords: updated });
   };
 
-  const handleCustomBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        update({
-          customBgUrl: dataUrl,
-          backgroundType: 'project',
-        });
+    const controller = new AbortController();
+    customBgReadController.current = controller;
+    setCustomBgError(null);
+    setCustomBgProgress(0);
+    try {
+      const dataUrl = await readFileAsDataUrlWithProgress(file, setCustomBgProgress, controller.signal);
+      update({ customBgUrl: dataUrl, backgroundType: 'project' });
+    } catch (error) {
+      if (!(error instanceof UploadCancelledError)) {
+        setCustomBgError(error instanceof Error ? error.message : 'Unable to read this background photo.');
       }
-    };
-    reader.readAsDataURL(file);
+    } finally {
+      customBgReadController.current = null;
+      setCustomBgProgress(null);
+    }
   };
 
   const handleApplyCover = () => {
@@ -1435,17 +1446,36 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 </div>
               )}
 
-              <div className="pt-2 border-t border-zinc-800">
-                <label className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-300 text-xs font-semibold cursor-pointer transition-colors">
-                  <Upload className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Upload Custom Background Photo</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCustomBgUpload}
-                    className="hidden"
-                  />
-                </label>
+              <div className="pt-2 border-t border-zinc-800 space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className={`flex flex-1 items-center justify-center gap-2 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-300 text-xs font-semibold transition-colors ${customBgProgress !== null ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
+                    {customBgProgress !== null ? (
+                      <ProgressCircle value={customBgProgress} size={18} strokeWidth={2.5} label="Background photo read" />
+                    ) : settings.customBgUrl ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>{customBgProgress !== null ? `Reading photo (${customBgProgress}%)…` : 'Upload Custom Background Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCustomBgUpload}
+                      className="hidden"
+                      disabled={customBgProgress !== null}
+                    />
+                  </label>
+                  {customBgProgress !== null && (
+                    <button
+                      type="button"
+                      onClick={() => customBgReadController.current?.abort()}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                    >
+                      <X className="h-3 w-3" /> Cancel
+                    </button>
+                  )}
+                </div>
+                {customBgError && <p role="alert" className="text-[10px] text-red-300">{customBgError}</p>}
               </div>
             </div>
 

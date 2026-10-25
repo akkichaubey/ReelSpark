@@ -92,3 +92,29 @@ export async function POST(
     return NextResponse.json({ success: false, error: err.message }, { status: err instanceof UploadRequestError ? err.status : 500 });
   }
 }
+
+/** Reset the project state after the client cancels an incomplete upload. */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const accessError = await requireProjectAccess(req, id);
+    if (accessError) return accessError;
+    const project = await loadProject(id);
+    if (!project) return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+
+    if (project.status === 'UPLOADING') {
+      project.status = 'QUEUED';
+      project.progress = 0;
+      project.statusMessage = 'Upload cancelled. Attach the source file again to continue.';
+      await saveProject(project);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('Upload cancellation handler error:', err);
+    return NextResponse.json({ success: false, error: err.message || 'Failed to cancel upload' }, { status: 500 });
+  }
+}

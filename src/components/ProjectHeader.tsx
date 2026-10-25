@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Layers,
   Upload,
+  X,
   CheckCircle2,
   Music,
   ChevronDown,
@@ -25,6 +26,7 @@ interface ProjectHeaderProps {
   onRenderAllSelected: () => void;
   onExportZip: () => void;
   onUploadLocalFileForYouTube: (file: File) => void;
+  onCancelLocalFileUpload: () => void;
   isUploadingLocalFile: boolean;
   localUploadProgress: number;
   isAnalyzing: boolean;
@@ -39,6 +41,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   onRenderAllSelected,
   onExportZip,
   onUploadLocalFileForYouTube,
+  onCancelLocalFileUpload,
   isUploadingLocalFile,
   localUploadProgress,
   isAnalyzing,
@@ -214,9 +217,9 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               accept="video/*"
               className="hidden"
               onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  onUploadLocalFileForYouTube(e.target.files[0]);
-                }
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) onUploadLocalFileForYouTube(file);
               }}
             />
             <button
@@ -232,11 +235,21 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               <span>
                 {isUploadingLocalFile
                   ? localUploadProgress >= 100
-                    ? 'Upload complete · processing...'
+                    ? 'Processing video…'
                     : `Uploading (${localUploadProgress}%)...`
                   : 'Attach Local Video'}
               </span>
             </button>
+            {isUploadingLocalFile && localUploadProgress < 100 && (
+              <button
+                type="button"
+                onClick={onCancelLocalFileUpload}
+                className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <X className="h-3 w-3" />
+                Cancel upload
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film } from 'lucide-react';
+import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film, X, Loader2 } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { readJsonResponse, uploadFileWithProgress } from '@/lib/upload-with-progress';
+import { readJsonResponse, uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 
 interface ProjectCreatorProps {
   onProjectCreated: (projectId: string) => void;
@@ -38,6 +38,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortController = useRef<AbortController | null>(null);
 
   const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'];
   const videoExtensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
@@ -63,13 +64,14 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processSelectedFile(e.target.files[0]);
-    }
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) processSelectedFile(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError(null);
 
     if (!selectedFile) {
@@ -77,6 +79,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
       return;
     }
 
+    let createdProjectId: string | null = null;
     try {
       setIsSubmitting(true);
       setSubmitProgress(0);
@@ -110,17 +113,20 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
 
       const projectId = createData.project?.id;
       if (!projectId) throw new Error('The server created no project ID. Please retry.');
+      createdProjectId = projectId;
 
       // Step 2: Upload file
       setSubmitStage('uploading');
       setSubmitProgress(0);
+      const controller = new AbortController();
+      uploadAbortController.current = controller;
       const uploadData = await uploadFileWithProgress<{
         success: boolean;
         error?: string;
       }>(`/api/projects/${projectId}/upload`, selectedFile, (uploadPercent) => {
         setSubmitProgress(uploadPercent);
         if (uploadPercent >= 100) setSubmitStage('finalizing');
-      });
+      }, undefined, controller.signal);
       if (!uploadData.success) {
         throw new Error(uploadData.error || `Failed to upload ${activeTab} file`);
       }
@@ -128,8 +134,26 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
       setSubmitProgress(100);
       onProjectCreated(projectId);
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
+      if (err instanceof UploadCancelledError) {
+        let draftRemoved = false;
+        if (createdProjectId) {
+          try {
+            const response = await fetch(`/api/projects/${createdProjectId}`, { method: 'DELETE' });
+            draftRemoved = response.ok;
+          } catch {
+            draftRemoved = false;
+          }
+        }
+        setError(createdProjectId
+          ? draftRemoved
+            ? 'Upload cancelled. The incomplete project was removed.'
+            : 'Upload cancelled. The incomplete project may still appear in your projects.'
+            : 'Upload cancelled.');
+      } else {
+        setError(err.message || 'An unexpected error occurred');
+      }
     } finally {
+      uploadAbortController.current = null;
       setIsSubmitting(false);
       setSubmitStage('idle');
     }
@@ -318,6 +342,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
               <button
                 type="button"
                 onClick={onClose}
+                disabled={isSubmitting}
                 className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors"
               >
                 Cancel
@@ -330,18 +355,24 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             >
               {isSubmitting ? (
                 <>
-                  <ProgressCircle
-                    value={submitProgress}
-                    size={30}
-                    strokeWidth={3.5}
-                    label="File transfer"
-                    className="text-zinc-900"
-                  />
+                  {submitStage === 'creating' ? (
+                    <Loader2 className="h-[30px] w-[30px] animate-spin text-zinc-900" aria-hidden="true" />
+                  ) : (
+                    <ProgressCircle
+                      value={submitProgress}
+                      size={30}
+                      strokeWidth={3.5}
+                      label="File transfer"
+                      className="text-zinc-900"
+                    />
+                  )}
                   <span aria-live="polite">
                     {submitStage === 'creating'
-                      ? `Preparing project (${submitProgress}%)...`
+                      ? 'Preparing project…'
                       : submitStage === 'finalizing'
-                      ? `Upload complete · checking media (${submitProgress}%)...`
+                      ? 'Checking uploaded media…'
+                      : submitProgress >= 100
+                      ? 'Finishing upload…'
                       : `Uploading (${submitProgress}%)...`}
                   </span>
                 </>
@@ -352,6 +383,16 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 </>
               )}
             </button>
+            {submitStage === 'uploading' && submitProgress < 100 && (
+              <button
+                type="button"
+                onClick={() => uploadAbortController.current?.abort()}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancel upload
+              </button>
+            )}
           </div>
         </form>
       </div>

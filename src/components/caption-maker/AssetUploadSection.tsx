@@ -32,10 +32,10 @@ import {
   Scissors,
   Zap,
   Users,
-  Flame,
+  X,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
-import { uploadFileWithProgress } from '@/lib/upload-with-progress';
+import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 import {
   AudioAsset,
   ImageAsset,
@@ -147,7 +147,6 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   onPositionChange,
   onScaleChange,
   preferredLanguage = 'en',
-  onLanguageChange,
   onOpenSmartEditor,
 }) => {
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -164,13 +163,29 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   const [uploadProgress, setUploadProgress] = useState({ media: 0, audio: 0, bgm: 0 });
   const [customBgmTracks, setCustomBgmTracks] = useState<BgMusicTrack[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadAbortControllers = useRef<Record<'media' | 'audio' | 'bgm', AbortController | null>>({
+    media: null,
+    audio: null,
+    bgm: null,
+  });
+
+  const cancelUpload = (kind: 'media' | 'audio' | 'bgm') => {
+    uploadAbortControllers.current[kind]?.abort();
+  };
+
+  React.useEffect(() => () => {
+    Object.values(uploadAbortControllers.current).forEach((controller) => controller?.abort());
+  }, []);
 
   // Load custom BGM library from localStorage
   React.useEffect(() => {
+    // Hydrate browser-only, account-scoped data after SSR to avoid a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomBgmTracks(getCustomBgmTracks());
   }, []);
 
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [audioPlaybackError, setAudioPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [isPreviewingBgm, setIsPreviewingBgm] = useState(false);
@@ -189,6 +204,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   };
 
   const handleCustomBgmUpload = async (file: File) => {
+    if (uploadAbortControllers.current.bgm) return;
     setUploadError(null);
     const validation = validateBgmFile(file);
     if (!validation.valid) {
@@ -199,13 +215,15 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     try {
       setIsUploadingBgm(true);
       setUploadProgress((current) => ({ ...current, bgm: 0 }));
+      const controller = new AbortController();
+      uploadAbortControllers.current.bgm = controller;
       const data = await uploadFileWithProgress<{
         success?: boolean;
         error?: string;
         asset?: ImageAsset | AudioAsset;
       }>('/api/caption-maker/upload', file, (bgm) => {
         setUploadProgress((current) => ({ ...current, bgm }));
-      }, 'audio');
+      }, 'audio', controller.signal);
       if (!data?.success || !data.asset) {
         throw new Error(data?.error || 'Unable to upload background music');
       }
@@ -227,8 +245,14 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       }
       setUploadProgress((current) => ({ ...current, bgm: 100 }));
     } catch (err: any) {
-      setUploadError(err.message || 'Failed to upload custom background music');
+      if (err instanceof UploadCancelledError) {
+        setUploadProgress((current) => ({ ...current, bgm: 0 }));
+        setUploadError(null);
+      } else {
+        setUploadError(err.message || 'Failed to upload custom background music');
+      }
     } finally {
+      uploadAbortControllers.current.bgm = null;
       setIsUploadingBgm(false);
     }
   };
@@ -255,9 +279,12 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   };
 
   const handleMediaFile = async (file: File) => {
+    if (uploadAbortControllers.current.media) return;
     setUploadError(null);
     setIsUploadingMedia(true);
     setUploadProgress((current) => ({ ...current, media: 0 }));
+    const controller = new AbortController();
+    uploadAbortControllers.current.media = controller;
     try {
       const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
       const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
@@ -271,7 +298,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         asset?: ImageAsset;
       }>('/api/caption-maker/upload', file, (media) => {
         setUploadProgress((current) => ({ ...current, media }));
-      }, isVideoFile ? 'video' : 'image');
+      }, isVideoFile ? 'video' : 'image', controller.signal);
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to upload background media');
       }
@@ -279,16 +306,25 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       onImageChange(data.asset);
       setUploadProgress((current) => ({ ...current, media: 100 }));
     } catch (err: any) {
-      setUploadError(err.message);
+      if (err instanceof UploadCancelledError) {
+        setUploadProgress((current) => ({ ...current, media: 0 }));
+        setUploadError(null);
+      } else {
+        setUploadError(err.message);
+      }
     } finally {
+      uploadAbortControllers.current.media = null;
       setIsUploadingMedia(false);
     }
   };
 
   const handleAudioFile = async (file: File) => {
+    if (uploadAbortControllers.current.audio) return;
     setUploadError(null);
     setIsUploadingAudio(true);
     setUploadProgress((current) => ({ ...current, audio: 0 }));
+    const controller = new AbortController();
+    uploadAbortControllers.current.audio = controller;
     try {
       const data = await uploadFileWithProgress<{
         success?: boolean;
@@ -296,7 +332,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         asset?: AudioAsset;
       }>('/api/caption-maker/upload', file, (audio) => {
         setUploadProgress((current) => ({ ...current, audio }));
-      }, 'audio');
+      }, 'audio', controller.signal);
       if (!data.success || !data.asset) {
         throw new Error(data.error || 'Failed to process audio or extract from video');
       }
@@ -304,20 +340,31 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       onAudioChange(data.asset);
       setUploadProgress((current) => ({ ...current, audio: 100 }));
     } catch (err: any) {
-      setUploadError(err.message);
+      if (err instanceof UploadCancelledError) {
+        setUploadProgress((current) => ({ ...current, audio: 0 }));
+        setUploadError(null);
+      } else {
+        setUploadError(err.message);
+      }
     } finally {
+      uploadAbortControllers.current.audio = null;
       setIsUploadingAudio(false);
     }
   };
 
-  const toggleAudioPlay = () => {
-    if (!audioRef.current) return;
-    if (isPlayingAudio) {
-      audioRef.current.pause();
-      setIsPlayingAudio(false);
+  const toggleAudioPlay = async () => {
+    const player = audioRef.current;
+    if (!player) return;
+    if (!player.paused) {
+      player.pause();
     } else {
-      audioRef.current.play().catch(() => {});
-      setIsPlayingAudio(true);
+      setAudioPlaybackError(null);
+      try {
+        await player.play();
+      } catch {
+        setIsPlayingAudio(false);
+        setAudioPlaybackError('Audio preview could not start. Check your connection or upload the file again.');
+      }
     }
   };
 
@@ -371,7 +418,10 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 ? 'text-amber-400 bg-amber-950/60 border-amber-800/50'
                 : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/50'
             }`}>
-              {isVideo ? `🎬 Video • ${formatDuration(image.duration)}` : '🖼️ Image Ready'}
+              <span className="inline-flex items-center gap-1">
+                <Check className="h-3 w-3 text-emerald-400" aria-hidden="true" />
+                {isVideo ? `Video • ${formatDuration(image.duration)}` : <span className="sr-only">Image upload complete</span>}
+              </span>
             </span>
           )}
         </div>
@@ -609,12 +659,23 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <p className="text-xs font-bold text-zinc-200">
                 {isUploadingMedia
                   ? uploadProgress.media >= 100
-                    ? `Processing Background Media (upload ${uploadProgress.media}%)...`
+                    ? 'Processing background media…'
                     : `Uploading Background Media (${uploadProgress.media}%)...`
                   : 'Choose Background Video or Image'}
               </p>
               <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
             </div>
+
+            {isUploadingMedia && uploadProgress.media < 100 && (
+              <button
+                type="button"
+                onClick={() => cancelUpload('media')}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <X className="h-3 w-3" />
+                Cancel upload
+              </button>
+            )}
 
             {/* Quick Upload Choice Buttons: Video and Image */}
             <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
@@ -649,7 +710,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="image/jpeg,image/png,image/webp"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleMediaFile(file);
           }}
         />
         <input
@@ -658,7 +721,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleMediaFile(file);
           }}
         />
         <input
@@ -667,7 +732,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleMediaFile(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleMediaFile(file);
           }}
         />
       </div>
@@ -693,7 +760,10 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 ? 'text-amber-400 bg-amber-950/60 border-amber-800/50'
                 : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/50'
             }`}>
-              {isAudioFromVideo ? `🎬 Video Voice • ${audio.duration.toFixed(1)}s` : `🎙️ Audio • ${audio.duration.toFixed(1)}s`}
+              <span className="inline-flex items-center gap-1">
+                <Check className="h-3 w-3 text-emerald-400" aria-hidden="true" />
+                {isAudioFromVideo ? `Video Voice • ${audio.duration.toFixed(1)}s` : `Audio • ${audio.duration.toFixed(1)}s`}
+              </span>
             </span>
           )}
         </div>
@@ -705,6 +775,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <button
                   type="button"
                   onClick={toggleAudioPlay}
+                  aria-label={isPlayingAudio ? 'Pause uploaded audio preview' : 'Play uploaded audio preview'}
+                  title={isPlayingAudio ? 'Pause preview' : 'Play preview'}
                   className="p-2 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 shadow-md transition-all cursor-pointer flex-shrink-0"
                 >
                   {isPlayingAudio ? (
@@ -751,10 +823,26 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <audio
                 ref={audioRef}
                 src={audio.fileUrl}
+                preload="metadata"
+                onLoadStart={() => {
+                  setAudioPlaybackError(null);
+                  setIsPlayingAudio(false);
+                }}
+                onPlay={() => setIsPlayingAudio(true)}
+                onPause={() => setIsPlayingAudio(false)}
                 onEnded={() => setIsPlayingAudio(false)}
+                onError={() => {
+                  setIsPlayingAudio(false);
+                  setAudioPlaybackError('Audio preview could not load. Check your connection or upload the file again.');
+                }}
                 className="hidden"
               />
             </div>
+            {audioPlaybackError && (
+              <p role="status" className="text-[10px] text-red-300" aria-live="polite">
+                {audioPlaybackError}
+              </p>
+            )}
 
             {/* Voice Audio Mixer Controls (VN & Instagram Style) */}
             <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
@@ -1002,7 +1090,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <p className="text-xs font-bold text-zinc-200">
                 {isUploadingAudio
                   ? uploadProgress.audio >= 100
-                    ? `Preparing Voice Captions (upload ${uploadProgress.audio}%)...`
+                    ? 'Preparing voice captions…'
                     : `Uploading Voice Audio/Video (${uploadProgress.audio}%)...`
                   : 'Choose Spoken Audio or Video'}
               </p>
@@ -1010,6 +1098,17 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 Audio or video will be processed with AI for speech transcription and captions:
               </p>
             </div>
+
+            {isUploadingAudio && uploadProgress.audio < 100 && (
+              <button
+                type="button"
+                onClick={() => cancelUpload('audio')}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <X className="h-3 w-3" />
+                Cancel upload
+              </button>
+            )}
 
             {/* Quick Upload Choice Buttons: Audio and Video */}
             <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
@@ -1045,7 +1144,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/ogg"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleAudioFile(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleAudioFile(file);
           }}
         />
         <input
@@ -1054,7 +1155,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/avi"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleAudioFile(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleAudioFile(file);
           }}
         />
         <input
@@ -1227,11 +1330,22 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             <span>
               {isUploadingBgm
                 ? uploadProgress.bgm >= 100
-                  ? `Processing Track (upload ${uploadProgress.bgm}%)...`
+                  ? 'Processing track…'
                   : `Uploading Track (${uploadProgress.bgm}%)...`
                 : '+ Upload Custom MP3 / WAV Music'}
             </span>
           </button>
+
+          {isUploadingBgm && uploadProgress.bgm < 100 && (
+            <button
+              type="button"
+              onClick={() => cancelUpload('bgm')}
+              className="w-full inline-flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            >
+              <X className="h-3 w-3" />
+              Cancel upload
+            </button>
+          )}
 
         <input
           ref={bgmCustomInputRef}
@@ -1239,7 +1353,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/ogg"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleCustomBgmUpload(e.target.files[0]);
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleCustomBgmUpload(file);
           }}
         />
 
