@@ -41,6 +41,7 @@ interface CaptionTimelineProps {
   onUpdateGroups?: (updatedGroups: CaptionGroup[]) => void;
   onSelectWord?: (wordId: string | null) => void;
   onOpenSmartEditor?: () => void;
+  showCaptionWords?: boolean;
 }
 
 // Deterministic static waveform bar heights (integers between 15 and 100) to prevent any SSR/client hydration floating-point mismatch
@@ -63,6 +64,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   onUpdateGroups,
   onSelectWord,
   onOpenSmartEditor,
+  showCaptionWords = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = fit, 2 = 2x, 3 = 3x
@@ -337,7 +339,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
       </div>
 
       {/* Selected Word Timing Studio Inspector Toolbar */}
-      {selectedWord && onUpdateGroups && (
+      {showCaptionWords && selectedWord && onUpdateGroups && (
         <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-950 border border-amber-500/40 rounded-xl animate-in fade-in duration-150">
           {/* Word info and edit */}
           <div className="flex items-center gap-2 min-w-0">
@@ -506,7 +508,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           style={{ width: `${zoomLevel * 100}%` }}
-          className="relative h-28 cursor-pointer select-none rounded-lg overflow-hidden bg-zinc-950/90"
+          className={`relative ${showCaptionWords ? 'h-28' : 'h-20'} cursor-pointer select-none rounded-lg overflow-hidden bg-zinc-950/90`}
         >
           {/* Time Ruler / Ticks */}
           <div className="absolute top-0 left-0 right-0 h-5 border-b border-zinc-800/80 flex items-center pointer-events-none">
@@ -530,7 +532,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           {/* Audio Waveform Canvas / Mock Bars */}
           <div
             suppressHydrationWarning
-            className="absolute top-5 left-0 right-0 bottom-11 flex items-center justify-between px-1 pointer-events-none opacity-40"
+            className={`absolute top-5 left-0 right-0 ${showCaptionWords ? 'bottom-11' : 'bottom-1'} flex items-center justify-between px-1 pointer-events-none opacity-40`}
           >
             {waveformBars.map((h, i) => {
               const barPercent = Math.round((i / waveformBars.length) * 100);
@@ -549,7 +551,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           </div>
 
           {/* Word Blocks Track */}
-          <div
+          {showCaptionWords && <div
             suppressHydrationWarning
             className="absolute bottom-1 left-0 right-0 h-9 flex items-center px-1"
           >
@@ -614,7 +616,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
                 </div>
               );
             })}
-          </div>
+          </div>}
 
           {/* ========================================================================= */}
           {/* TRIM OVERLAYS & INTERACTIVE DRAG HANDLES (VN / Instagram / CapCut Studio)  */}

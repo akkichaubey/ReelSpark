@@ -2494,6 +2494,7 @@ function CaptionMakerPageContent() {
       {/* BOTTOM SECTION: Full Interactive Scrubber & Audio Waveform Timeline */}
       <footer className="shrink-0">
         <CaptionTimeline
+          showCaptionWords={false}
           duration={audioDuration}
           currentTime={currentTime}
           isPlaying={isPlaying}
