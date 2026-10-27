@@ -106,6 +106,20 @@ export interface ReelStylePreset {
   style: Partial<CaptionStyle>;
 }
 
+/** Apply a preset with the same stale-effect cleanup used by the style panel. */
+export function applyReelStylePreset(
+  currentStyle: CaptionStyle,
+  presetStyle: Partial<CaptionStyle>,
+  presetId?: string
+): CaptionStyle {
+  return {
+    ...currentStyle,
+    ...PRESET_CLEANUP_DEFAULTS,
+    ...presetStyle,
+    ...(presetId ? { presetId } : {}),
+  };
+}
+
 export const PRESET_CLEANUP_DEFAULTS: Partial<CaptionStyle> = {
   strokeWidth: 0,
   strokeColor: 'transparent',

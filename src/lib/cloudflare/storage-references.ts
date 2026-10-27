@@ -8,7 +8,8 @@ const PREFIX = 'reelspark-storage:';
 function resolveReference(relative: string, root: string): string {
   const parts = relative.replace(/\\/g, '/').split('/');
   if (parts.some(part => !part || part === '.' || part === '..' || part.includes(':')) ||
-      !(parts[0] === 'caption-maker' || (parts[0] === 'clipping-studio' && parts[1] === 'projects'))) {
+      !(parts[0] === 'caption-maker' || (parts[0] === 'clipping-studio' && parts[1] === 'projects') ||
+        (parts[0] === 'projects' && /^[a-zA-Z0-9_-]{1,160}$/.test(parts[1] || '') && parts.length >= 3))) {
     throw new Error('Invalid cloud storage reference');
   }
   return assertSafePath(path.join(root, ...parts), root);
@@ -25,7 +26,7 @@ export function fromStorageReference(filename: string, root = APP_CONFIG.storage
   if (filename.startsWith(PREFIX)) return resolveReference(filename.slice(PREFIX.length), root);
   // Backward compatibility for snapshots from the default Windows/Linux storage directory.
   // Rebinding a path does not grant access: media APIs still check catalog ownership.
-  const legacy = filename.replace(/\\/g, '/').match(/(?:^|\/)storage\/((?:clipping-studio\/projects|caption-maker)\/.+)$/);
+  const legacy = filename.replace(/\\/g, '/').match(/(?:^|\/)storage\/((?:clipping-studio\/projects|caption-maker|projects)\/.+)$/);
   return legacy ? resolveReference(legacy[1], root) : filename;
 }
 

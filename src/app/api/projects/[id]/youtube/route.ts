@@ -2,7 +2,7 @@ import { requireProjectAccess } from '@/lib/project-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { loadProject, saveProject } from '@/lib/storage';
 import { analyzeYouTubeWithOllama } from '@/lib/ollama';
-import { checkOllamaStatus } from '@/lib/config';
+import { checkOllamaCloudStatus } from '@/lib/config';
 import { ClipCandidate } from '@/lib/types';
 
 /**
@@ -50,7 +50,7 @@ export async function POST(
     project.statusMessage = 'Connecting to Ollama for YouTube video semantic understanding...';
     await saveProject(project);
 
-    const ollamaStatus = await checkOllamaStatus();
+    const ollamaStatus = await checkOllamaCloudStatus();
 
     let candidates: ClipCandidate[] = [];
     if (ollamaStatus.configured) {

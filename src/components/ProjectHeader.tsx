@@ -75,12 +75,12 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   const isYouTubeMissingLocal = project.sourceType === 'youtube' && !project.localVideoPath;
 
   return (
-    <div className="w-full glass-panel rounded-2xl p-6 border border-white/10 shadow-xl space-y-6">
+    <div className="w-full glass-panel rounded-2xl p-5 sm:p-7 border border-white/10 shadow-xl space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Title and Metadata */}
-        <div className="space-y-2">
+        <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight break-words [overflow-wrap:anywhere]">
               {project.title}
             </h2>
             <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${getStatusColor(project.status)}`}>
@@ -140,7 +140,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-3">
           {project.candidates.length === 0 ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={onOpenOllamaModal || onOpenGeminiModal}
@@ -157,12 +157,12 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               <button
                 onClick={onRunAnalysis}
                 disabled={isAnalyzing || isYouTubeMissingLocal}
-                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:bg-amber-400/10 disabled:text-amber-200 disabled:border-amber-400/30 disabled:cursor-default border border-transparent text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
               >
                 {isAnalyzing ? (
                   <>
-                    <ProgressCircle value={project.progress} size={26} strokeWidth={3.5} label="Video analysis" className="text-zinc-900" />
-                    <span>Analyzing Video ({project.progress}%)...</span>
+                    <ProgressCircle value={project.progress} size={26} strokeWidth={3.5} label="Video analysis" className="text-amber-300" />
+                    <span>Analysis running</span>
                   </>
                 ) : (
                   <>
@@ -262,7 +262,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
       )}
 
       {/* Progress Bar & Status message */}
-      {(project.status !== 'COMPLETED' || project.statusMessage) && (
+      {!isAnalyzing && (project.status !== 'COMPLETED' || project.statusMessage) && (
         <div className="space-y-2 p-3.5 rounded-xl bg-zinc-900/60 border border-white/5">
           <div className="flex items-center justify-between text-xs text-zinc-300">
             <span className="flex items-center space-x-2 font-medium">

@@ -18,7 +18,7 @@ export class ProjectMediaReferencedError extends Error {
   }
 }
 
-function containsPathInsideProject(value: unknown, targetDirectory: string): boolean {
+export function containsPathInsideProject(value: unknown, targetDirectory: string): boolean {
   if (typeof value === 'string') {
     let candidate: string | undefined;
     try {
@@ -234,6 +234,21 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   const projects = await listProjects();
   if (projects.some((project) => project.id !== projectId && containsPathInsideProject(project, projectRoot))) {
     throw new ProjectMediaReferencedError();
+  }
+
+  const studioRoot = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
+  const studioEntries = await fs.promises.readdir(studioRoot, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  for (const entry of studioEntries.filter(item => item.isDirectory())) {
+    const referenceFile = path.join(studioRoot, entry.name, 'linked-workspace.json');
+    try {
+      const linked = JSON.parse(await fs.promises.readFile(referenceFile, 'utf8'));
+      if (containsPathInsideProject(linked, projectRoot)) throw new ProjectMediaReferencedError();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 
   await cancelStorageTasksUnder(projectRoot);

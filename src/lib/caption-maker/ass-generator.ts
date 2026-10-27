@@ -1,5 +1,7 @@
 import { CaptionGroup, CaptionStyle, OutputSettings, TranscriptWord } from './types';
 import { getNinePositionCoordinates, applyWordTransform } from './text-transform';
+import { getContrastingTextColor } from './sample-data';
+import { getCaptionTimingSegments, getWordAnimationWindow } from './caption-timing';
 
 /**
  * Convert Hex/CSS color to ASS color format: &HBBGGRR& or &HAABBGGRR&
@@ -33,6 +35,43 @@ function formatAssTime(seconds: number): string {
 
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
   return `${h}:${pad(m)}:${pad(s)}.${pad(cs, 2)}`;
+}
+
+function toAssMilliseconds(seconds: number): number {
+  return Math.max(0, Math.round(seconds * 1000));
+}
+
+function getAssWordMotionTags(
+  style: CaptionStyle,
+  duration: number,
+  scaleTarget: number
+): string {
+  if (duration <= 0) return '';
+  const window = getWordAnimationWindow(0, duration, 0.22, 0.06);
+  const totalMs = toAssMilliseconds(window.duration);
+  const enterMs = Math.min(totalMs, toAssMilliseconds(window.entryDuration));
+  const exitMs = Math.min(totalMs, toAssMilliseconds(window.exitStart));
+  if (totalMs <= 0 || enterMs <= 0) return '';
+
+  const preset = style.animationPreset;
+  if (preset === 'words-slide-up' || preset === 'letters-slide-up') {
+    return `\\fscy30\\t(0,${enterMs},\\fscy100)`;
+  }
+  if (preset === 'letters-slide-down') {
+    return `\\fscy150\\t(0,${enterMs},\\fscy100)`;
+  }
+  if (preset === 'words-rotate-in') {
+    return `\\frx-75\\t(0,${enterMs},\\frx0)`;
+  }
+  if (scaleTarget <= 1) return '';
+
+  const initialScale = preset === 'pop' || preset === 'punch' || preset === 'kinetic' ? 85 : 100;
+  const peakScale = Math.min(140, Math.round(scaleTarget * 100));
+  let tags = `\\fscx${initialScale}\\fscy${initialScale}\\t(0,${enterMs},\\fscx${peakScale}\\fscy${peakScale})`;
+  if (exitMs < totalMs) {
+    tags += `\\t(${exitMs},${totalMs},\\fscx100\\fscy100)`;
+  }
+  return tags;
 }
 
 /**
@@ -120,101 +159,115 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (style.captionMode === 'word-by-word') {
     // Mode 1: Individual word events
     for (const word of words) {
+      if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.end <= word.start) continue;
       const text = applyWordTransform(word.text, style.textTransform, style.uppercase, true);
       const startAss = formatAssTime(word.start);
-      const endAss = formatAssTime(Math.max(word.start + 0.15, word.end));
+      const endAss = formatAssTime(word.end);
+      // ASS timestamps have centisecond precision. Drop intervals that cannot
+      // be represented instead of extending a caption beyond its speech.
+      if (endAss <= startAss) continue;
 
       const styleName = word.isImportant ? 'Important' : 'Default';
+      const isSpk2 =
+        word.speakerId === 'Speaker 2' ||
+        word.speakerId?.toLowerCase().includes('speaker 2') ||
+        (Boolean(word.speakerId) && word.speakerId !== 'Speaker 1');
+      const baseWordColor = word.isImportant
+        ? importantColorAss
+        : hexToAssColor(style.speaker1Color || style.textColor);
+      const activeWordColor = style.highlightAnimation === 'none'
+        ? baseWordColor
+        : isSpk2
+          ? hexToAssColor(style.speaker2Color || '#06B6D4')
+          : importantColorAss;
 
       let animTag = `\\an${alignment}\\pos(${posX},${posY})`;
-      if (style.highlightAnimation !== 'color-change' && style.highlightAnimation !== 'none') {
-        const peakScale = Math.min(125, Math.round((style.zoomScale ?? 1.15) * 100));
-        if (style.animationPreset === 'pop') {
-          animTag += `\\fscx85\\fscy85\\t(0,70,\\fscx${peakScale}\\fscy${peakScale})\\t(70,140,\\fscx100\\fscy100)`;
-        } else if (style.animationPreset === 'punch' || style.animationPreset === 'kinetic') {
-          animTag += `\\fscx${peakScale}\\fscy${peakScale}\\t(0,80,\\fscx100\\fscy100)`;
-        } else if (style.animationPreset === 'words-rotate-in') {
-          animTag += `\\frx-75\\t(0,120,\\frx0)`;
-        } else if (style.animationPreset === 'words-slide-up' || style.animationPreset === 'letters-slide-up') {
-          animTag += `\\fscy30\\t(0,90,\\fscy100)`;
-        } else if (style.animationPreset === 'letters-slide-down') {
-          animTag += `\\fscy150\\t(0,90,\\fscy100)`;
-        }
-      }
+      // In solo-word mode every dialogue is the active spoken word.
+      animTag += `\\c${activeWordColor}`;
+      const highlightScale = style.highlightAnimation === 'background'
+        ? 1.04
+        : ['pop', 'scale'].includes(style.highlightAnimation)
+          ? style.zoomScale ?? 1.15
+          : 1;
+      const intensityScale = word.intensity === 'climax' ? 1.35
+        : word.intensity === 'punch' ? 1.22
+          : word.intensity === 'whisper' ? 0.9 : 1;
+      animTag += getAssWordMotionTags(style, word.end - word.start, highlightScale * intensityScale);
 
       ass += `Dialogue: 0,${startAss},${endAss},${styleName},,0,0,0,,{${animTag}}${text}\n`;
     }
   } else {
     // Mode 2 & Mode 3: Phrase group with active word highlighting
     for (const group of groups) {
-      for (let wIdx = 0; wIdx < group.words.length; wIdx++) {
-        const activeWord = group.words[wIdx];
-        const nextWord = group.words[wIdx + 1];
+      const segments = getCaptionTimingSegments(group);
+      for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+        const segment = segments[segmentIndex];
+        const startAss = formatAssTime(segment.start);
+        const endAss = formatAssTime(segment.end);
+        if (endAss <= startAss) continue;
 
-        const startAss = formatAssTime(activeWord.start);
-        const endAss = formatAssTime(
-          nextWord ? nextWord.start : Math.max(activeWord.end, group.end)
-        );
+        const lineParts = group.words.map((word, index) => {
+          const isSentenceStart = index === 0 || /[.!?]$/.test(group.words[index - 1]?.text || '');
+          const raw = applyWordTransform(word.text, style.textTransform, style.uppercase, isSentenceStart);
+          const isSpeaker2 = word.speakerId === 'Speaker 2' || word.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(word.speakerId) && word.speakerId !== 'Speaker 1');
+          const speakerColor = isSpeaker2
+            ? style.speaker2Color || '#06B6D4'
+            : style.speaker1Color || style.textColor;
+          const baseColor = word.isImportant ? style.importantColor : speakerColor;
 
-        let activeScale = 100;
-        const highlightAnim = style.highlightAnimation || 'pop';
-        if (highlightAnim === 'pop') {
-          activeScale = Math.round((style.zoomScale ?? 1.15) * 100);
-        } else if (highlightAnim === 'background') {
-          activeScale = 104;
-        } else {
-          activeScale = 100; // Strictly flat normal text for color-change, none, underline
-        }
-
-        // Build formatted line: active word has highlight styling without \\k tags
-        const lineParts = group.words.map((w, i) => {
-          const isSentenceStart = i === 0 || /[.!?]$/.test(group.words[i - 1]?.text || '');
-          const raw = applyWordTransform(w.text, style.textTransform, style.uppercase, isSentenceStart);
-          const isCurrent = i === wIdx;
-
-          const isSpk2 = w.speakerId === 'Speaker 2' || w.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(w.speakerId) && w.speakerId !== 'Speaker 1');
-          const spk2Hex = style.speaker2Color || '#06B6D4';
-          const spk1Hex = style.speaker1Color || style.textColor;
-
-          if (isCurrent) {
-            let activeWordColor = importantColorAss;
-            let currentScale = activeScale;
-
-            if (w.intensity === 'punch') currentScale = Math.round(currentScale * 1.22);
-            else if (w.intensity === 'climax') {
-              currentScale = Math.round(currentScale * 1.35);
-              activeWordColor = hexToAssColor('#FF3366');
-            } else if (w.intensity === 'whisper') {
-              currentScale = Math.round(currentScale * 0.90);
-            }
-
-            if (isSpk2 && w.intensity !== 'climax') {
-              activeWordColor = hexToAssColor(spk2Hex);
-            }
-
-            const scaleTag = currentScale !== 100 ? `\\fscx${currentScale}\\fscy${currentScale}` : '';
-            const resetScale = currentScale !== 100 ? `\\fscx100\\fscy100` : '';
-            return `{\\c${activeWordColor}\\b1${scaleTag}}${raw}{${resetScale}\\b0}`;
-          } else {
-            const normalOpacity = style.textOpacity ?? 1.0;
-            const normalAlphaVal = Math.max(0, Math.min(255, Math.round((1 - normalOpacity) * 255)));
-            const normalAlphaHex = normalAlphaVal.toString(16).padStart(2, '0').toUpperCase();
-            const baseHex = w.isImportant ? style.importantColor : isSpk2 ? spk2Hex : spk1Hex;
-            const dimColor = hexToAssColor(baseHex, normalAlphaHex);
-            return `{\\c${dimColor}\\fscx100\\fscy100}${raw}`;
+          if (segment.activeWord?.id !== word.id) {
+            const normalOpacity = style.textOpacity ?? 1;
+            const alpha = Math.max(0, Math.min(255, Math.round((1 - normalOpacity) * 255)));
+            const alphaHex = alpha.toString(16).padStart(2, '0').toUpperCase();
+            return `{\\c${hexToAssColor(baseColor, alphaHex)}\\fscx100\\fscy100}${raw}`;
           }
+
+          const highlight = style.highlightAnimation || 'pop';
+          const wordBg = style.activeWordBgColor || style.importantColor;
+          const isBadge = highlight === 'background' || Boolean(
+            style.activeWordBgColor && highlight !== 'none' && highlight !== 'color-change'
+          );
+          const activeColor = highlight === 'none'
+            ? baseColor
+            : isBadge
+              ? getContrastingTextColor(wordBg)
+              : isSpeaker2
+                ? style.speaker2Color || '#06B6D4'
+                : style.importantColor;
+          const scale = highlight === 'background' ? 1.04
+            : ['pop', 'scale'].includes(highlight) ? style.zoomScale ?? 1.15 : 1;
+          const intensityScale = word.intensity === 'climax' ? 1.35
+            : word.intensity === 'punch' ? 1.22
+              : word.intensity === 'whisper' ? 0.9 : 1;
+          const currentScale = Math.min(1.4, scale * intensityScale);
+          const wordWindow = getWordAnimationWindow(segment.start, segment.end, 0.06, 0.07);
+          const totalMs = toAssMilliseconds(wordWindow.duration);
+          const enterMs = Math.min(totalMs, toAssMilliseconds(wordWindow.entryDuration));
+          const exitMs = Math.min(totalMs, toAssMilliseconds(wordWindow.exitStart - wordWindow.start));
+          const targetScale = Math.round(currentScale * 100);
+          let activeTags = `\\c${hexToAssColor(activeColor)}\\b1\\fscx100\\fscy100`;
+          if (targetScale !== 100 && totalMs > 0 && enterMs > 0) {
+            activeTags += `\\t(0,${enterMs},\\fscx${targetScale}\\fscy${targetScale})`;
+            if (exitMs < totalMs) activeTags += `\\t(${exitMs},${totalMs},\\fscx100\\fscy100)`;
+          }
+          return `{${activeTags}}${raw}{\\b0}`;
         });
 
-        const dialogueText = lineParts.join(' ');
+        // Apply the phrase entrance once. Replaying it on every active-word
+        // segment made slide/rotate presets restart on each word in FFmpeg.
         let groupMotionTag = '';
-        if (style.animationPreset === 'words-rotate-in') {
-          groupMotionTag = '\\frx-65\\t(0,120,\\frx0)';
-        } else if (style.animationPreset === 'words-slide-up' || style.animationPreset === 'letters-slide-up') {
-          groupMotionTag = '\\fscy30\\t(0,90,\\fscy100)';
-        } else if (style.animationPreset === 'letters-slide-down') {
-          groupMotionTag = '\\fscy140\\t(0,90,\\fscy100)';
+        if (segmentIndex === 0) {
+          const motionWindow = getWordAnimationWindow(group.start, group.end, 0.12, 0);
+          const motionMs = toAssMilliseconds(motionWindow.entryDuration);
+          if (motionMs > 0 && style.animationPreset === 'words-rotate-in') {
+            groupMotionTag = `\\frx-65\\t(0,${motionMs},\\frx0)`;
+          } else if (motionMs > 0 && (style.animationPreset === 'words-slide-up' || style.animationPreset === 'letters-slide-up')) {
+            groupMotionTag = `\\fscy30\\t(0,${motionMs},\\fscy100)`;
+          } else if (motionMs > 0 && style.animationPreset === 'letters-slide-down') {
+            groupMotionTag = `\\fscy140\\t(0,${motionMs},\\fscy100)`;
+          }
         }
-        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\an${alignment}\\pos(${posX},${posY})${groupMotionTag}}${dialogueText}\n`;
+        ass += `Dialogue: 0,${startAss},${endAss},Default,,0,0,0,,{\\an${alignment}\\pos(${posX},${posY})${groupMotionTag}}${lineParts.join(' ')}\n`;
       }
     }
   }

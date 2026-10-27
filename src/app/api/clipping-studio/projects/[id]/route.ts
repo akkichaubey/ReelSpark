@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { APP_CONFIG } from '@/lib/config';
-import { assertSafePath } from '@/lib/storage';
+import { assertSafePath, containsPathInsideProject, listProjects } from '@/lib/storage';
 import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
 import { mediaLifecycleEnabled } from '@/lib/cloudflare/media-lifecycle-state';
 import { deleteOwnedClippingProject } from '@/lib/cloudflare/media-lifecycle';
@@ -23,6 +23,9 @@ export async function DELETE(
     if (!/^[a-zA-Z0-9_-]{1,160}$/.test(projectId)) return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
     const ownedProjectDir = await clippingProjectAccess(access.user.id, projectId);
     if (ownedProjectDir) {
+      if ((await listProjects(access.user.id)).some(project => containsPathInsideProject(project, ownedProjectDir))) {
+        return NextResponse.json({ error: 'This media is used by a linked AI project. Delete the AI project first to preserve shared media.' }, { status: 409 });
+      }
       await cancelStorageTasksUnder(ownedProjectDir);
       if (isStoragePathActive(ownedProjectDir)) {
         return NextResponse.json({ error: 'Project processing is still stopping. Retry deletion in a moment.' }, { status: 409 });

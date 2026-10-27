@@ -8,7 +8,6 @@ import {
   ExportJob,
   ExportSourceMapping,
   CreateExportJobRequest,
-  MediaMetadata,
   MediaServiceHealthResponse,
   formatMsToTimestamp,
 } from './contracts';
@@ -36,7 +35,8 @@ import {
 export type CloudflareConfigStatus = ReturnType<typeof getCloudflareStatus>;
 import { mediaServiceClient } from './media-service-client';
 
-export type StudioTab = 'media' | 'timeline' | 'merge' | 'export';
+export type StudioTab = 'media' | 'ai' | 'timeline' | 'merge' | 'export';
+let initializationVersion = 0;
 
 interface ClippingStudioState {
   // Navigation & UI
@@ -97,6 +97,7 @@ interface ClippingStudioState {
   checkServices: () => Promise<void>;
   createProject: (name: string, description?: string) => ClippingProject;
   selectProject: (projectId: string) => void;
+  acceptLinkedProject: (project: ClippingProject) => void;
   updateActiveProject: (updater: (prev: ClippingProject) => ClippingProject) => void;
   saveActiveProject: () => void;
   deleteProject: (projectId: string) => void;
@@ -187,6 +188,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
   hasCrashRecovery: false,
 
   initializeStore: async () => {
+    const version = ++initializationVersion;
     set({ isLoading: true });
 
     // 1. Check services
@@ -218,7 +220,10 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
       console.warn('Cloud project metadata unavailable; retaining local cache.', error);
     }
 
-    const currentActive = localProjects[0] || null;
+    // React Strict Mode and route transitions can overlap initialization requests.
+    // Only the newest request may publish loaded records or reset selection.
+    if (version !== initializationVersion) return;
+    const currentActive = localProjects.find(project => project.id === get().activeProject?.id) || localProjects[0] || null;
     const firstAssetId = currentActive?.mediaAssets[0]?.id || null;
     const initialDuration = currentActive?.mediaAssets[0]?.metadata?.durationMs || 60000;
 
@@ -227,7 +232,6 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
       activeProject: currentActive,
       selectedAssetId: firstAssetId,
       outPointMs: initialDuration,
-      activeTab: 'media',
       isLoading: false,
     });
 
@@ -298,10 +302,20 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     }
   },
 
+  acceptLinkedProject: (project) => {
+    if (!saveProjectLocally(project)) throw new Error('Your browser could not save this workspace. Free storage and retry.');
+    if (get().activeProject?.id === project.id) {
+      get().updateActiveProject(() => project);
+      return;
+    }
+    set(state => ({ projects: [project, ...state.projects.filter(item => item.id !== project.id)] }));
+    get().selectProject(project.id);
+  },
+
   updateActiveProject: (updater) => {
     const current = get().activeProject;
     if (!current) return;
-    const updated = updater(current);
+    const updated = { ...updater(current), updatedAt: new Date().toISOString() };
 
     const newUndoStack = [current, ...get().undoStack].slice(0, 30);
 

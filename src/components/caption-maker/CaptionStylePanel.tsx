@@ -17,7 +17,7 @@ import {
 import { resolveNinePosition } from '@/lib/caption-maker/text-transform';
 import {
   REEL_STYLE_PRESETS,
-  PRESET_CLEANUP_DEFAULTS,
+  applyReelStylePreset,
 } from '@/lib/caption-maker/sample-data';
 import {
   Type,
@@ -133,12 +133,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
     if (presetStyle.fontFamily) {
       loadGoogleFontInDocument(presetStyle.fontFamily);
     }
-    onChangeStyle({
-      ...style,
-      ...PRESET_CLEANUP_DEFAULTS,
-      ...presetStyle,
-      ...(presetId ? { presetId } : {}),
-    });
+    onChangeStyle(applyReelStylePreset(style, presetStyle, presetId));
   };
 
   return (
@@ -449,9 +444,9 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 {/* 1. Active Spoken Word Color */}
-                <div className="p-3 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
+                <div className="min-w-0 p-2.5 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-sm" />
                     <span className="text-xs font-bold text-amber-400">
@@ -460,9 +455,9 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   </div>
 
                   {/* Color Swatch Tile + Integrated Hex Input */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <div
-                      className="relative w-8 h-8 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
+                      className="relative w-7 h-7 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
                       style={{ backgroundColor: style.importantColor || '#FCD905' }}
                       title="Click to open color picker"
                     >
@@ -481,11 +476,12 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                             activeWordBgColor: style.activeWordBgColor ? val : undefined,
                           });
                         }}
+                        aria-label="Choose active spoken word color"
                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                       />
                     </div>
-                    <div className="relative flex-1 flex items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 h-8 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
-                      <span className="text-zinc-500 font-mono text-xs select-none mr-1 font-bold">#</span>
+                    <div className="relative flex min-w-0 flex-1 items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-1.5 h-7 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
+                      <span className="text-zinc-500 font-mono text-[10px] select-none mr-0.5 font-bold">#</span>
                       <input
                         type="text"
                         value={style.importantColor ? style.importantColor.replace(/^#/, '') : 'FCD905'}
@@ -500,13 +496,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                         }}
                         maxLength={6}
                         placeholder="FCD905"
-                        className="w-full bg-transparent font-mono text-xs text-amber-300 font-bold focus:outline-none uppercase tracking-wider"
+                        aria-label="Active spoken word hex color"
+                        className="min-w-0 w-full bg-transparent font-mono text-[10px] text-amber-300 font-bold focus:outline-none uppercase tracking-normal"
                       />
                     </div>
                   </div>
 
-                  {/* Symmetrical Quick Color Swatches (8 dots) */}
-                  <div className="flex items-center justify-between pt-1">
+                  {/* All quick colors stay separated and tappable in the narrow style panel. */}
+                  <div className="grid grid-cols-4 justify-items-center gap-x-1 gap-y-2 pt-1">
                     {[
                       { col: '#FCD905', title: 'Viral Gold (Default)' },
                       { col: '#00F2FE', title: 'Neon Cyan' },
@@ -531,9 +528,11 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                           }}
                           style={{ backgroundColor: s.col }}
                           title={s.title}
-                          className={`w-5 h-5 rounded-full cursor-pointer transition-all hover:scale-125 border ${
+                          aria-label={`Set active spoken word color to ${s.title}`}
+                          aria-pressed={isSelected}
+                          className={`w-4 h-4 rounded-full cursor-pointer transition-all hover:scale-110 border ${
                             isSelected
-                              ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900 border-white scale-110 shadow-lg'
+                              ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white shadow-lg'
                               : 'border-zinc-700/80 hover:border-zinc-400'
                           }`}
                         />
@@ -543,7 +542,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 </div>
 
                 {/* 2. Primary / Normal Text Color */}
-                <div className="p-3 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
+                <div className="min-w-0 p-2.5 bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700/80 rounded-xl space-y-2.5 transition-all shadow-sm">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-white shadow-sm" />
                     <span className="text-xs font-bold text-zinc-200">
@@ -552,9 +551,9 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   </div>
 
                   {/* Color Swatch Tile + Integrated Hex Input */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <div
-                      className="relative w-8 h-8 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
+                      className="relative w-7 h-7 rounded-lg border border-white/20 shadow-md shrink-0 cursor-pointer overflow-hidden transition-transform hover:scale-105 active:scale-95 ring-1 ring-black/40"
                       style={{ backgroundColor: style.textColor || '#FFFFFF' }}
                       title="Click to open color picker"
                     >
@@ -566,11 +565,12 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                             : '#FFFFFF'
                         }
                         onChange={(e) => update({ textColor: e.target.value })}
+                        aria-label="Choose primary text color"
                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                       />
                     </div>
-                    <div className="relative flex-1 flex items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 h-8 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
-                      <span className="text-zinc-500 font-mono text-xs select-none mr-1 font-bold">#</span>
+                    <div className="relative flex min-w-0 flex-1 items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-1.5 h-7 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
+                      <span className="text-zinc-500 font-mono text-[10px] select-none mr-0.5 font-bold">#</span>
                       <input
                         type="text"
                         value={style.textColor ? style.textColor.replace(/^#/, '') : 'FFFFFF'}
@@ -580,13 +580,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                         }}
                         maxLength={6}
                         placeholder="FFFFFF"
-                        className="w-full bg-transparent font-mono text-xs text-zinc-100 font-bold focus:outline-none uppercase tracking-wider"
+                        aria-label="Primary text hex color"
+                        className="min-w-0 w-full bg-transparent font-mono text-[10px] text-zinc-100 font-bold focus:outline-none uppercase tracking-normal"
                       />
                     </div>
                   </div>
 
-                  {/* Symmetrical Quick Color Swatches (8 dots matching active card) */}
-                  <div className="flex items-center justify-between pt-1">
+                  {/* All quick colors stay separated and tappable in the narrow style panel. */}
+                  <div className="grid grid-cols-4 justify-items-center gap-x-1 gap-y-2 pt-1">
                     {[
                       { col: '#FFFFFF', title: 'Pure White (Default)' },
                       { col: '#FFFBEB', title: 'Warm Cream' },
@@ -605,9 +606,11 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                           onClick={() => update({ textColor: s.col })}
                           style={{ backgroundColor: s.col }}
                           title={s.title}
-                          className={`w-5 h-5 rounded-full cursor-pointer transition-all hover:scale-125 border ${
+                          aria-label={`Set primary text color to ${s.title}`}
+                          aria-pressed={isSelected}
+                          className={`w-4 h-4 rounded-full cursor-pointer transition-all hover:scale-110 border ${
                             isSelected
-                              ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900 border-white scale-110 shadow-lg'
+                              ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-900 border-white shadow-lg'
                               : 'border-zinc-700/80 hover:border-zinc-400'
                           }`}
                         />

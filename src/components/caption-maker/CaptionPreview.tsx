@@ -15,6 +15,18 @@ import { hexToRgba, getContrastingTextColor } from '@/lib/caption-maker/sample-d
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '@/lib/caption-maker/hinglish-and-emoji';
 import {
+  easeOutBack,
+  easeInPower1,
+  easeOutPower2,
+  getActiveTranscriptWordAtTime,
+  getEmojiBounceOffset,
+  getStaggeredAnimationTiming,
+  getUnitProgress,
+  getWordHighlightProgress,
+  getWordAnimationWindow,
+  interpolateCssColor,
+} from '@/lib/caption-maker/caption-timing';
+import {
   getNinePositionCoordinates,
   applyWordTransform,
   resolveNinePosition,
@@ -167,41 +179,15 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     captionStyle.fontFamily?.split(',')[0].replace(/["']/g, '').trim() || 'Inter';
   const effectiveFontFamily = `"${cleanPrimaryFont}", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Segoe UI", sans-serif`;
 
-  // Active word and active caption group identification locked to exact acoustic speech intervals
+  // Use half-open acoustic intervals so the next word owns an exact shared
+  // boundary and pauses never keep the previous word highlighted.
   const activeGroup = captionGroups.find(
-    (g) => currentTime >= g.start && currentTime <= g.end
+    (g) => currentTime >= g.start && currentTime < g.end
   );
-
-  // Only bridge tiny micro-gaps (< 0.08s) between continuous groups in the same clause;
-  // never show captions early before speech starts or linger during real pauses.
-  const displayGroup =
-    activeGroup ||
-    captionGroups.find((g, idx) => {
-      const next = captionGroups[idx + 1];
-      if (next && next.start - g.end <= 0.08) {
-        return currentTime > g.end && currentTime < next.start;
-      }
-      return false;
-    });
-
-  // Find active word inside group with seamless interval matching ASS dialogue timings
-  let displayWord: TranscriptWord | undefined;
-  if (displayGroup && displayGroup.words.length > 0) {
-    displayWord =
-      displayGroup.words.find((w, idx) => {
-        const next = displayGroup.words[idx + 1];
-        const start = w.start;
-        const end = next ? next.start : Math.max(w.end, displayGroup.end);
-        return currentTime >= start && currentTime <= end;
-      }) ||
-      (currentTime < displayGroup.words[0].start
-        ? displayGroup.words[0]
-        : displayGroup.words[displayGroup.words.length - 1]);
-  } else {
-    displayWord = transcript.find(
-      (w) => currentTime >= w.start && currentTime <= w.end
-    );
-  }
+  const displayGroup = activeGroup;
+  const displayWord = displayGroup
+    ? getActiveTranscriptWordAtTime(displayGroup.words, currentTime)
+    : getActiveTranscriptWordAtTime(transcript, currentTime);
 
   // Dynamic scaling relative to 1080p canvas width (matches ASS output scaling perfectly)
   const previewScale = (containerWidth || 360) / 1080;
@@ -342,6 +328,45 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     ? '0px'
     : `${Math.round((captionStyle.letterSpacing ?? 0) * previewScale)}px`;
   const previewLineHeight = captionStyle.lineHeight ?? 1.3;
+  const phraseDuration = displayGroup
+    ? Math.max(0, displayGroup.end - displayGroup.start)
+    : 0;
+  const phraseWindow = displayGroup
+    ? getWordAnimationWindow(displayGroup.start, displayGroup.end, 0.06, 0.06)
+    : undefined;
+  const phraseOpacity = phraseWindow && phraseWindow.duration > 0
+    ? Math.min(
+        getUnitProgress(currentTime - phraseWindow.start, phraseWindow.entryDuration),
+        1 - getUnitProgress(currentTime - phraseWindow.exitStart, phraseWindow.exitDuration)
+      )
+    : 0;
+  const phraseMotionPreset = captionStyle.animationPreset;
+  const phraseIsWordMotion = phraseMotionPreset === 'words-slide-up' || phraseMotionPreset === 'words-rotate-in';
+  const phraseIsLetterMotion = phraseMotionPreset === 'letters-slide-up' || phraseMotionPreset === 'letters-slide-down';
+  const phraseCharacterOffsets = new Map<string, number>();
+  let phraseCharacterCount = 0;
+  if (displayGroup && phraseIsLetterMotion) {
+    for (const word of displayGroup.words) {
+      phraseCharacterOffsets.set(word.id, phraseCharacterCount);
+      phraseCharacterCount += splitGraphemes(
+        applyWordTransform(word.text, captionStyle.textTransform, captionStyle.uppercase, true)
+      ).length;
+    }
+  }
+  const phraseMotionItemCount = phraseIsWordMotion
+    ? displayGroup?.words.length ?? 0
+    : phraseCharacterCount;
+  const phraseMotionRequestedDuration = phraseMotionPreset === 'words-slide-up'
+    ? Math.min(0.45, phraseDuration * 0.4)
+    : phraseMotionPreset === 'words-rotate-in'
+      ? Math.min(0.55, phraseDuration * 0.45)
+      : Math.min(0.3, phraseDuration * 0.35);
+  const phraseMotionTiming = getStaggeredAnimationTiming(
+    phraseMotionItemCount,
+    phraseWindow ? Math.max(0, phraseWindow.exitStart - phraseWindow.start) : 0,
+    phraseMotionRequestedDuration,
+    phraseIsWordMotion ? 0.08 : 0.025
+  );
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
@@ -475,55 +500,106 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                 justifyContent: 'center',
                 textAlign,
               }}
-              className="absolute z-20 pointer-events-none transition-all"
+              className="absolute z-20 pointer-events-none"
             >
-          {/* Rohaid Ali CodePen GSAP Text Animation Keyframes */}
-          <style
-            dangerouslySetInnerHTML={{
-              __html: `
-                @keyframes gsapWordsSlideUp {
-                  0% { opacity: 0; transform: translateY(100%); }
-                  100% { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes gsapWordsRotateIn {
-                  0% { opacity: 0; transform: perspective(1000px) rotateX(-90deg); }
-                  100% { opacity: 1; transform: perspective(1000px) rotateX(0deg); }
-                }
-                @keyframes gsapLettersSlideUp {
-                  0% { opacity: 0; transform: translateY(100%); }
-                  100% { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes gsapLettersSlideDown {
-                  0% { opacity: 0; transform: translateY(-100%); }
-                  100% { opacity: 1; transform: translateY(0); }
-                }
-              `,
-            }}
-          />
-
           {captionStyle.captionMode === 'word-by-word' ? (
             // Mode 1: Word-by-Word Solo Display
             displayWord && (() => {
               const animPreset = captionStyle.animationPreset;
               const isLetterPreset = animPreset?.startsWith('letters-');
+              const soloCharacters = splitGraphemes(applyWordTransform(
+                displayWord.text,
+                captionStyle.textTransform,
+                captionStyle.uppercase,
+                true
+              ));
               const soloWordText = applyWordTransform(
                 displayWord.text,
                 captionStyle.textTransform,
                 captionStyle.uppercase,
                 true
               );
-
-              let soloAnimStyle: React.CSSProperties = {};
-              if (animPreset === 'words-slide-up') {
-                soloAnimStyle = {
-                  animation: 'gsapWordsSlideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both',
-                };
-              } else if (animPreset === 'words-rotate-in') {
-                soloAnimStyle = {
-                  transformOrigin: '50% 100%',
-                  animation: 'gsapWordsRotateIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both',
-                };
-              }
+              const soloRequestedDuration = animPreset?.startsWith('letters-') ? 0.16
+                : animPreset === 'words-slide-up' ? 0.22
+                  : animPreset === 'words-rotate-in' ? 0.25 : 0.06;
+              const soloWindow = getWordAnimationWindow(
+                displayWord.start,
+                displayWord.end,
+                soloRequestedDuration,
+                0.06
+              );
+              const soloProgress = getUnitProgress(currentTime - soloWindow.start, soloWindow.entryDuration);
+              const soloHighlight = captionStyle.highlightAnimation || 'pop';
+              const soloIsSpeaker2 = displayWord.speakerId === 'Speaker 2' ||
+                displayWord.speakerId?.toLowerCase().includes('speaker 2') ||
+                (Boolean(displayWord.speakerId) && displayWord.speakerId !== 'Speaker 1');
+              const soloSpeakerColor = soloIsSpeaker2
+                ? speaker2Color || captionStyle.speaker2Color || '#06B6D4'
+                : speaker1Color || captionStyle.speaker1Color || captionStyle.textColor;
+              const soloBaseColor = displayWord.isImportant ? captionStyle.importantColor : soloSpeakerColor;
+              const soloHasWordBadge = soloHighlight === 'background' || Boolean(
+                captionStyle.activeWordBgColor && soloHighlight !== 'color-change' && soloHighlight !== 'none'
+              );
+              const soloBadgeColor = captionStyle.activeWordBgColor || captionStyle.importantColor;
+              const soloHighlightProgress = getWordHighlightProgress(
+                displayWord.start,
+                displayWord.end,
+                currentTime
+              );
+              const soloTargetColor = soloHighlight === 'none'
+                ? soloBaseColor
+                : soloHasWordBadge
+                  ? getContrastingTextColor(soloBadgeColor)
+                  : soloIsSpeaker2
+                    ? soloSpeakerColor
+                    : captionStyle.importantColor;
+              const soloWordColor = interpolateCssColor(soloBaseColor, soloTargetColor, soloHighlightProgress);
+              const soloEasedProgress = easeOutPower2(soloProgress);
+              const soloEntryOpacity = animPreset === 'words-slide-up'
+                ? easeOutBack(soloProgress)
+                : soloEasedProgress;
+              const soloExitProgress = currentTime >= soloWindow.exitStart
+                ? getUnitProgress(currentTime - soloWindow.exitStart, soloWindow.exitDuration)
+                : 0;
+              const soloExitEased = easeInPower1(soloExitProgress);
+              const soloOpacity = currentTime >= soloWindow.exitStart
+                ? 1 - soloExitEased
+                : soloEntryOpacity;
+              const soloTextScale = Math.min(
+                1.4,
+                (captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
+                  ? 1
+                  : captionStyle.highlightAnimation === 'background'
+                    ? 1.04
+                    : captionStyle.zoomScale ?? 1.15) *
+                  (displayWord.intensity === 'climax' ? 1.35 : displayWord.intensity === 'punch' ? 1.22 : displayWord.intensity === 'whisper' ? 0.90 : 1.0)
+              );
+              const hasNativeEntryMotion = isLetterPreset || animPreset === 'words-slide-up' || animPreset === 'words-rotate-in';
+              const soloScale = hasNativeEntryMotion
+                ? soloTextScale
+                : currentTime >= soloWindow.exitStart
+                  ? soloTextScale + (0.9 - soloTextScale) * soloExitEased
+                  : 0.85 + (soloTextScale - 0.85) * soloEasedProgress;
+              const soloTranslate = animPreset === 'words-slide-up'
+                ? currentTime >= soloWindow.exitStart
+                  ? `translateY(${-40 * soloExitEased}%)`
+                  : `translateY(${(1 - easeOutBack(soloProgress)) * 100}%)`
+                : animPreset === 'words-rotate-in'
+                  ? currentTime >= soloWindow.exitStart
+                    ? `perspective(1000px) rotateX(${45 * soloExitEased}deg)`
+                    : `perspective(1000px) rotateX(${-90 * (1 - soloEasedProgress)}deg)`
+                  : '';
+              const soloCharTiming = getStaggeredAnimationTiming(
+                soloCharacters.length,
+                Math.max(0, soloWindow.exitStart - soloWindow.start),
+                soloWindow.entryDuration,
+                0.02
+              );
+              const soloAnimStyle: React.CSSProperties = {
+                opacity: soloOpacity,
+                transform: `${soloTranslate} scale(${soloScale})`.trim(),
+                transformOrigin: animPreset === 'words-rotate-in' ? '50% 100%' : 'center center',
+              };
 
               const soloEmoji = displayWord.emoji || getKeywordEmoji(displayWord.text);
 
@@ -543,11 +619,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         : captionStyle.fontWeight === 'medium'
                         ? 500
                         : 400,
-                    color: displayWord.isImportant
-                      ? captionStyle.importantColor
-                      : (displayWord.speakerId === 'Speaker 2' || displayWord.speakerId?.toLowerCase().includes('speaker 2') || (Boolean(displayWord.speakerId) && displayWord.speakerId !== 'Speaker 1'))
-                      ? (speaker2Color || captionStyle.speaker2Color || '#06B6D4')
-                      : (speaker1Color || captionStyle.speaker1Color || captionStyle.textColor),
+                    color: soloWordColor,
                     WebkitTextStroke: previewStrokeWidth > 0 ? `${previewStrokeWidth}px ${captionStyle.strokeColor}` : 'none',
                     paintOrder: 'stroke fill',
                     textShadow: getTextShadow(),
@@ -555,19 +627,24 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     letterSpacing: previewLetterSpacing,
                     whiteSpace: 'nowrap',
                     overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
-                    transform:
-                      captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
-                        ? 'none'
-                        : `scale(${Math.min(1.4, (captionStyle.zoomScale ?? 1.15) * (displayWord.intensity === 'climax' ? 1.35 : displayWord.intensity === 'punch' ? 1.22 : displayWord.intensity === 'whisper' ? 0.90 : 1.0))})`,
                     ...getBackgroundStyles(),
+                    ...(soloHasWordBadge ? {
+                      backgroundColor: interpolateCssColor('transparent', soloBadgeColor, soloHighlightProgress),
+                      borderRadius: `${Math.round(8 * previewScale)}px`,
+                      paddingTop: `${Math.max(1, Math.round(2 * previewScale))}px`,
+                      paddingBottom: `${Math.max(1, Math.round(2 * previewScale))}px`,
+                      paddingLeft: `${Math.round(8 * previewScale)}px`,
+                      paddingRight: `${Math.round(8 * previewScale)}px`,
+                    } : {}),
                     ...soloAnimStyle,
                   }}
-                  className="relative inline-block transition-transform duration-75"
+                  className="relative inline-block"
                 >
                   {captionStyle.showEmojis !== false && soloEmoji && (
                     <span
-                      className="absolute -top-10 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                      className="absolute -top-10 left-1/2 select-none pointer-events-none z-30 leading-none"
                       style={{
+                        transform: `translate(-50%, -${getEmojiBounceOffset(currentTime, displayWord.start)}px)`,
                         fontSize: `${Math.max(24, Math.round(previewFontSize * 1.05))}px`,
                         filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.6))',
                       }}
@@ -576,21 +653,25 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     </span>
                   )}
                   {isLetterPreset ? (
-                    splitGraphemes(soloWordText).map((char, cIdx) => (
+                    soloCharacters.map((char, cIdx) => {
+                      const charProgress = getUnitProgress(
+                        currentTime - displayWord.start - cIdx * soloCharTiming.stagger,
+                        soloCharTiming.duration
+                      );
+                      const charEase = easeOutPower2(charProgress);
+                      const direction = animPreset === 'letters-slide-down' ? -1 : 1;
+                      return (
                       <span
                         key={cIdx}
                         style={{
                           display: 'inline-block',
-                          animation:
-                            animPreset === 'letters-slide-down'
-                              ? 'gsapLettersSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) both'
-                              : 'gsapLettersSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both',
-                          animationDelay: `${cIdx * 0.025}s`,
+                          opacity: charProgress,
+                          transform: `translateY(${direction * (1 - charEase) * 100}%)`,
                         }}
                       >
                         {char}
                       </span>
-                    ))
+                    )})
                   ) : (
                     soloWordText
                   )}
@@ -620,6 +701,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   textShadow: getTextShadow(),
                   lineHeight: previewLineHeight,
                   letterSpacing: previewLetterSpacing,
+                  opacity: phraseOpacity,
                   ...getBackgroundStyles(),
                   textAlign,
                   maxWidth: '100%',
@@ -649,28 +731,27 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   const highlightAnim = captionStyle.highlightAnimation || 'pop';
                   const isWordPillActive = isCurrent && (highlightAnim === 'background' || Boolean(captionStyle.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none'));
                   const isUnderline = isCurrent && highlightAnim === 'underline';
-                  const isGlowFlash = isCurrent && highlightAnim === 'glow';
 
                   // Determine active word zoom:
-                  let effectiveScale = 1.0;
-                  if (isCurrent) {
-                    if (highlightAnim === 'pop') {
-                      effectiveScale = captionStyle.zoomScale ?? 1.15;
-                    } else if (highlightAnim === 'background') {
-                      effectiveScale = 1.04;
-                    } else {
-                      effectiveScale = 1.0;
-                    }
-
-                    // AI Vocal Intensity dynamic scaling
-                    if (w.intensity === 'punch') {
-                      effectiveScale *= 1.22;
-                    } else if (w.intensity === 'climax') {
-                      effectiveScale *= 1.35;
-                    } else if (w.intensity === 'whisper') {
-                      effectiveScale *= 0.90;
-                    }
+                  let targetScale = 1.0;
+                  if (highlightAnim === 'pop' || highlightAnim === 'scale') {
+                    targetScale = captionStyle.zoomScale ?? 1.15;
+                  } else if (highlightAnim === 'background') {
+                    targetScale = 1.04;
                   }
+                  if (w.intensity === 'punch') targetScale *= 1.22;
+                  else if (w.intensity === 'climax') targetScale *= 1.35;
+                  else if (w.intensity === 'whisper') targetScale *= 0.90;
+
+                  const highlightProgress = getWordHighlightProgress(
+                    w.start,
+                    w.end,
+                    currentTime,
+                    0.06,
+                    0.07,
+                    targetScale > 1 ? 'power2' : 'linear'
+                  );
+                  const effectiveScale = 1 + (targetScale - 1) * highlightProgress;
 
                   // Active word horizontal margin buffer to prevent ANY text overlap:
                   const extraMargin = effectiveScale > 1.0
@@ -689,74 +770,103 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     ? (captionStyle.activeWordBgColor || captionStyle.importantColor)
                     : undefined;
 
-                  let activeColor = captionStyle.importantColor;
-                  if (w.intensity === 'climax') {
-                    activeColor = '#FF3366';
-                  } else if (isSpeaker2) {
-                    activeColor = spk2Col;
-                  }
+                  // Vocal intensity changes scale, but the chosen active-word color remains authoritative.
+                  const activeColor = isSpeaker2 ? spk2Col : captionStyle.importantColor;
 
-                  const wordColor = isWordPillActive
-                    ? getContrastingTextColor(wordBg || '#FCD905')
-                    : isCurrent
-                    ? activeColor
-                    : (w.isImportant ? captionStyle.importantColor : speakerColor);
+                  const baseWordColor = w.isImportant ? captionStyle.importantColor : speakerColor;
+                  const targetWordColor = highlightAnim === 'none'
+                    ? baseWordColor
+                    : isWordPillActive
+                      ? getContrastingTextColor(wordBg || '#FCD905')
+                      : activeColor;
+                  const wordColor = interpolateCssColor(baseWordColor, targetWordColor, highlightProgress);
 
                   let activeTextShadow = getTextShadow();
-                  if (isGlowFlash) {
+                  if (highlightAnim === 'glow' && highlightProgress > 0) {
                     const glowCol = captionStyle.glowColor || captionStyle.importantColor || '#FCD905';
-                    activeTextShadow = `0 0 4px ${glowCol}, 0 0 12px ${glowCol}, 0 0 20px ${glowCol}`;
+                    const glowColor = interpolateCssColor('transparent', glowCol, highlightProgress);
+                    activeTextShadow = `0 0 ${Math.max(1, Math.round(4 * highlightProgress))}px ${glowColor}, 0 0 ${Math.round(12 * highlightProgress)}px ${glowColor}, 0 0 ${Math.round(20 * highlightProgress)}px ${glowColor}`;
                   }
 
                   const animPreset = captionStyle.animationPreset;
                   const isLetterPreset = animPreset?.startsWith('letters-');
 
-                  let wordAnimStyle: React.CSSProperties = {};
-                  if (animPreset === 'words-slide-up') {
-                    wordAnimStyle = {
-                      animation: 'gsapWordsSlideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both',
-                      animationDelay: `${idx * 0.08}s`,
-                    };
-                  } else if (animPreset === 'words-rotate-in') {
-                    wordAnimStyle = {
-                      transformOrigin: '50% 100%',
-                      animation: 'gsapWordsRotateIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both',
-                      animationDelay: `${idx * 0.08}s`,
-                    };
-                  }
+                  const motionItemIndex = phraseIsLetterMotion
+                    ? phraseCharacterOffsets.get(w.id) ?? 0
+                    : idx;
+                  const motionStart = displayGroup.start + motionItemIndex * phraseMotionTiming.stagger;
+                  const motionProgress = getUnitProgress(
+                    currentTime - motionStart,
+                    phraseMotionTiming.duration
+                  );
+                  const motionEase = animPreset === 'words-slide-up'
+                    ? easeOutBack(motionProgress)
+                    : easeOutPower2(motionProgress);
+                  const motionTransform = animPreset === 'words-slide-up'
+                    ? `translateY(${(1 - motionEase) * 100}%)`
+                    : animPreset === 'words-rotate-in'
+                      ? `perspective(1000px) rotateX(${-90 * (1 - motionEase)}deg)`
+                      : '';
+                  const scaledWordTransform = effectiveScale !== 1.0
+                    ? `scale(${effectiveScale})`
+                    : '';
+                  const normalOpacity = captionStyle.textOpacity ?? 1.0;
+                  const highlightOpacity = normalOpacity + (1 - normalOpacity) * highlightProgress;
+                  const wordAnimStyle: React.CSSProperties = phraseIsWordMotion
+                    ? {
+                        opacity: motionProgress * highlightOpacity,
+                        transform: `${motionTransform} ${scaledWordTransform}`.trim(),
+                        transformOrigin: animPreset === 'words-rotate-in' ? '50% 100%' : 'center center',
+                      }
+                    : scaledWordTransform
+                      ? { transform: scaledWordTransform }
+                      : {};
 
                   return (
                     <span
                       key={w.id || `${w.text}-${idx}`}
                       style={{
                         color: wordColor,
-                        backgroundColor: wordBg,
-                        padding: isWordPillActive ? '2px 8px' : undefined,
+                        backgroundColor: wordBg
+                          ? interpolateCssColor('transparent', wordBg, highlightProgress)
+                          : undefined,
                         borderRadius: isWordPillActive ? `${Math.round(8 * previewScale)}px` : undefined,
-                        opacity: isCurrent ? 1 : (captionStyle.textOpacity ?? 1.0),
+                        opacity: phraseIsWordMotion ? undefined : highlightOpacity,
                         display: 'inline-block',
                         whiteSpace: 'nowrap',
                         transformOrigin: animPreset === 'words-rotate-in' ? '50% 100%' : 'center center',
-                        transform: effectiveScale !== 1.0 ? `scale(${effectiveScale})` : undefined,
                         marginLeft: extraMargin > 0 ? `${extraMargin}px` : undefined,
                         marginRight: extraMargin > 0 ? `${extraMargin}px` : undefined,
                         textDecoration: isUnderline ? 'underline' : 'none',
-                        textDecorationColor: isUnderline ? captionStyle.importantColor : undefined,
+                        textDecorationColor: isUnderline
+                          ? interpolateCssColor('transparent', captionStyle.importantColor, highlightProgress)
+                          : undefined,
                         textUnderlineOffset: isUnderline ? '4px' : undefined,
                         textShadow: activeTextShadow,
                         overflow: (isLetterPreset || animPreset === 'words-slide-up') ? 'hidden' : 'visible',
-                        paddingTop: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
-                        paddingBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '0.14em' : undefined,
+                        paddingTop: isWordPillActive
+                          ? `${Math.max(1, Math.round(2 * previewScale))}px`
+                          : (isLetterPreset || animPreset === 'words-slide-up')
+                            ? '0.14em'
+                            : undefined,
+                        paddingBottom: isWordPillActive
+                          ? `${Math.max(1, Math.round(2 * previewScale))}px`
+                          : (isLetterPreset || animPreset === 'words-slide-up')
+                            ? '0.14em'
+                            : undefined,
+                        paddingLeft: isWordPillActive ? `${Math.round(8 * previewScale)}px` : undefined,
+                        paddingRight: isWordPillActive ? `${Math.round(8 * previewScale)}px` : undefined,
                         marginTop: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
                         marginBottom: (isLetterPreset || animPreset === 'words-slide-up') ? '-0.14em' : undefined,
                         ...wordAnimStyle,
                       }}
-                      className="relative transition-all duration-75"
+                      className="relative"
                     >
                       {showWordEmoji && (
                         <span
-                          className="absolute -top-9 left-1/2 -translate-x-1/2 animate-bounce select-none pointer-events-none z-30 leading-none"
+                          className="absolute -top-9 left-1/2 select-none pointer-events-none z-30 leading-none"
                           style={{
+                            transform: `translate(-50%, -${getEmojiBounceOffset(currentTime, w.start)}px)`,
                             fontSize: `${Math.max(22, Math.round(previewFontSize * 0.95))}px`,
                             filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.6))',
                           }}
@@ -765,21 +875,27 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                         </span>
                       )}
                       {isLetterPreset ? (
-                        splitGraphemes(wordText).map((char, cIdx) => (
+                        splitGraphemes(wordText).map((char, cIdx) => {
+                          const charIndex = motionItemIndex + cIdx;
+                          const charStart = displayGroup.start + charIndex * phraseMotionTiming.stagger;
+                          const charProgress = getUnitProgress(
+                            currentTime - charStart,
+                            phraseMotionTiming.duration
+                          );
+                          const charEase = easeOutPower2(charProgress);
+                          const direction = animPreset === 'letters-slide-down' ? -1 : 1;
+                          return (
                           <span
                             key={cIdx}
                             style={{
                               display: 'inline-block',
-                              animation:
-                                animPreset === 'letters-slide-down'
-                                  ? 'gsapLettersSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) both'
-                                  : 'gsapLettersSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both',
-                              animationDelay: `${(idx * 0.08) + (cIdx * 0.025)}s`,
+                              opacity: charProgress,
+                              transform: `translateY(${direction * (1 - charEase) * 100}%)`,
                             }}
                           >
                             {char}
                           </span>
-                        ))
+                        )})
                       ) : (
                         wordText
                       )}

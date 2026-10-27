@@ -28,6 +28,7 @@ import {
   Combine,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
+import { getAssRenderCompatibility } from '@/lib/caption-maker/render-compatibility';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -79,6 +80,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(0.000001);
 
   const preFlight = useMemo(() => validateAndHealReelProject(project), [project]);
+  const assCompatibility = useMemo(
+    () => getAssRenderCompatibility(project.captionStyle),
+    [project.captionStyle]
+  );
 
   const currentTier: ResolutionTier =
     project.outputSettings.resolution ||
@@ -407,6 +412,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setEngine('remotion')}
+                    aria-pressed={engine === 'remotion'}
                     className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
                       engine === 'remotion'
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10'
@@ -433,6 +439,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setEngine('ffmpeg')}
+                    aria-pressed={engine === 'ffmpeg'}
                     className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
                       engine === 'ffmpeg'
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10'
@@ -455,6 +462,29 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     </div>
                   </button>
                 </div>
+                {engine === 'ffmpeg' && !assCompatibility.previewParity && (
+                  <div
+                    role="status"
+                    className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+                  >
+                    <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      This style will look different in FFmpeg
+                    </div>
+                    <ul className="space-y-1 pl-5 list-disc text-[11px] text-zinc-300 leading-snug">
+                      {assCompatibility.limitations.map((limitation) => (
+                        <li key={limitation}>{limitation}</li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => setEngine('remotion')}
+                      className="text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
+                    >
+                      Switch to Remotion for the closest preview match
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-3.5">

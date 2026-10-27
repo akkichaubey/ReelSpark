@@ -289,3 +289,27 @@ function patchFfmpegArgsEsm(args) {
   fs.writeFileSync(esmIndexPath, esmContent, 'utf8');
   console.log('[patch-remotion] Successfully patched dist/esm/index.mjs');
 }
+
+// Remotion's temporary render server binds to 127.0.0.1. On Windows,
+// Chromium may resolve `localhost` to ::1 first and hit another service (or
+// fail) instead of the IPv4-only Remotion server. Keep the host aligned with
+// the server bind address on Windows; preserve Remotion's default elsewhere.
+const remotionServerFiles = [
+  path.resolve('node_modules/@remotion/renderer/dist/prepare-server.js'),
+  path.resolve('node_modules/@remotion/renderer/dist/esm/index.mjs'),
+];
+
+for (const remotionServerFile of remotionServerFiles) {
+  if (!fs.existsSync(remotionServerFile)) continue;
+
+  const serverContent = fs.readFileSync(remotionServerFile, 'utf8');
+  const updatedServerContent = serverContent.replace(
+    'serveUrl: `http://localhost:${serverPort}`',
+    "serveUrl: `http://${process.platform === 'win32' ? '127.0.0.1' : 'localhost'}:${serverPort}`"
+  );
+
+  if (updatedServerContent !== serverContent) {
+    fs.writeFileSync(remotionServerFile, updatedServerContent, 'utf8');
+    console.log(`[patch-remotion] Patched Windows loopback host in ${path.basename(remotionServerFile)}`);
+  }
+}

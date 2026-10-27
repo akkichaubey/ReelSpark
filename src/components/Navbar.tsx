@@ -25,8 +25,9 @@ import { ReelSparkLogo } from './ReelSparkLogo';
 interface NavbarProps {
   systemStatus: {
     ffmpeg: { available: boolean; version?: string };
-    ollama?: { configured: boolean; model: string; baseUrl?: string };
+    ollama?: { configured: boolean; model: string };
     gemini?: { configured: boolean; model: string };
+    provider?: 'ollama-cloud' | 'gemini';
   } | null;
   onNewProject: () => void;
   onRefreshSystem: () => void;
@@ -143,16 +144,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* AI Engine & Model Selector Indicator */}
             {(() => {
-              const isGemini = (systemStatus as any)?.provider === 'gemini';
+              const isGemini = systemStatus?.provider === 'gemini';
+              const aiLabel = isGemini ? 'Gemini' : 'Ollama Cloud';
               const activeModel = isGemini
                 ? (systemStatus?.gemini?.model || 'gemini-2.5-flash')
-                : (systemStatus?.ollama?.model || 'llama3.2');
+                : (systemStatus?.ollama?.model || 'gemma4');
 
               return (
                 <button
                   type="button"
                   onClick={onOpenOllamaModal || onOpenGeminiModal}
-                  title={isGemini ? "Google Gemini AI (User's Personal Key). Click to change key or model." : "Ollama Local AI (100% Free). Click to configure host or model."}
+                  title={isGemini ? "Google Gemini AI (User's Personal Key). Click to change key or model." : 'Ollama Cloud starter model. Click to configure the provider.'}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 hover:border-amber-400/40 text-xs transition-all group cursor-pointer shadow-sm"
                 >
                   {isGemini ? (
@@ -161,7 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform flex-shrink-0" />
                   )}
                   <span className="text-zinc-400 font-medium hidden sm:inline text-[11px]">
-                    {isGemini ? 'Gemini:' : 'Ollama:'}
+                    {aiLabel}:
                   </span>
                   <span className="text-white font-semibold text-xs flex items-center gap-1">
                     <span>{activeModel}</span>

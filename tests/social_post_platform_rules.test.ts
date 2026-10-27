@@ -5,6 +5,7 @@ import { SocialPlatformKey } from '../src/lib/social-intelligence/types';
 
 const originalFetch = globalThis.fetch;
 const originalDemoLogin = process.env.ALLOW_DEMO_LOGIN;
+const originalOllamaKey = process.env.OLLAMA_API_KEY;
 
 async function runPlatformGenerationTests() {
   process.env.ALLOW_DEMO_LOGIN = 'true';
@@ -98,10 +99,11 @@ async function runPlatformGenerationTests() {
   }
 
   const aiCaption = '1) Start with one small action\n2) Build confidence through progress';
+  process.env.OLLAMA_API_KEY = 'fixture-ollama-cloud-key';
   globalThis.fetch = async (_input, init) => {
     const request = JSON.parse(String(init?.body));
-    assert.ok(request.system.includes('Quick Value List'), 'Selected style must reach the AI prompt');
-    return Response.json({ response: JSON.stringify({
+    assert.ok(request.messages.find((message: { role: string }) => message.role === 'system').content.includes('Quick Value List'), 'Selected style must reach the AI prompt');
+    return Response.json({ message: { content: JSON.stringify({
       postTitle: 'Confidence Starts With Action',
       hooks: ['Confidence follows action.', 'Start small today.', 'Progress builds belief.'],
       description: aiCaption,
@@ -110,7 +112,7 @@ async function runPlatformGenerationTests() {
       variations: ['Confidence follows action.', 'Start small today.', 'Progress builds belief.'].map((hook) => ({
         title: 'Quick Value', hook, caption: aiCaption, callToAction: 'Save this reminder.', fullText: '',
       })),
-    }) });
+    }) } });
   };
   const aiResponse = await POST(new Request('http://localhost:3000/api/caption-maker/generate-social', {
     method: 'POST',
@@ -144,6 +146,8 @@ async function runPlatformGenerationTests() {
 
 runPlatformGenerationTests().finally(() => {
   globalThis.fetch = originalFetch;
+  if (originalOllamaKey === undefined) delete process.env.OLLAMA_API_KEY;
+  else process.env.OLLAMA_API_KEY = originalOllamaKey;
   if (originalDemoLogin === undefined) delete process.env.ALLOW_DEMO_LOGIN;
   else process.env.ALLOW_DEMO_LOGIN = originalDemoLogin;
 }).catch((error) => {

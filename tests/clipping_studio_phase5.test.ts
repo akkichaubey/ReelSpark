@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { setCacheAccount } from '../src/lib/account-cache';
 import {
   ClippingProject,
   MediaAsset,
@@ -37,6 +38,7 @@ async function runPhase5Tests() {
   }
 
   // Mock in-memory localStorage for Node test runner
+  setCacheAccount('phase5-test-user');
   const memoryStore: Record<string, string> = {};
   (global as any).window = {
     localStorage: {
@@ -198,11 +200,23 @@ async function runPhase5Tests() {
   // 6. Cloudflare D1 Resilient Sync fallback
   await test('Cloudflare D1 Synchronizer: Non-destructive local fallback when offline or unconfigured', async () => {
     const proj = createBlankClippingProject('Cloudflare Sync Test');
-    const result = await syncProjectToCloudflare(proj);
-    assert.strictEqual(result.success, true);
-    assert.ok(result.message);
+    saveProjectLocally(proj);
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => Response.json({ success: true, synced: false, message: 'Cloud disabled; local cache retained.' });
+      const disabled = await syncProjectToCloudflare(proj);
+      assert.strictEqual(disabled.success, true);
+      assert.strictEqual(disabled.synced, false);
+      globalThis.fetch = async () => { throw new Error('Offline'); };
+      const offline = await syncProjectToCloudflare(proj);
+      assert.strictEqual(offline.success, false);
+      assert.strictEqual(offline.synced, false);
+      assert.strictEqual(loadProjectByIdLocally(proj.id)?.name, proj.name);
+    } finally { globalThis.fetch = originalFetch; }
   });
 
+  setCacheAccount(null);
+  delete (global as any).window;
   console.log('\n======================================================');
   console.log(`📊 PHASE 5 TESTS: ${passed} / ${total} PASSED`);
   console.log('======================================================\n');

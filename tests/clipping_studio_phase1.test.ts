@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { setCacheAccount } from '../src/lib/account-cache';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -182,6 +183,7 @@ async function runPhase1Tests() {
       },
     };
 
+    setCacheAccount('phase1-test-user');
     // Save and load
     const saved = saveProjectLocally(blank);
     assert.strictEqual(saved, true);
@@ -201,6 +203,7 @@ async function runPhase1Tests() {
     assert.strictEqual(loadProjectByIdLocally(blank.id), null);
 
     delete (global as any).window;
+    setCacheAccount(null);
   });
 
   // 7. FFmpeg & FFprobe Binary Verification

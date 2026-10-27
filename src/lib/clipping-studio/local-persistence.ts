@@ -146,6 +146,7 @@ export function duplicateProjectLocally(id: string, newName?: string): ClippingP
 
   const now = new Date().toISOString();
   const newId = `clip_proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const clipIds = new Map(original.clips.map(clip => [clip.id, `clip_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`]));
 
   const duplicated: ClippingProject = {
     ...original,
@@ -153,17 +154,18 @@ export function duplicateProjectLocally(id: string, newName?: string): ClippingP
     name: newName || `${original.name} (Copy)`,
     createdAt: now,
     updatedAt: now,
+    mediaAssets: original.mediaAssets.map(asset => ({ ...asset, projectId: newId })),
     // Regenerate IDs for clips and recipes to maintain integrity
     clips: original.clips.map((c) => ({
       ...c,
-      id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: clipIds.get(c.id)!,
       projectId: newId,
     })),
-    mergeRecipes: original.mergeRecipes.map((r) => ({
-      ...r,
-      id: `recipe_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      projectId: newId,
-    })),
+    mergeRecipes: original.mergeRecipes.map((r) => {
+      const recipeId = `recipe_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      return { ...r, id: recipeId, projectId: newId,
+        items: r.items.map(item => ({ ...item, id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`, recipeId, clipId: clipIds.get(item.clipId) || item.clipId })) };
+    }),
     exportJobs: [], // Reset export jobs for new copy
   };
 
@@ -184,7 +186,7 @@ export function saveCrashRecoverySnapshot(project: ClippingProject): void {
       savedAt: new Date().toISOString(),
     };
     accountCache.setItem(`${CRASH_KEY_PREFIX}${project.id}`, JSON.stringify(payload));
-  } catch (err) {
+  } catch {
     // Non-fatal if localStorage is full
   }
 }

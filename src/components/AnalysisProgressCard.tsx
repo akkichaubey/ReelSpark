@@ -20,7 +20,7 @@ interface AnalysisProgressCardProps {
 
 export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ project }) => {
   const status = project.status;
-  const progress = Math.max(5, Math.min(100, project.progress || 0));
+  const progress = Math.max(0, Math.min(100, project.progress || 0));
   const message = project.statusMessage || 'Processing media...';
 
   // Determine active pipeline stage (1 to 4)
@@ -76,10 +76,10 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
   ];
 
   return (
-    <div className="w-full glass-panel rounded-2xl border border-white/10 p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden bg-gradient-to-b from-zinc-900/90 to-zinc-950/90">
+    <div className="w-full glass-panel rounded-2xl border border-white/10 p-6 sm:p-8 space-y-6 shadow-xl relative overflow-hidden bg-zinc-900/80">
       {/* Background ambient glow */}
-      <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header with Title and Live Badge */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -90,27 +90,27 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
             </span>
             <span className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
-              Live AI Analysis Pipeline
+              AI analysis in progress
             </span>
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Analyzing Video Content</span>
+            <span>Finding your best moments</span>
             <ScanSearch className="w-5 h-5 text-amber-400 animate-pulse" />
           </h3>
         </div>
 
         {/* Big percentage counter */}
         <div className="flex items-baseline space-x-1.5 self-start sm:self-auto bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
-          <span className="text-3xl font-black text-white tracking-tight">{progress}</span>
+          <span className="text-3xl tabular-nums font-black text-white tracking-tight">{progress}</span>
           <span className="text-sm font-semibold text-zinc-400">%</span>
         </div>
       </div>
 
       {/* Main Animated Progress Bar */}
       <div className="space-y-2.5">
-        <div className="w-full h-3.5 rounded-full bg-zinc-950 border border-white/10 overflow-hidden p-0.5 shadow-inner">
+        <div role="progressbar" aria-label="Video analysis progress" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} className="w-full h-3.5 rounded-full bg-zinc-950 border border-white/10 overflow-hidden p-0.5 shadow-inner">
           <div
-            className="h-full bg-gradient-to-r from-rose-500 via-indigo-500 via-sky-400 to-emerald-400 rounded-full transition-all duration-700 ease-out relative"
+            className="h-full bg-gradient-to-r from-amber-500 to-yellow-300 rounded-full transition-all duration-700 ease-out relative"
             style={{ width: `${progress}%` }}
           >
             <div className="absolute inset-0 bg-white/20 animate-pulse rounded-full" />
@@ -118,7 +118,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
         </div>
 
         {/* Live Status Message text */}
-        <div className="flex items-center justify-between text-xs text-zinc-300">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-300">
           <p className="flex items-center space-x-2 font-medium">
             <ProgressCircle value={progress} size={23} strokeWidth={3} label="Video analysis" className="text-sky-400" />
             <span className="text-white font-semibold">{message}</span>
@@ -139,20 +139,20 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
               key={stage.id}
               className={`p-4 rounded-xl border transition-all duration-300 relative ${
                 isActive
-                  ? 'bg-white/10 border-sky-400/40 shadow-lg shadow-sky-500/10'
+                  ? 'bg-amber-400/[0.07] border-amber-400/50 shadow-lg shadow-amber-500/5'
                   : isDone
                   ? 'bg-zinc-900/60 border-emerald-500/30 text-zinc-300'
-                  : 'bg-zinc-900/30 border-white/5 text-zinc-500 opacity-60'
+                  : 'bg-zinc-950/30 border-white/10 text-zinc-400'
               }`}
             >
               <div className="flex items-start justify-between mb-2">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                     isActive
-                      ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                      ? 'bg-amber-400/15 text-amber-300 border border-amber-400/25'
                       : isDone
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-zinc-800 text-zinc-500'
+                      : 'bg-zinc-800 text-zinc-400'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -163,8 +163,8 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
                 ) : isActive ? (
                   <ProgressCircle value={progress} size={23} strokeWidth={3} label={`Analysis stage ${stage.id}`} className="text-sky-400" />
                 ) : (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">
-                    Step {stage.id}
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                    Queued · {stage.id}
                   </span>
                 )}
               </div>
@@ -213,7 +213,7 @@ export const AnalysisProgressCard: React.FC<AnalysisProgressCardProps> = ({ proj
         </div>
 
         <span className="text-[11px] text-zinc-500 italic">
-          High-precision AI analysis discovers viral moments under 60 seconds
+          Your clips will appear here when analysis is complete.
         </span>
       </div>
     </div>

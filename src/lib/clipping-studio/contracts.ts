@@ -301,6 +301,7 @@ export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
 export const ClipSchema = z.object({
   id: z.string(),
+  sourceCandidateKey: z.string().optional(),
   projectId: z.string(),
   mediaAssetId: z.string(),
   name: z.string().min(1, 'Clip name is required'),
@@ -367,6 +368,8 @@ export type ExportJob = z.infer<typeof ExportJobSchema>;
 
 export const ClippingProjectSchema = z.object({
   id: z.string(),
+  sourceProjectId: z.string().optional(),
+  sourceMediaAssetId: z.string().optional(),
   name: z.string().min(1, 'Project name is required'),
   description: z.string().optional(),
   mediaAssets: z.array(MediaAssetSchema).default([]),

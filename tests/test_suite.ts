@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { accountCache, getCacheAccount, setCacheAccount } from '../src/lib/account-cache';
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
@@ -111,6 +112,10 @@ import {
 const execFileAsync = promisify(execFile);
 
 async function runAllTests() {
+  const previousAccount = getCacheAccount();
+  const previousDemo = process.env.ALLOW_DEMO_LOGIN;
+  setCacheAccount('full-suite-test-user');
+  process.env.ALLOW_DEMO_LOGIN = 'true';
   console.log('\n======================================================');
   console.log('🚀 REELSPARK — AUTOMATED TEST SUITE EXECUTION');
   console.log('======================================================\n');
@@ -1199,7 +1204,7 @@ async function runAllTests() {
     assert.strictEqual(DEFAULT_CAPTION_STYLE.customX, 50, 'Default customX must be 50%');
     assert.strictEqual(DEFAULT_CAPTION_STYLE.position, 'custom', 'Default position must be custom');
     assert.strictEqual(DEFAULT_CAPTION_STYLE.customY, 20, 'Default customY must be 20%');
-    assert.strictEqual(DEFAULT_CAPTION_STYLE.showSafeArea, true, 'Default showSafeArea must be true');
+    assert.strictEqual(DEFAULT_CAPTION_STYLE.showSafeArea, false, 'Safe-area guides are opt-in by default');
     assert.strictEqual(DEFAULT_CAPTION_STYLE.strokeWidth, 0, 'Default strokeWidth must be 0');
     assert.strictEqual(DEFAULT_CAPTION_STYLE.textEffect, 'none', 'Default textEffect must be none (No Filter)');
     assert.strictEqual(DEFAULT_CAPTION_STYLE.textOpacity, 1.0, 'Default textOpacity must be 1.0 (100% Solid Opacity)');
@@ -1270,7 +1275,7 @@ async function runAllTests() {
       }
     );
     assert.ok(
-      slideAss.includes('\\fscy30\\t(0,90,\\fscy100)'),
+      slideAss.includes('\\fscy30\\t(0,120,\\fscy100)'),
       'GSAP words-slide-up must generate vertical slide-in scale tags in ASS'
     );
   });
@@ -1466,13 +1471,13 @@ async function runAllTests() {
     assert.strictEqual(reelSynced.fontFamily, 'Nirmala UI', 'Font family inherits caption font');
     assert.strictEqual(reelSynced.highlightColor, '#FCD905', 'Active highlight color defaults to #FCD905');
     assert.strictEqual(reelSynced.aspectRatio, '9:16', 'Aspect ratio inherits canvas settings');
-    assert.strictEqual(reelSynced.showSafeArea, true, 'Safe area defaults to true on thumbnail cover');
+    assert.strictEqual(reelSynced.showSafeArea, false, 'Safe-area guides are opt-in on thumbnail covers');
 
     // Test aspect ratio synchronization for non-standard aspects (e.g. 1:1, 4:5, 16:9)
     const squareThumb = createDefaultThumbnailSettings('Square', '1:1');
     assert.strictEqual(squareThumb.aspectRatio, '1:1');
     assert.strictEqual(squareThumb.overlayDarkness, 0.15);
-    assert.strictEqual(squareThumb.showSafeArea, true);
+    assert.strictEqual(squareThumb.showSafeArea, false);
   });
 
   // 33. Thumbnail Instant Cover Merging (Frame 0 Pre-playback duration 0.000001s)
@@ -1497,7 +1502,7 @@ async function runAllTests() {
     const { createDefaultThumbnailSettings, renderThumbnailToCanvas } = await import('../src/lib/caption-maker/thumbnail-presets');
 
     const defaultSettings = createDefaultThumbnailSettings('Spacing Test');
-    assert.strictEqual(defaultSettings.badgeEnabled, true, 'Badge must be enabled by default');
+    assert.strictEqual(defaultSettings.badgeEnabled, false, 'Badges are opt-in by default');
     assert.strictEqual(defaultSettings.badgeSpacing, 38, 'Badge to title spacing defaults to 38px');
     assert.strictEqual(defaultSettings.subtitleSpacing, 30, 'Title to subtitle spacing defaults to 30px');
     assert.strictEqual(defaultSettings.badgeShape, 'pill', 'Badge shape defaults to pill');
@@ -1563,7 +1568,7 @@ async function runAllTests() {
     const settings = createDefaultThumbnailSettings('VIRAL THUMBNAIL TEST');
     assert.strictEqual(settings.textAlign, 'center');
     assert.strictEqual(settings.customX, 50);
-    assert.strictEqual(settings.showSafeArea, true);
+    assert.strictEqual(settings.showSafeArea, false);
 
     const customPosSettings = {
       ...settings,
@@ -3135,7 +3140,7 @@ async function runAllTests() {
     studioProject.preferredLanguage = 'hi';
     saveProjectToLocalStorage(studioProject);
 
-    const savedProjectRaw = (global as any).window.localStorage.getItem('reel_caption_project_v2');
+    const savedProjectRaw = accountCache.getItem('reel_caption_project_v2');
     assert.ok(savedProjectRaw, 'CaptionMaker project must be stored in localStorage');
     const parsedProject = JSON.parse(savedProjectRaw!);
     assert.strictEqual(parsedProject.preferredLanguage, 'hi');
@@ -3465,9 +3470,14 @@ invalid_malformed_entry
     assert.strictEqual(loadCrashRecoverySnapshot(proj.id), null);
 
     // 3. Cloudflare D1 resilient sync fallback
-    const syncRes = await syncProjectToCloudflare(proj);
-    assert.strictEqual(syncRes.success, true);
-    assert.ok(syncRes.message);
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => Response.json({ success: true, synced: false, message: 'Cloud disabled; local cache retained.' });
+      const syncRes = await syncProjectToCloudflare(proj);
+      assert.strictEqual(syncRes.success, true);
+      assert.strictEqual(syncRes.synced, false);
+      assert.ok(syncRes.message);
+    } finally { globalThis.fetch = originalFetch; }
 
     // Restore window
     (global as any).window = oldWindow;
@@ -3476,6 +3486,10 @@ invalid_malformed_entry
   console.log('\n======================================================');
   console.log(`📊 TEST SUITE RESULTS: ${passed} / ${total} TESTS PASSED`);
   console.log('======================================================\n');
+
+  setCacheAccount(previousAccount);
+  if (previousDemo === undefined) delete process.env.ALLOW_DEMO_LOGIN;
+  else process.env.ALLOW_DEMO_LOGIN = previousDemo;
 
   if (passed !== total) {
     process.exit(1);

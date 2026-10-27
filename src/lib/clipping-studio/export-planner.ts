@@ -1,35 +1,10 @@
-import path from 'path';
 import {
   Clip,
   MediaAsset,
-  formatMsToTimestamp,
 } from './contracts';
 
-/**
- * Format custom filename template using tokens (browser & server safe)
- */
-export function formatFilenameTemplate(
-  template: string,
-  tokens: {
-    project: string;
-    name: string;
-    index: number | string;
-    time: string;
-    res?: string;
-  }
-): string {
-  let result = template || '{project}_{name}_{index}';
-  result = result.replace(/\{project\}/gi, tokens.project.replace(/[^a-zA-Z0-9_-]/g, '_'));
-  result = result.replace(/\{name\}/gi, tokens.name.replace(/[^a-zA-Z0-9_-]/g, '_'));
-  result = result.replace(/\{index\}/gi, String(tokens.index));
-  result = result.replace(/\{time\}/gi, tokens.time.replace(/[^a-zA-Z0-9_-]/g, '_'));
-  if (tokens.res) {
-    result = result.replace(/\{res\}/gi, tokens.res);
-  } else {
-    result = result.replace(/_?\{res\}/gi, '');
-  }
-  return result.replace(/_{2,}/g, '_').replace(/^_|_$/g, '');
-}
+// Keep historical imports working while sharing the browser-safe implementation.
+export { formatFilenameTemplate } from './contracts';
 
 export interface ClipExportOptions {
   clip: Clip;

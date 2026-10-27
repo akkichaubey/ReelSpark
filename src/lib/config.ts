@@ -11,10 +11,8 @@ const storageBase = process.env.STORAGE_DIR
 export const APP_CONFIG = {
   appName: 'ReelMaker — Local Studio',
   version: '1.0.0',
-  /** Default Ollama Model */
-  defaultOllamaModel: process.env.OLLAMA_MODEL || 'llama3.2',
-  /** Default Ollama Host Base URL */
-  defaultOllamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+  /** Default Ollama Cloud starter model (API model IDs omit the :cloud suffix). */
+  defaultOllamaModel: process.env.OLLAMA_CLOUD_MODEL || 'gemma4',
   maxClipDurationSeconds: 60,
   storageRoot: storageBase,
   projectsDir: path.join(storageBase, 'projects'),
@@ -110,64 +108,23 @@ export interface OllamaModelInfo {
   recommended?: boolean;
 }
 
-export const OLLAMA_AVAILABLE_MODELS: OllamaModelInfo[] = [
+export const OLLAMA_CLOUD_MODELS: OllamaModelInfo[] = [
   {
-    id: 'llama3.2',
-    name: 'Llama 3.2 (3B)',
-    badge: 'Default / Recommended',
-    description: 'Lightweight, ultra-fast 3B model for instant viral clip candidate discovery and scoring with minimal RAM.',
-    speed: 'Ultra Fast',
-    quality: 'Very High',
-    recommended: true,
-  },
-  {
-    id: 'llama3.1',
-    name: 'Llama 3.1 (8B)',
-    badge: 'Deep Reasoning',
-    description: 'Meta’s powerful 8B model with frontier logic for complex podcasts, philosophical talks, and humor.',
-    speed: 'Fast',
-    quality: 'Maximum',
-  },
-  {
-    id: 'qwen2.5',
-    name: 'Qwen 2.5 (7B)',
-    badge: 'Best for Hindi & Multilingual',
-    description: 'Outstanding multilingual awareness with native Hindi and Hinglish sentence understanding.',
-    speed: 'Fast',
-    quality: 'Maximum',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral (7B)',
-    badge: 'Creative & Catchy',
-    description: 'Mistral 7B optimized for engaging viral punchlines, hooks, and story highlights.',
-    speed: 'Very Fast',
+    id: 'gemma4',
+    name: 'Gemma 4 Cloud',
+    badge: 'Free Starter Model',
+    description: 'Ollama-hosted cloud model. Free accounts include a limited amount of starter usage; availability and limits are set by Ollama.',
+    speed: 'Cloud hosted',
     quality: 'High',
-  },
-  {
-    id: 'gemma2',
-    name: 'Gemma 2 (9B)',
-    badge: 'Google Open Weights',
-    description: 'Google’s open-weights architecture for deep educational and inspirational topics.',
-    speed: 'Moderate',
-    quality: 'Very High',
-  },
-  {
-    id: 'phi3',
-    name: 'Phi-3 Mini (3.8B)',
-    badge: 'Ultra Lightweight',
-    description: 'Microsoft compact model that runs smoothly on any low-end hardware or CPU without GPU.',
-    speed: 'Maximum',
-    quality: 'Good',
+    recommended: true,
   },
 ];
 
-export type AiProvider = 'ollama' | 'gemini';
+export type AiProvider = 'ollama-cloud' | 'gemini';
 
 export interface AppSettings {
   aiProvider?: AiProvider;
-  ollamaModel: string;
-  ollamaBaseUrl: string;
+  ollamaCloudModel: string;
   // User personal Gemini API settings
   geminiModel?: string;
   geminiApiKey?: string;
@@ -178,14 +135,15 @@ export function getSettingsFilePath(): string {
 }
 
 export function loadAppSettings(): AppSettings {
+  const defaultProvider: AiProvider = process.env.AI_PROVIDER === 'gemini' ? 'gemini' : 'ollama-cloud';
   try {
     const filePath = getSettingsFilePath();
     if (fs.existsSync(filePath)) {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       return {
-        aiProvider: data.aiProvider || 'ollama',
-        ollamaModel: data.ollamaModel || process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel,
-        ollamaBaseUrl: data.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl,
+        // Migrate persisted local-Ollama preferences to the only Ollama mode now supported.
+        aiProvider: data.aiProvider === 'gemini' ? 'gemini' : 'ollama-cloud',
+        ollamaCloudModel: resolveOllamaCloudModel(data.ollamaCloudModel || data.ollamaModel),
         geminiModel: data.geminiModel,
         geminiApiKey: data.geminiApiKey,
       };
@@ -194,9 +152,8 @@ export function loadAppSettings(): AppSettings {
     console.warn('Failed to read settings.json:', err);
   }
   return {
-    aiProvider: 'ollama',
-    ollamaModel: process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel,
-    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl,
+    aiProvider: defaultProvider,
+    ollamaCloudModel: resolveOllamaCloudModel(process.env.OLLAMA_CLOUD_MODEL || APP_CONFIG.defaultOllamaModel),
   };
 }
 
@@ -207,23 +164,16 @@ export function saveAppSettings(newSettings: Partial<AppSettings>): AppSettings 
     }
     const current = loadAppSettings();
     const updated: AppSettings = {
-      aiProvider: newSettings.aiProvider || current.aiProvider || 'ollama',
-      ollamaModel: newSettings.ollamaModel || current.ollamaModel || APP_CONFIG.defaultOllamaModel,
-      ollamaBaseUrl: newSettings.ollamaBaseUrl || current.ollamaBaseUrl || APP_CONFIG.defaultOllamaBaseUrl,
+      aiProvider: newSettings.aiProvider || current.aiProvider || 'ollama-cloud',
+      ollamaCloudModel: resolveOllamaCloudModel(newSettings.ollamaCloudModel || current.ollamaCloudModel),
       geminiModel: newSettings.geminiModel || current.geminiModel,
       geminiApiKey: newSettings.geminiApiKey !== undefined ? newSettings.geminiApiKey : current.geminiApiKey,
     };
     fs.writeFileSync(getSettingsFilePath(), JSON.stringify(updated, null, 2), 'utf8');
 
     // Update runtime env
-    if (updated.ollamaModel) {
-      process.env.OLLAMA_MODEL = updated.ollamaModel;
-      APP_CONFIG.defaultOllamaModel = updated.ollamaModel;
-    }
-    if (updated.ollamaBaseUrl) {
-      process.env.OLLAMA_BASE_URL = updated.ollamaBaseUrl;
-      APP_CONFIG.defaultOllamaBaseUrl = updated.ollamaBaseUrl;
-    }
+    process.env.OLLAMA_CLOUD_MODEL = updated.ollamaCloudModel;
+    APP_CONFIG.defaultOllamaModel = updated.ollamaCloudModel;
 
     return updated;
   } catch (err) {
@@ -234,62 +184,38 @@ export function saveAppSettings(newSettings: Partial<AppSettings>): AppSettings 
 
 export function getAiProvider(): AiProvider {
   const settings = loadAppSettings();
-  return settings.aiProvider || 'ollama';
+  return settings.aiProvider || 'ollama-cloud';
 }
 
 export function getOllamaModel(): string {
   const settings = loadAppSettings();
-  return settings.ollamaModel || process.env.OLLAMA_MODEL || APP_CONFIG.defaultOllamaModel;
+  return resolveOllamaCloudModel(settings.ollamaCloudModel || process.env.OLLAMA_CLOUD_MODEL || APP_CONFIG.defaultOllamaModel);
 }
 
-export function getOllamaBaseUrl(): string {
-  const settings = loadAppSettings();
-  return settings.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || APP_CONFIG.defaultOllamaBaseUrl;
+/** Cloud API allowlist: keep ReelSpark on Ollama's free starter model. */
+export function resolveOllamaCloudModel(model?: string): string {
+  const requested = model?.replace(/:cloud$/, '');
+  return OLLAMA_CLOUD_MODELS.some((entry) => entry.id === requested) ? requested! : 'gemma4';
 }
 
-/** True when this process runs inside Render rather than on the user's computer. */
-export function isHostedRuntime(): boolean {
-  return process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
-}
-
-/** A loopback Ollama URL points to this process's machine, not the browser user's machine. */
-export function isLoopbackOllamaUrl(baseUrl: string): boolean {
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
-    return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
-  } catch {
-    return false;
-  }
+export function hasOllamaCloudApiKey(): boolean {
+  return Boolean(process.env.OLLAMA_API_KEY?.trim());
 }
 
 /**
- * Check whether Ollama is active and return model status.
+ * Cloud readiness is based on a server-side key; do not send health probes that
+ * consume free-tier inference credits just to render a status badge.
  */
-export async function checkOllamaStatus(): Promise<{
+export async function checkOllamaCloudStatus(): Promise<{
   configured: boolean;
   model: string;
-  baseUrl: string;
   availableModels: OllamaModelInfo[];
 }> {
   const model = getOllamaModel();
-  const baseUrl = getOllamaBaseUrl();
-
-  let configured = false;
-  try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    configured = res.ok;
-  } catch {
-    configured = false;
-  }
-
   return {
-    configured,
+    configured: hasOllamaCloudApiKey(),
     model,
-    baseUrl,
-    availableModels: OLLAMA_AVAILABLE_MODELS,
+    availableModels: OLLAMA_CLOUD_MODELS,
   };
 }
 

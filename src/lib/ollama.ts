@@ -1,12 +1,11 @@
 /**
  * Ollama AI Client & Analysis Engine
  *
- * Provides local & free AI inference via Ollama REST API.
- * Default Host: http://127.0.0.1:11434
- * Supported Models: llama3.2, llama3.1, qwen2.5, mistral, gemma2, phi3, etc.
+ * Provides server-side AI inference through the Ollama Cloud API.
+ * Uses the Gemma 4 starter model; the API key stays on the server.
  */
 
-import { getOllamaBaseUrl, getOllamaModel } from './config';
+import { getOllamaModel, resolveOllamaCloudModel } from './config';
 import { ClipCandidate, TopicCategory, TranscriptSegment } from './types';
 
 export const OLLAMA_SYSTEM_INSTRUCTION = `You are a master video editor, philosopher, and AI clip curator specializing in identifying viral, deeply meaningful, motivational, and thought-provoking short clips from long-form speeches, podcasts, and talks.
@@ -29,7 +28,7 @@ export interface ChunkAnalysisInput {
 }
 
 /**
- * Low-level call to Ollama generate endpoint.
+ * Low-level call to the authenticated Ollama Cloud chat API.
  */
 export async function generateWithOllama(params: {
   prompt: string;
@@ -37,41 +36,58 @@ export async function generateWithOllama(params: {
   model?: string;
   format?: 'json' | '';
   temperature?: number;
-  baseUrl?: string;
 }): Promise<string> {
-  const baseUrl = (params.baseUrl || getOllamaBaseUrl()).replace(/\/$/, '');
-  const model = params.model || getOllamaModel();
+  const apiKey = process.env.OLLAMA_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('Ollama Cloud is not configured. Add OLLAMA_API_KEY to the server environment and restart the app.');
+  }
 
-  const body: Record<string, any> = {
+  const model = resolveOllamaCloudModel(params.model || getOllamaModel());
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  if (params.system) messages.push({ role: 'system', content: params.system });
+  messages.push({ role: 'user', content: params.prompt });
+
+  const body: Record<string, unknown> = {
     model,
-    prompt: params.prompt,
+    messages,
     stream: false,
     options: {
       temperature: params.temperature ?? 0.3,
     },
   };
-
-  if (params.system) {
-    body.system = params.system;
-  }
-
   if (params.format === 'json') {
     body.format = 'json';
   }
 
-  const response = await fetch(`${baseUrl}/api/generate`, {
+  const response = await fetch('https://ollama.com/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Ollama request failed (${response.status}): ${errorText}`);
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Ollama Cloud rejected the server API key. Check OLLAMA_API_KEY in the server environment.');
+    }
+    if (response.status === 402) {
+      throw new Error('Ollama Cloud reports no remaining included usage for this request. Check the Ollama account usage page; this app does not add paid credits.');
+    }
+    if (response.status === 429) {
+      throw new Error('Ollama Cloud is rate-limited or its free-tier concurrency slot is busy. Wait briefly and try again.');
+    }
+    throw new Error(`Ollama Cloud request failed (${response.status}). Check the selected model and your Ollama account usage.`);
   }
 
   const data = await response.json();
-  return (data.response || '').trim();
+  const content = data?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('Ollama Cloud returned an empty response. Please try again.');
+  }
+  return content.trim();
 }
 
 /**
@@ -142,7 +158,7 @@ Return a JSON array of objects conforming to this schema:
     });
   } catch (err: any) {
     console.error('[Ollama] Chunk analysis error:', err.message);
-    throw new Error(`Ollama analysis failed: ${err.message}. Make sure Ollama is running at ${getOllamaBaseUrl()}`);
+    throw new Error(`Ollama Cloud analysis failed: ${err.message}`);
   }
 
   // Parse JSON with robust fence stripping
@@ -292,82 +308,27 @@ Return a structured JSON array with items conforming to schema: { id, title, sta
 }
 
 /**
- * Fast connectivity and model test for Ollama.
+ * Make a tiny authenticated request to verify Ollama Cloud credentials and model access.
  */
-export async function testOllamaConnection(
-  modelName?: string,
-  baseUrl?: string
-): Promise<{ success: boolean; message: string; model: string }> {
-  const host = (baseUrl || getOllamaBaseUrl()).replace(/\/$/, '');
-  const model = modelName || getOllamaModel();
+export async function testOllamaCloudConnection(modelName?: string): Promise<{ success: boolean; message: string; model: string }> {
+  const model = resolveOllamaCloudModel(modelName || getOllamaModel());
 
   try {
-    // 1. Probe Ollama tags endpoint
-    const tagsRes = await fetch(`${host}/api/tags`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await generateWithOllama({
+      model,
+      prompt: 'Reply with the exact text: ReelSpark Ollama Cloud connection verified.',
+      temperature: 0,
     });
-
-    if (!tagsRes.ok) {
-      return {
-        success: false,
-        message: `Ollama server responded with error ${tagsRes.status} at ${host}`,
-        model,
-      };
-    }
-
-    const tagsData = await tagsRes.json();
-    const installedModels: string[] = (tagsData.models || []).map((m: any) => m.name || '');
-
-    // 2. Perform quick prompt test
-    const testRes = await fetch(`${host}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt: 'Reply with the exact text: "ReelSpark Ollama Connection Successful"',
-        stream: false,
-      }),
-    });
-
-    if (!testRes.ok) {
-      const errText = await testRes.text();
-      const isMissingModel = errText.includes('not found') || !installedModels.some((m) => m.startsWith(model));
-      return {
-        success: false,
-        message: isMissingModel
-          ? `Ollama server is active at ${host}, but model "${model}" is not installed. Run: ollama pull ${model}`
-          : `Ollama error with ${model}: ${errText}`,
-        model,
-      };
-    }
-
-    const data = await testRes.json();
     return {
       success: true,
-      message: `Successfully connected to Ollama (${model}) at ${host}! Response: "${(data.response || '').trim().substring(0, 50)}"`,
+      message: `Connected to Ollama Cloud (${model}). Response: "${response.substring(0, 80)}"`,
       model,
     };
   } catch (err: any) {
     return {
       success: false,
-      message: `Cannot connect to Ollama at ${host}. Make sure Ollama is installed and running (ollama serve). Error: ${err.message}`,
+      message: err?.message || 'Could not connect to Ollama Cloud.',
       model,
     };
-  }
-}
-
-/**
- * Query Ollama for installed models list.
- */
-export async function getInstalledOllamaModels(baseUrl?: string): Promise<string[]> {
-  const host = (baseUrl || getOllamaBaseUrl()).replace(/\/$/, '');
-  try {
-    const res = await fetch(`${host}/api/tags`, { cache: 'no-store' });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.models || []).map((m: any) => m.name);
-  } catch {
-    return [];
   }
 }

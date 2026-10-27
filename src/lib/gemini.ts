@@ -10,7 +10,7 @@ import {
   analyzeTranscriptChunkWithOllama,
   analyzeYouTubeWithOllama,
   generateWithOllama,
-  testOllamaConnection,
+  testOllamaCloudConnection,
   ChunkAnalysisInput as OllamaChunkInput,
 } from './ollama';
 import { getOllamaModel, loadAppSettings } from './config';
@@ -311,7 +311,7 @@ export async function transcribeAudioWithGemini(
 }
 
 /**
- * Analyze transcript chunk using local Ollama model or user's Gemini key.
+ * Analyze transcript chunk using Ollama Cloud or the user's Gemini key.
  */
 export async function analyzeTranscriptChunkWithGemini(
   input: ChunkAnalysisInput,
@@ -342,7 +342,7 @@ export async function testGeminiConnection(
 
   if (!apiKey) {
     // If no key is provided, test Ollama
-    return testOllamaConnection(modelName || getOllamaModel());
+    return testOllamaCloudConnection(modelName || getOllamaModel());
   }
 
   try {

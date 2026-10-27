@@ -63,7 +63,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       const data = await res.json();
       if (data.status === 'ok') {
         setSystemStatus(data);
-        const model = data.ollama?.model || data.gemini?.model;
+        const model = data.provider === 'gemini' ? data.gemini?.model : data.ollama?.model;
         if (model) setCurrentModel(model);
       }
     } catch (err) {
@@ -78,7 +78,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       .then((data) => {
         if (mounted && data.status === 'ok') {
           setSystemStatus(data);
-          const model = data.ollama?.model || data.gemini?.model;
+          const model = data.provider === 'gemini' ? data.gemini?.model : data.ollama?.model;
           if (model) setCurrentModel(model);
         }
       })

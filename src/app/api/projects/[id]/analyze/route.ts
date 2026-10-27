@@ -10,7 +10,7 @@ import { calculateTimelineCoverage, chunkTranscript, extractHeuristicCandidatesF
 import { verifyCandidateContext } from '@/lib/context-verifier';
 import { processCandidates } from '@/lib/ranking';
 import { ClipCandidate, TranscriptSegment } from '@/lib/types';
-import { checkOllamaStatus, getOllamaModel } from '@/lib/config';
+import { checkOllamaCloudStatus, getOllamaModel } from '@/lib/config';
 
 export async function POST(
   req: NextRequest,
@@ -41,7 +41,7 @@ export async function POST(
     project.settings.aiModel = chosenModel;
 
     const dirs = getProjectDirs(project.id);
-    const ollamaStatus = await checkOllamaStatus();
+    const ollamaStatus = await checkOllamaCloudStatus();
 
     // Step 1: Ensure metadata is loaded
     if (!project.videoMetadata) {

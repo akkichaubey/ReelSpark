@@ -6,6 +6,8 @@ import {
   PRESET_CLEANUP_DEFAULTS,
   DEFAULT_CAPTION_STYLE,
   DEFAULT_OUTPUT_SETTINGS,
+  applyReelStylePreset,
+  createEmptyCaptionProject,
 } from '../src/lib/caption-maker/sample-data';
 import {
   THUMBNAIL_PRESETS,
@@ -13,7 +15,7 @@ import {
   createDefaultThumbnailSettings,
   renderThumbnailToCanvas,
 } from '../src/lib/caption-maker/thumbnail-presets';
-import { generateAssSubtitles } from '../src/lib/caption-maker/ass-generator';
+import { generateAssSubtitles, hexToAssColor } from '../src/lib/caption-maker/ass-generator';
 import type {
   CaptionGroup,
   CaptionStyle,
@@ -22,6 +24,12 @@ import type {
 } from '../src/lib/caption-maker/types';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getAssRenderCompatibility } from '../src/lib/caption-maker/render-compatibility';
+import { setCacheAccount } from '../src/lib/account-cache';
+import {
+  loadProjectFromLocalStorage,
+  saveProjectToLocalStorage,
+} from '../src/lib/caption-maker/project-storage';
 
 async function runPresetsComprehensiveTest() {
   console.log('\n======================================================');
@@ -43,6 +51,65 @@ async function runPresetsComprehensiveTest() {
   console.log('▶ Section 1: Testing all 11 Reel Style Presets individually...');
   assert.strictEqual(REEL_STYLE_PRESETS.length, 11, 'Must have exactly 11 Reel Style Presets');
 
+  // Exercise the same preset-apply helper used by the UI, then save and reopen
+  // each selection through the account-scoped project cache.
+  const localStorageValues = new Map<string, string>();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => localStorageValues.get(key) ?? null,
+        setItem: (key: string, value: string) => localStorageValues.set(key, value),
+        removeItem: (key: string) => localStorageValues.delete(key),
+      },
+    },
+  });
+  setCacheAccount('preset-selection-qa');
+  let roundTripProject = createEmptyCaptionProject('preset-selection-round-trip');
+  for (const preset of REEL_STYLE_PRESETS) {
+    roundTripProject = {
+      ...roundTripProject,
+      captionStyle: applyReelStylePreset(roundTripProject.captionStyle, preset.style, preset.id),
+    };
+    assert.strictEqual(
+      roundTripProject.captionStyle.presetId,
+      preset.id,
+      `Selecting ${preset.id} must mark it active immediately`
+    );
+    assert.strictEqual(saveProjectToLocalStorage(roundTripProject), true);
+    const reopenedProject = loadProjectFromLocalStorage();
+    assert.ok(reopenedProject, `Project should reopen after selecting ${preset.id}`);
+    assert.deepStrictEqual(
+      reopenedProject.captionStyle,
+      JSON.parse(JSON.stringify(roundTripProject.captionStyle)),
+      `Preset ${preset.id} must survive save/reopen without losing options`
+    );
+  }
+  setCacheAccount(null);
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+  else Reflect.deleteProperty(globalThis, 'window');
+  console.log('  ✓ All 11 preset selections survive account-scoped save/reopen with their full styles.');
+
+  // Confirm preset-specific FFmpeg/ASS fidelity notices are accurate and that
+  // a plain style remains eligible for the fast renderer.
+  assert.strictEqual(
+    getAssRenderCompatibility(DEFAULT_CAPTION_STYLE).previewParity,
+    true,
+    'A plain default style should not show an FFmpeg fidelity warning'
+  );
+  for (const preset of REEL_STYLE_PRESETS) {
+    const applied = applyReelStylePreset(DEFAULT_CAPTION_STYLE, preset.style, preset.id);
+    const compatibility = getAssRenderCompatibility(applied);
+    if (preset.id === 'cinematic-subtitle') {
+      assert.strictEqual(compatibility.previewParity, true, 'Cinematic clean text should match ASS capabilities');
+    } else {
+      assert.strictEqual(compatibility.previewParity, false, `${preset.id} should explain its ASS limitations`);
+      assert.ok(compatibility.limitations.length > 0, `${preset.id} should list export differences`);
+    }
+  }
+  console.log('  ✓ FFmpeg compatibility checks distinguish clean styles from advanced styles.');
+
   for (const preset of REEL_STYLE_PRESETS) {
     // 1.1 Verify required fields
     assert.ok(preset.id && typeof preset.id === 'string', `Preset ${preset.id} must have valid id`);
@@ -60,12 +127,7 @@ async function runPresetsComprehensiveTest() {
     assert.ok(s.highlightAnimation, `Preset ${preset.id} must define highlightAnimation`);
 
     // 1.3 Apply preset on top of default style with cleanup
-    const appliedStyle: CaptionStyle = {
-      ...DEFAULT_CAPTION_STYLE,
-      ...PRESET_CLEANUP_DEFAULTS,
-      ...s,
-      presetId: preset.id,
-    };
+    const appliedStyle: CaptionStyle = applyReelStylePreset(DEFAULT_CAPTION_STYLE, s, preset.id);
 
     // 1.4 Generate ASS Subtitles for this preset
     const assOutput = generateAssSubtitles(sampleGroups, sampleWords, appliedStyle, DEFAULT_OUTPUT_SETTINGS);
@@ -115,6 +177,36 @@ async function runPresetsComprehensiveTest() {
 
     console.log(`  ✓ Preset "${preset.name}" (${preset.id}): Validated configuration & ASS export.`);
   }
+
+  // Every preset transition must reset omitted effect fields to their clean defaults.
+  for (const sourcePreset of REEL_STYLE_PRESETS) {
+    const sourceStyle: CaptionStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      ...PRESET_CLEANUP_DEFAULTS,
+      ...sourcePreset.style,
+      presetId: sourcePreset.id,
+    };
+
+    for (const targetPreset of REEL_STYLE_PRESETS) {
+      const switchedStyle: CaptionStyle = {
+        ...sourceStyle,
+        ...PRESET_CLEANUP_DEFAULTS,
+        ...targetPreset.style,
+        presetId: targetPreset.id,
+      };
+
+      for (const [key, cleanValue] of Object.entries(PRESET_CLEANUP_DEFAULTS)) {
+        const expected = targetPreset.style[key as keyof CaptionStyle] ?? cleanValue;
+        assert.deepStrictEqual(
+          switchedStyle[key as keyof CaptionStyle],
+          expected,
+          `Switch ${sourcePreset.id} -> ${targetPreset.id} must not leak ${key}`
+        );
+      }
+      assert.strictEqual(switchedStyle.presetId, targetPreset.id);
+    }
+  }
+  console.log('  ✓ All 121 preset-to-preset transitions clear omitted effects and retain target values');
 
   // -----------------------------------------------------------------
   // 2. CROSS-PRESET ISOLATION & SWITCHING TESTS
@@ -238,6 +330,65 @@ async function runPresetsComprehensiveTest() {
   assert.strictEqual(currentStyle.activeWordBgColor, '#FF007A', 'activeWordBgColor must sync with custom active color');
   assert.strictEqual(currentStyle.textColor, '#FFFFFF', 'Primary color stays default #FFFFFF');
   console.log('  ✓ Active color customization & primary color default preservation verified');
+
+  // Test 2.5: Climax intensity must not override the selected spoken-word color.
+  const climaxWord: TranscriptWord = {
+    ...sampleWords[0],
+    intensity: 'climax',
+  };
+  const climaxGroup: CaptionGroup = {
+    ...sampleGroups[0],
+    words: [climaxWord],
+  };
+  const climaxAss = generateAssSubtitles(
+    [climaxGroup],
+    [climaxWord],
+    { ...DEFAULT_CAPTION_STYLE, importantColor: '#FCD905' },
+    DEFAULT_OUTPUT_SETTINGS
+  );
+  assert.ok(climaxAss.includes('\\c&H0005D9FC&'), 'Climax word must use the selected active color #FCD905');
+  assert.ok(!climaxAss.includes('\\c&H006633FF&'), 'Climax word must not use the old hard-coded pink color');
+
+  const speakerTwoClimax: TranscriptWord = {
+    ...climaxWord,
+    speakerId: 'Speaker 2',
+  };
+  const speakerTwoClimaxAss = generateAssSubtitles(
+    [{ ...climaxGroup, words: [speakerTwoClimax] }],
+    [speakerTwoClimax],
+    { ...DEFAULT_CAPTION_STYLE, importantColor: '#FCD905', speaker2Color: '#06B6D4' },
+    DEFAULT_OUTPUT_SETTINGS
+  );
+  assert.ok(speakerTwoClimaxAss.includes('\\c&H00D4B606&'), 'Speaker 2 climax word must preserve its speaker color');
+  console.log('  ✓ Climax intensity keeps selected active color and speaker color in ASS output');
+
+  // Solo-word mode must color every currently spoken word, even when it is not manually marked important.
+  for (const preset of REEL_STYLE_PRESETS) {
+    const soloStyle: CaptionStyle = {
+      ...DEFAULT_CAPTION_STYLE,
+      ...PRESET_CLEANUP_DEFAULTS,
+      ...preset.style,
+      presetId: preset.id,
+      captionMode: 'word-by-word',
+    };
+    const soloWord: TranscriptWord = {
+      ...sampleWords[0],
+      isImportant: false,
+      intensity: 'normal',
+    };
+    const soloAss = generateAssSubtitles(
+      [{ ...sampleGroups[0], words: [soloWord] }],
+      [soloWord],
+      soloStyle,
+      DEFAULT_OUTPUT_SETTINGS
+    );
+    const soloExpectedColor = hexToAssColor(preset.style.importantColor || '#FCD905');
+    assert.ok(
+      soloAss.includes(`\\c${soloExpectedColor}`),
+      `Solo word for ${preset.id} must use its selected active color`
+    );
+  }
+  console.log('  ✓ All 11 presets use their selected active color in solo-word ASS output');
 
   // -----------------------------------------------------------------
   // 3. THUMBNAIL PRESETS ANALYSIS (6 Presets)

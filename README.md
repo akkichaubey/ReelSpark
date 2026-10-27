@@ -60,12 +60,15 @@ Copy `.env.example` to `.env.local`:
 ```bash
 copy .env.example .env.local
 ```
-Configure your Ollama host and model:
+Configure Ollama Cloud for AI features:
 ```env
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=llama3.2
+OLLAMA_API_KEY=your-ollama-api-key
+OLLAMA_CLOUD_MODEL=gemma4
 ```
-*(Note: ReelSpark uses 100% free and local AI via Ollama with zero external API key requirements. Run `ollama serve` and `ollama pull llama3.2` on your machine!)*
+
+Create an API key at [Ollama API keys](https://ollama.com/settings/keys). For local development, put it in `.env.local` and restart the dev server. For the live app, add `OLLAMA_API_KEY` under Render → your service → Environment, then redeploy. The API key stays on the server; Ollama does not need to be installed on your PC or Render.
+
+ReelSpark uses the `gemma4` Ollama Cloud API model (the CLI alias is `gemma4:cloud`) and does not expose local Ollama model selection. Ollama's Free plan provides a limited starter allowance; it is not unlimited, and users of this deployment share the configured account allowance. Check Ollama's current [pricing and usage details](https://ollama.com/pricing). Test Connection sends a real small API request and may consume a small amount of included usage. Do not enable paid credits or automatic billing if you require a strict no-charge setup.
 
 ### 3. Run the Studio
 ```bash
@@ -148,3 +151,16 @@ ReelSpark is intentionally **local-only by default**. All video processing, FFmp
 See [CLOUD_PERSISTENCE.md](CLOUD_PERSISTENCE.md) for D1 project persistence,
 private R2 media backup/restore, migrations, free-tier guard limits and the
 current hosting limitations.
+
+
+## Unified Video & Audio Studio
+
+Open any dashboard project in **Video & Audio Studio**. The same workspace provides Media Library, AI Moments, Timeline & Clips, Merge Studio, and Export Queue. Existing Clip Finder bookmarks redirect to the AI Moments tab.
+
+- Choose an AI or editing project in the shared project picker; project and workflow tab are included in the URL.
+- Use **Upload & analyze** for the existing analysis upload flow, or **Find AI moments in selected media** to reuse a Studio source without another upload. Analysis starts only when requested.
+- Select AI candidates, then **Add selected AI clips to timeline**. Imports preserve manual boundaries, names, merge recipes, and export history; importing the same candidate again does not add a duplicate. Imports participate in undo/redo.
+- **Save / Sync** saves locally and uses the existing optional D1 metadata integration. Cloud failure is reported and keeps the local copy. Original media ownership and private-storage access checks remain enforced.
+- Existing AI manifests and timeline documents remain separate, linked records. No bulk data migration is required. Shared-source deletion is blocked while another saved project depends on that media. Missing media does not erase analysis; restore or relink it before timeline imports or exports.
+
+Run `npm run test:studio` for bridge, initialization, ownership, import, duplication, and data-preservation checks. See [STUDIO_MERGE_PLAN.md](STUDIO_MERGE_PLAN.md) for the review and validation record.

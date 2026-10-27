@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-access';
-import { checkFfmpegStatus, checkOllamaStatus, checkGeminiStatus, getAiProvider, loadAppSettings } from '@/lib/config';
+import { checkFfmpegStatus, checkOllamaCloudStatus, checkGeminiStatus, getAiProvider, loadAppSettings } from '@/lib/config';
 import { publishingRuntimeStatus } from '@/lib/social-intelligence/publishing-runtime';
 
 export async function GET(req: Request) {
@@ -8,7 +8,7 @@ export async function GET(req: Request) {
     const denied = await requireAdmin(req);
     if (denied) return denied;
     const ffmpeg = await checkFfmpegStatus();
-    const ollama = await checkOllamaStatus();
+    const ollama = await checkOllamaCloudStatus();
     const gemini = checkGeminiStatus();
     const provider = getAiProvider();
     const settings = loadAppSettings();
@@ -26,7 +26,6 @@ export async function GET(req: Request) {
       ollama: {
         configured: ollama.configured,
         model: ollama.model,
-        baseUrl: ollama.baseUrl,
         availableModels: ollama.availableModels,
       },
       gemini: {

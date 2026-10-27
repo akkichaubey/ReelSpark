@@ -24,9 +24,9 @@ interface DashboardHeaderProps {
   onOpenMobileSidebar: () => void;
   systemStatus?: {
     ffmpeg: { available: boolean; version?: string };
-    ollama?: { configured: boolean; model: string; baseUrl?: string };
+    ollama?: { configured: boolean; model: string };
     gemini?: { configured: boolean; model: string };
-    provider?: 'ollama' | 'gemini';
+    provider?: 'ollama-cloud' | 'gemini';
   } | null;
   onNewProject?: () => void;
   onOpenSettings?: () => void;
@@ -49,7 +49,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const isGemini = systemStatus?.provider === 'gemini';
   const activeModel = isGemini
     ? systemStatus?.gemini?.model || 'gemini-2.5-flash'
-    : systemStatus?.ollama?.model || 'llama3.2';
+    : systemStatus?.ollama?.model || 'gemma4';
 
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-900/90 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 sticky top-0 backdrop-blur-md">
@@ -134,7 +134,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             title={
               isGemini
                 ? 'Google Gemini AI (BYOK User Key). Click to configure.'
-                : 'Ollama Local AI (100% Free). Click to configure.'
+                : 'Ollama Cloud starter model. Click to configure.'
             }
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 hover:border-amber-400/40 text-xs transition-all cursor-pointer group shadow-sm"
           >
@@ -144,7 +144,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <Cpu className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
             )}
             <span className="font-semibold text-zinc-200">
-              {isGemini ? 'Gemini' : 'Ollama'}:
+              {isGemini ? 'Gemini' : 'Ollama Cloud'}:
             </span>
             <span className="text-zinc-400 font-mono text-[11px] truncate max-w-[100px]">
               {activeModel}

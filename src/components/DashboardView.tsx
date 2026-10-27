@@ -12,14 +12,16 @@ import {
   ArrowRight,
   Film,
   Clock,
-  Layers,
   Video,
 } from 'lucide-react';
 import { Project } from '@/lib/types';
+import type { ClippingProject } from '@/lib/clipping-studio/contracts';
+import { studioProjectUrl } from '@/lib/clipping-studio/project-bridge';
 
 interface DashboardViewProps {
   userName: string;
   projects: Project[];
+  editingProjects?: ClippingProject[];
   onOpenProject: (project: Project) => void;
   onDeleteProject: (projectId: string) => void;
   onNewProject: () => void;
@@ -29,6 +31,7 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   userName,
   projects,
+  editingProjects = [],
   onOpenProject,
   onDeleteProject,
   onNewProject,
@@ -119,14 +122,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </span>
               </div>
               <h4 className="text-base font-bold text-white group-hover:text-emerald-300 transition-colors">
-                Clipping Studio
+                Video &amp; Audio Studio
               </h4>
               <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                Precision frame-accurate cut lists, multi-segment recipe merger, MP3 voice extractor, and instant zero-loss export.
+                Find AI moments, trim precise clips, merge sequences, extract audio, and manage exports in one workspace.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-semibold text-emerald-400 group-hover:text-emerald-300">
-              <span>Open Clipping Studio</span>
+              <span>Open Video &amp; Audio Studio</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
           </Link>
@@ -166,11 +169,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Our Work
             </h3>
             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-800 text-zinc-300 border border-white/10">
-              {projects.length}
+              {projects.length + editingProjects.length}
             </span>
           </div>
 
-          {projects.length > 0 && (
+          {projects.length + editingProjects.length > 0 && (
             <button
               onClick={onNewProject}
               className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
@@ -181,7 +184,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>
 
-        {projects.length === 0 ? (
+        {projects.length + editingProjects.length === 0 ? (
           /* Clean Empty State */
           <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/30 p-10 text-center flex flex-col items-center justify-center space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-zinc-800/80 border border-white/10 flex items-center justify-center text-zinc-400">
@@ -263,6 +266,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </button>
                 </div>
               </div>
+            ))}
+            {editingProjects.map(project => (
+              <Link key={project.id} href={studioProjectUrl(project.id, 'media')} className="group flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 shadow-md transition-colors hover:border-amber-400/40">
+                <div className="space-y-3"><Scissors className="h-5 w-5 text-amber-400" /><h4 className="truncate text-sm font-bold text-white">{project.name}</h4><p className="text-xs text-zinc-400">{project.mediaAssets.length} media · {project.clips.length} clips · {project.exportJobs.length} exports</p></div>
+                <span className="flex items-center gap-1 border-t border-white/5 pt-3 text-xs font-semibold text-white">Open Project <ArrowRight className="h-3.5 w-3.5" /></span>
+              </Link>
             ))}
           </div>
         )}

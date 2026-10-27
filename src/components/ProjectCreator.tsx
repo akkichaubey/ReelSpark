@@ -162,10 +162,10 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto glass-panel rounded-2xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden">
+    <div className="w-full max-w-3xl mx-auto bg-[#141416] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden">
       {/* Background Accent glow */}
-      <div className="absolute top-0 right-0 w-72 h-72 bg-white/[0.03] rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-      <div className="absolute bottom-0 left-0 w-72 h-72 bg-white/[0.02] rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
+      <div className="absolute top-0 right-0 w-72 h-72 bg-amber-400/[0.06] rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+      <div className="absolute bottom-0 left-0 w-72 h-72 bg-amber-400/[0.03] rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
 
       <div className="relative z-10">
         <div className="text-center mb-6">
@@ -187,7 +187,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             }}
             className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
               activeTab === 'video'
-                ? 'bg-white text-zinc-950 shadow-md'
+                ? 'bg-amber-400 text-zinc-950 shadow-md shadow-amber-400/10'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -203,7 +203,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             }}
             className={`flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
               activeTab === 'audio'
-                ? 'bg-white text-zinc-950 shadow-md'
+                ? 'bg-amber-400 text-zinc-950 shadow-md shadow-amber-400/10'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -234,7 +234,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Osho: Overcoming Fear and Living in Totality"
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/60 border border-white/10 text-white placeholder-zinc-500 text-sm focus:outline-none focus:border-white focus:ring-1 focus:ring-white/20 transition-colors"
+              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/60 border border-white/10 text-white placeholder-zinc-500 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/25 transition-colors"
             />
           </div>
 
@@ -250,8 +250,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
                   selectedFile
-                    ? 'border-white/50 bg-white/5'
-                    : 'border-white/15 hover:border-white/40 bg-zinc-900/40 hover:bg-zinc-900/60'
+                    ? 'border-amber-400/60 bg-amber-400/5'
+                    : 'border-amber-400/25 hover:border-amber-400/60 bg-amber-400/[0.02] hover:bg-amber-400/5'
                 }`}
               >
                 <input
@@ -263,7 +263,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 />
                 {selectedFile ? (
                   <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-xl bg-white/10 text-white flex items-center justify-center mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-400/10 text-amber-400 flex items-center justify-center mb-3">
                       <FileVideo className="w-6 h-6" />
                     </div>
                     <p className="text-white font-medium text-sm">{selectedFile.name}</p>
@@ -273,11 +273,11 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-xl bg-zinc-800 text-zinc-400 flex items-center justify-center mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center mb-3">
                       <UploadCloud className="w-6 h-6" />
                     </div>
                     <p className="text-sm font-medium text-zinc-200">
-                      Drag and drop your speech or interview video here, or <span className="text-white underline">browse</span>
+                      Drag and drop your speech or interview video here, or <span className="text-amber-400 underline underline-offset-4">browse</span>
                     </p>
                     <p className="text-xs text-zinc-500 mt-2">
                       Supports MP4, MOV, WEBM, AVI, MKV (Keeps original file untouched)
@@ -300,8 +300,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
                   selectedFile
-                    ? 'border-white/50 bg-white/5'
-                    : 'border-white/15 hover:border-white/40 bg-zinc-900/40 hover:bg-zinc-900/60'
+                    ? 'border-amber-400/60 bg-amber-400/5'
+                    : 'border-amber-400/25 hover:border-amber-400/60 bg-amber-400/[0.02] hover:bg-amber-400/5'
                 }`}
               >
                 <input
@@ -323,11 +323,11 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-xl bg-zinc-800 text-zinc-400 flex items-center justify-center mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center mb-3">
                       <Music className="w-6 h-6 text-amber-400" />
                     </div>
                     <p className="text-sm font-medium text-zinc-200">
-                      Drag and drop your speech, podcast, or interview audio here, or <span className="text-white underline">browse</span>
+                      Drag and drop your speech, podcast, or interview audio here, or <span className="text-amber-400 underline underline-offset-4">browse</span>
                     </p>
                     <p className="text-xs text-zinc-500 mt-2">
                       Supports MP3, WAV, M4A, AAC, OGG, FLAC (Keeps original file untouched)
@@ -353,7 +353,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
+              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-zinc-950 font-semibold text-sm shadow-lg shadow-amber-400/10 transition-all"
             >
               {isSubmitting ? (
                 <>

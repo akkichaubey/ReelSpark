@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
-  Film,
   LayoutDashboard,
   Scissors,
   Clapperboard,
@@ -74,12 +73,6 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           label: 'AI Reel Maker',
           href: '/reel-maker',
           icon: Clapperboard,
-        },
-        {
-          id: 'clip-finder',
-          label: 'Clip Finder',
-          href: '/?view=clip-finder',
-          icon: Film,
         },
         {
           id: 'clipping-studio',
