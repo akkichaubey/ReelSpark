@@ -24,5 +24,6 @@ export interface RemotionCaptionProps extends Record<string, unknown> {
   imagePosition?: ImagePosition;
   imageScale?: number;
   mediaType?: 'image' | 'video';
+  backgroundVideoMuted?: boolean;
   durationInSeconds: number;
 }

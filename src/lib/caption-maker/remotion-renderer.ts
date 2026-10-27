@@ -20,6 +20,7 @@ export interface RenderRemotionOptions {
   imagePosition?: ImagePosition;
   imageScale?: number;
   mediaType?: 'image' | 'video';
+  backgroundVideoMuted?: boolean;
   voiceVolume?: number;
   voiceMuted?: boolean;
   bgMusicPath?: string;
@@ -263,6 +264,7 @@ export async function renderRemotionReelVideo(
     imagePosition,
     imageScale,
     mediaType: resolvedMediaType,
+    backgroundVideoMuted: options.backgroundVideoMuted,
     durationInSeconds: duration,
   };
 

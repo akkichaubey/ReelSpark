@@ -8,6 +8,7 @@ interface BackgroundLayerProps {
   position?: ImagePosition;
   scale?: number;
   mediaType?: 'image' | 'video';
+  muted?: boolean;
 }
 
 export const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: string }> = {
@@ -53,6 +54,7 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
   position = 'center',
   scale = 100,
   mediaType,
+  muted = false,
 }) => {
   if (!imageSrc) {
     return (
@@ -80,10 +82,12 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
     return (
       <AbsoluteFill style={{ backgroundColor: '#000', overflow: 'hidden' }}>
         <Media
+          {...(isVideo ? { muted } : {})}
           src={imageSrc}
           style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(24px)', transform: 'scale(1.08)' }}
         />
         <Media
+          {...(isVideo ? { muted } : {})}
           src={imageSrc}
           style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'contain' }}
         />
@@ -105,6 +109,7 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
       >
         {isVideo ? (
           <OffthreadVideo
+            muted={muted}
             src={imageSrc}
             style={{
               maxWidth: `${scale}%`,
@@ -140,6 +145,7 @@ export const BackgroundLayer: React.FC<BackgroundLayerProps> = ({
     >
       {isVideo ? (
         <OffthreadVideo
+          muted={muted}
           src={imageSrc}
           style={{
             width: '100%',

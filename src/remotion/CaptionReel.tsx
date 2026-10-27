@@ -28,6 +28,7 @@ export const CaptionReel: React.FC<RemotionCaptionProps> = ({
   imagePosition,
   imageScale,
   mediaType,
+  backgroundVideoMuted,
   durationInSeconds,
 }) => {
   const { width, height, fps = 30 } = outputSettings;
@@ -82,6 +83,7 @@ export const CaptionReel: React.FC<RemotionCaptionProps> = ({
         position={imagePosition}
         scale={imageScale}
         mediaType={mediaType}
+        muted={backgroundVideoMuted}
       />
 
       {/* 2. Synchronized Spoken Audio Track */}

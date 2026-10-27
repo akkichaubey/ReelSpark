@@ -38,6 +38,7 @@
     "test:presets": "tsx tests/presets_comprehensive_analysis.test.ts",
     "test:caption-sync": "tsx tests/caption_sync.test.ts",
     "test:caption-preview": "tsx tests/caption_preview_render.test.tsx",
+    "test:voice-background": "tsx tests/voice_video_background.test.tsx",
     "test:caption-remotion": "tsx tests/caption_remotion_render.test.ts",
     "test:hooks": "tsx tests/hook_quality.test.ts",
     "test:qa": "tsx tests/qa_full_audit.ts",

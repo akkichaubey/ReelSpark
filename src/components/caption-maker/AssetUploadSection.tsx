@@ -75,7 +75,7 @@ interface AssetUploadSectionProps {
   onSpeaker1ColorChange?: (color: string) => void;
   onSpeaker2ColorChange?: (color: string) => void;
   onImageChange: (image?: ImageAsset, accompanyingAudio?: AudioAsset) => void;
-  onAudioChange: (audio?: AudioAsset) => void;
+  onAudioChange: (audio?: AudioAsset, useVideoAsBackground?: boolean) => void;
   onBgMusicChange?: (track?: BgMusicTrack) => void;
   onVoiceVolumeChange?: (volume: number) => void;
   onVoiceMutedChange?: (muted: boolean) => void;
@@ -162,6 +162,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
 
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [pendingVideoVoice, setPendingVideoVoice] = useState<AudioAsset | null>(null);
   const [isUploadingBgm, setIsUploadingBgm] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ media: 0, audio: 0, bgm: 0 });
   const [mediaQueueStatus, setMediaQueueStatus] = useState<{ current: number; total: number; fileName: string } | null>(null);
@@ -414,7 +415,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         throw new Error(data.error || 'Failed to process audio or extract from video');
       }
 
-      onAudioChange(data.asset);
+      if (data.asset.sourceType === 'video' && data.asset.sourceVideo?.mediaType === 'video') {
+        setPendingVideoVoice(data.asset);
+      } else onAudioChange(data.asset);
       setUploadProgress((current) => ({ ...current, audio: 100 }));
     } catch (err: any) {
       if (err instanceof UploadCancelledError) {
@@ -467,6 +470,20 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
 
   return (
     <div className="space-y-4">
+      {pendingVideoVoice && (
+        <div role="dialog" aria-modal="true" aria-labelledby="voice-video-background-title" className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-amber-400/25 bg-zinc-900 p-6 shadow-2xl">
+            <Film className="h-7 w-7 text-amber-400" aria-hidden="true" />
+            <h3 id="voice-video-background-title" className="text-lg font-bold text-white">Use this video as background?</h3>
+            <p className="text-sm text-zinc-300">Your voice has been extracted. You can also use the same video as your background media.</p>
+            <p className="truncate text-xs text-zinc-500">{pendingVideoVoice.originalVideoFileName}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" autoFocus onClick={() => { onAudioChange(pendingVideoVoice, false); setPendingVideoVoice(null); }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800">Keep current background</button>
+              <button type="button" onClick={() => { onAudioChange(pendingVideoVoice, true); setPendingVideoVoice(null); }} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300">Use video as background</button>
+            </div>
+          </div>
+        </div>
+      )}
       {uploadError && (
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -901,6 +918,18 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
 
         {audio ? (
           <div className="space-y-3">
+            {audio.sourceType === 'video' && audio.sourceVideo?.mediaType === 'video' && (
+              <button
+                type="button"
+                disabled={isTranscribing || image?.id === audio.sourceVideo.id}
+                onClick={() => onImageChange(audio.sourceVideo)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-400/10 disabled:opacity-50"
+                title={isTranscribing ? 'Available when voice analysis finishes' : undefined}
+              >
+                <Film className="h-3.5 w-3.5" />
+                {image?.id === audio.sourceVideo.id ? 'Using voice video as background' : 'Use this video as background'}
+              </button>
+            )}
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center space-x-2.5 flex-1 min-w-0">
                 <button

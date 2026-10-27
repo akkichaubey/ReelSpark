@@ -5,6 +5,7 @@ import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath, sanitizeFilename } from '@/lib/storage';
 import { probeAudioDuration, extractAudioFromVideo } from '@/lib/caption-maker/ffmpeg-renderer';
 import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
+import { probeVideo } from '@/lib/ffmpeg';
 import { validateUpload } from '@/lib/media-validation';
 import { randomUUID } from 'node:crypto';
 import { getRequestUser, isSameOriginAuthRequest } from '@/lib/auth';
@@ -91,7 +92,8 @@ export async function POST(req: NextRequest) {
 
     if (isVideo && type === 'audio') {
       // Extract audio only when the user uploaded a video as spoken audio.
-      const duration = await probeAudioDuration(targetFilePath);
+      const videoMetadata = await probeVideo(targetFilePath);
+      const duration = videoMetadata.duration;
       let companionAudioPath = targetFilePath;
       let companionAudioUrl = fileUrl;
       let companionFormat = ext.replace('.', '').toUpperCase();
@@ -114,8 +116,10 @@ export async function POST(req: NextRequest) {
       }
 
       if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
-      if (companionAudioPath !== targetFilePath) await fs.promises.rm(targetFilePath, { force: true });
-      await backupPrivateMedia(user.id, companionAudioPath);
+      // Keep the original visuals so the user can explicitly reuse them later.
+      await backupPrivateMedia(user.id, targetFilePath);
+      if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
+      if (companionAudioPath !== targetFilePath) await backupPrivateMedia(user.id, companionAudioPath);
       if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
       keepUploadedAsset = true;
 
@@ -129,6 +133,11 @@ export async function POST(req: NextRequest) {
         format: companionFormat,
         sourceType: 'video',
         originalVideoFileName: filename,
+        sourceVideo: videoMetadata.width > 0 && videoMetadata.height > 0 ? {
+          id: assetId, fileUrl, storagePath: targetFilePath, fileName: filename, fileSize,
+          width: videoMetadata.width, height: videoMetadata.height, format: ext.slice(1).toUpperCase(),
+          fitMode: 'cover', position: 'center', scale: 100, mediaType: 'video', duration, muteSourceAudio: true,
+        } : undefined,
       };
 
       return NextResponse.json({

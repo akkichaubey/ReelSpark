@@ -202,6 +202,7 @@ export interface ImageAsset {
   position?: ImagePosition;
   scale?: number;
   mediaType?: 'image' | 'video';
+  muteSourceAudio?: boolean; // Visual reuse of a voice video must not play its audio twice.
   duration?: number;
 }
 
@@ -215,6 +216,7 @@ export interface AudioAsset {
   format: string;
   sourceType?: 'audio' | 'video';
   originalVideoFileName?: string;
+  sourceVideo?: ImageAsset; // Retained visuals for an optional voice-video background.
   volume?: number; // 0.0 to 2.0 (default 1.0, >1.0 = Boost ⚡)
   muted?: boolean; // default false
   denoise?: boolean; // default false (AI Studio Denoise)

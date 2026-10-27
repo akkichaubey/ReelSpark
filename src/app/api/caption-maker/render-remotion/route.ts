@@ -183,6 +183,8 @@ export async function POST(req: NextRequest) {
     const imagePosition = rawImagePosition || body.image?.position || 'center';
     const imageScale = body.image?.scale ?? body.imageScale ?? 100;
     const mediaType: 'image' | 'video' = body.image?.mediaType || body.mediaType || 'image';
+    // The extracted spoken track already contains this video's sound.
+    const backgroundVideoMuted = body.image?.muteSourceAudio === true || Boolean(body.audio?.sourceVideo?.id && body.audio.sourceVideo.id === body.image?.id);
 
     // 4. Prepare project render directory
     const safeProjectId = sanitizeFilename(projectId);
@@ -284,6 +286,7 @@ export async function POST(req: NextRequest) {
               imagePosition,
               imageScale,
               mediaType,
+              backgroundVideoMuted,
               voiceVolume,
               voiceMuted,
               bgMusicPath,
@@ -402,6 +405,7 @@ export async function POST(req: NextRequest) {
       imagePosition,
       imageScale,
       mediaType,
+      backgroundVideoMuted,
       voiceVolume,
       voiceMuted,
       bgMusicPath,

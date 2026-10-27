@@ -1,6 +1,7 @@
 'use client';
 import { accountCache, ACCOUNT_WORKSPACE_FLUSH_EVENT } from '@/lib/account-cache';
 import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
+import { voiceVideoBackgroundUpdates } from '@/lib/caption-maker/voice-video-background';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -1234,7 +1235,7 @@ function CaptionMakerPageContent() {
     }
   };
 
-  const handleAudioUploaded = (audio: AudioAsset) => {
+  const handleAudioUploaded = (audio: AudioAsset, useVideoAsBackground = false) => {
     if (audioRef.current) {
       try {
         audioRef.current.pause();
@@ -1247,6 +1248,7 @@ function CaptionMakerPageContent() {
     const isDifferentAudio = project.audio?.fileUrl !== audio.fileUrl;
     const nextProject: CaptionProject = {
       ...project,
+      ...voiceVideoBackgroundUpdates(project, audio, useVideoAsBackground),
       audio,
       transcript: isDifferentAudio ? [] : project.transcript,
       captionGroups: isDifferentAudio ? [] : project.captionGroups,
@@ -2213,8 +2215,8 @@ function CaptionMakerPageContent() {
                     }));
                   }
                 }}
-                onAudioChange={(aud) => {
-                  if (aud) handleAudioUploaded(aud);
+                onAudioChange={(aud, useVideoAsBackground) => {
+                  if (aud) handleAudioUploaded(aud, useVideoAsBackground);
                   else {
                     handleAudioRemoved();
                   }
