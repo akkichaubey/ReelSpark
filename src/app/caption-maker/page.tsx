@@ -27,6 +27,9 @@ import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSectio
 import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import { TranscriptEditor } from '@/components/caption-maker/TranscriptEditor';
 import { CaptionTimeline } from '@/components/caption-maker/CaptionTimeline';
+import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
+import type { SavedReel } from '@/lib/saved-reels/types';
+import { saveReel } from '@/lib/saved-reels/client';
 import { CaptionStylePanel } from '@/components/caption-maker/CaptionStylePanel';
 import { ThumbnailStylePanel, ThumbnailSubTab } from '@/components/caption-maker/ThumbnailStylePanel';
 import { ThumbnailPreview } from '@/components/caption-maker/ThumbnailPreview';
@@ -85,6 +88,10 @@ function CaptionMakerPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const savedReelId = searchParams.get('savedReel');
+  const [savedReelSession, setSavedReelSession] = useState<SavedReel | null>(null);
+  const [savedReelLoadError, setSavedReelLoadError] = useState<string | null>(null);
+  const projectLoadSequence = useRef(0);
   const { user, isLoading: authLoading, openAuthModal, checkAuth, logout } = useAuthStore();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
@@ -118,6 +125,7 @@ function CaptionMakerPageContent() {
   // UI Panels & Tabs
   const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
   const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('thumbnail');
+  const [compactPanel, setCompactPanel] = useState<'preview' | 'media' | 'style'>('preview');
   const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
@@ -168,9 +176,28 @@ function CaptionMakerPageContent() {
 
   // Load project from LocalStorage or dynamically resolve from URL / Server Projects
   const loadProjectFromStorage = useCallback(async () => {
+    const loadSequence = ++projectLoadSequence.current;
     const searchParams =
       typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     const urlClipId = searchParams?.get('clipId') || null;
+    const requestedReelId = searchParams?.get('savedReel');
+    if (requestedReelId) {
+      setSavedReelSession(null);
+      setSavedReelLoadError(null);
+      try {
+        const response = await fetch(`/api/saved-reels?id=${encodeURIComponent(requestedReelId)}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (loadSequence !== projectLoadSequence.current) return;
+        if (!response.ok || !data.reel) throw new Error(data.error || 'Saved reel unavailable');
+        const restored = data.reel.project as CaptionProject;
+        setSavedReelSession(data.reel);
+        setSavedReelLoadError(null);
+        setProject(restored); setHistory([restored]); setHistoryIndex(0);
+        setAudioDuration(restored.audio?.duration || restored.image?.duration || 0);
+        setLeftTab(restored.transcript.length ? 'transcript' : 'assets');
+      } catch (error) { if (loadSequence === projectLoadSequence.current) setSavedReelLoadError(error instanceof Error ? error.message : 'Could not open saved reel'); }
+      return;
+    }
     const urlProjectId = searchParams?.get('projectId') || null;
     const urlLang = (searchParams?.get('lang') === 'hi' ? 'hi' : 'en') as 'en' | 'hi';
 
@@ -286,6 +313,7 @@ function CaptionMakerPageContent() {
 
     if (urlProjectId && restoredParsed?.id !== urlProjectId) restoredParsed = null;
 
+    if (loadSequence !== projectLoadSequence.current) return;
     // If localStorage matches the requested clipId (or no specific clipId is in the URL), apply it immediately
     if (restoredParsed && (!urlClipId || restoredParsed.sourceClipId === urlClipId) && (!urlProjectId || restoredParsed.id === urlProjectId)) {
       if (
@@ -296,7 +324,7 @@ function CaptionMakerPageContent() {
         restoredParsed.captionGroups = groupTranscriptWords(restoredParsed.transcript, 4);
       }
       try {
-        accountCache.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
+        if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
       } catch {}
       setProject(restoredParsed);
       setHistory([restoredParsed]);
@@ -373,8 +401,9 @@ function CaptionMakerPageContent() {
               audioOverride
             );
             try {
-              accountCache.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
+              if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(dynamicReelProj));
             } catch {}
+            if (loadSequence !== projectLoadSequence.current) return;
             setProject(dynamicReelProj);
             setHistory([dynamicReelProj]);
             setHistoryIndex(0);
@@ -400,6 +429,7 @@ function CaptionMakerPageContent() {
     ) {
       fallbackProj.captionGroups = groupTranscriptWords(fallbackProj.transcript, 4);
     }
+    if (loadSequence !== projectLoadSequence.current) return;
     setProject(fallbackProj);
     setHistory([fallbackProj]);
     setHistoryIndex(0);
@@ -415,7 +445,7 @@ function CaptionMakerPageContent() {
     if (recovery.hasRecovery && recovery.recoverySnapshot) {
       setCrashRecoverySnapshot(recovery.recoverySnapshot);
     }
-  }, []);
+  }, [savedReelId]);
 
   // Initialize from LocalStorage / Server and listen for clip updates from Clip Finder
   useEffect(() => {
@@ -425,7 +455,7 @@ function CaptionMakerPageContent() {
     void loadProjectFromStorage();
 
     const handleReelProjectUpdated = () => {
-      loadProjectFromStorage();
+      if (!savedReelId) loadProjectFromStorage();
     };
 
     window.addEventListener('reel_project_updated', handleReelProjectUpdated);
@@ -437,7 +467,7 @@ function CaptionMakerPageContent() {
       window.removeEventListener('storage', handleReelProjectUpdated);
       window.removeEventListener('popstate', handleReelProjectUpdated);
     };
-  }, [authLoading, loadProjectFromStorage, user?.id]);
+  }, [authLoading, loadProjectFromStorage, user?.id, savedReelId]);
 
   // Switch project transcript between English, Hindi, and Hinglish
   const handleSwitchLanguage = (lang: 'en' | 'hi' | 'hinglish') => {
@@ -445,7 +475,7 @@ function CaptionMakerPageContent() {
     updateProjectWithHistory((prev) => {
       const switched = switchProjectLanguage(prev, lang);
       try {
-        accountCache.setItem('reel_caption_project_v2', JSON.stringify(switched));
+        if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(switched));
       } catch {}
       return switched;
     });
@@ -473,7 +503,8 @@ function CaptionMakerPageContent() {
   const updateProjectWithHistory = useCallback(
     (updater: (prev: CaptionProject) => CaptionProject) => {
       setProject((prev) => {
-        const next = updater(prev);
+        const updated = updater(prev);
+        const next = savedReelId ? { ...updated, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined, renderedSrtUrl: undefined } : updated;
         setHistory((prevHist) => {
           const cut = prevHist.slice(0, historyIndex + 1);
           return [...cut, next];
@@ -482,7 +513,7 @@ function CaptionMakerPageContent() {
         return next;
       });
     },
-    [historyIndex]
+    [historyIndex, savedReelId]
   );
 
   const undo = () => {
@@ -684,6 +715,7 @@ function CaptionMakerPageContent() {
       isInitialMount.current = false;
       return;
     }
+    if (savedReelId) return;
     setAutosaveStatus('saving');
     setCloudSaveState('idle');
     setCloudSaveError(null);
@@ -719,7 +751,7 @@ function CaptionMakerPageContent() {
       window.clearTimeout(cloudTimer);
       if (cloudAutosaveTimerRef.current === cloudTimer) cloudAutosaveTimerRef.current = null;
     };
-  }, [persistProjectToCloud, project, user?.id]);
+  }, [persistProjectToCloud, project, user?.id, savedReelId]);
 
   // The project itself lives in the user's browser cache. Keep a server-side
   // inventory of every asset reachable from the current project, undo history,
@@ -735,6 +767,7 @@ function CaptionMakerPageContent() {
   // Save project to localStorage and generate manual snapshot
   useEffect(() => {
     const flush = () => {
+      if (savedReelId) return;
       if (saveProjectToLocalStorage(project)) setAutosaveStatus('saved');
     };
     const onVisibilityChange = () => { if (document.visibilityState === 'hidden') flush(); };
@@ -746,9 +779,16 @@ function CaptionMakerPageContent() {
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [project]);
+  }, [project, savedReelId]);
 
   const handleSaveProject = async () => {
+    if (savedReelId) {
+      if (!savedReelSession) return;
+      setCloudSaveState('saving');
+      try { const reel = await saveReel(project, { id: savedReelSession.id, revision: savedReelSession.revision }); setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); setCloudSaveState('saved'); }
+      catch (error) { setCloudSaveError(error instanceof Error ? error.message : 'Reel save failed'); setCloudSaveState('error'); }
+      return;
+    }
     if (cloudAutosaveTimerRef.current !== null) {
       window.clearTimeout(cloudAutosaveTimerRef.current);
       cloudAutosaveTimerRef.current = null;
@@ -777,7 +817,7 @@ function CaptionMakerPageContent() {
     if (restored.audio?.duration) {
       setAudioDuration(restored.audio.duration);
     }
-    saveProjectToLocalStorage(restored);
+    if (!savedReelId) saveProjectToLocalStorage(restored);
     setCrashRecoverySnapshot(null);
   };
 
@@ -789,10 +829,17 @@ function CaptionMakerPageContent() {
     if (duplicated.audio?.duration) {
       setAudioDuration(duplicated.audio.duration);
     }
-    saveProjectToLocalStorage(duplicated);
+    if (!savedReelId) saveProjectToLocalStorage(duplicated);
   };
 
   const handleResetProject = () => {
+    if (savedReelId && savedReelSession) {
+      if (window.confirm('Discard unsaved edits and restore the last saved version of this reel?')) {
+        const restored = structuredClone(savedReelSession.project);
+        setProject(restored); setHistory([restored]); setHistoryIndex(0); setAudioDuration(restored.audio?.duration || 0); setCurrentTime(0); setIsPlaying(false); setRenderResult(null);
+      }
+      return;
+    }
     if (
       window.confirm(
         'Reset current project and clear history? Any unsaved edits will be lost.'
@@ -816,7 +863,7 @@ function CaptionMakerPageContent() {
       setTranscriptionError(null);
       setCrashRecoverySnapshot(null);
       try {
-        accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
+        if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
         accountCache.removeItem('reel_caption_project_v1');
       } catch {}
     }
@@ -1156,7 +1203,7 @@ function CaptionMakerPageContent() {
 
         setProject(healed);
         try {
-          accountCache.setItem('reel_caption_project_v2', JSON.stringify(healed));
+          if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(healed));
         } catch {}
         setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
         setHistoryIndex((prevIdx) => prevIdx + 1);
@@ -1176,7 +1223,7 @@ function CaptionMakerPageContent() {
         setIsTranscribing(false);
       }
     },
-    [historyIndex, audioDuration]
+    [historyIndex, audioDuration, savedReelId]
   );
 
   // AI Smart Silence & Filler Trimmer ("AI Jump-Cutter")
@@ -1270,7 +1317,7 @@ function CaptionMakerPageContent() {
     }
 
     try {
-      accountCache.setItem('reel_caption_project_v2', JSON.stringify(nextProject));
+      if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(nextProject));
     } catch {}
 
     setAudioDuration(audio.duration);
@@ -1331,7 +1378,7 @@ function CaptionMakerPageContent() {
     setLeftTab('assets');
 
     try {
-      accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
+      if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
       accountCache.removeItem('reel_caption_project_v1');
     } catch (e) {
       console.warn('Failed to update storage on audio removal:', e);
@@ -1364,7 +1411,7 @@ function CaptionMakerPageContent() {
     setCenterViewMode('video');
 
     try {
-      accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
+      if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
     } catch {}
   };
 
@@ -1423,6 +1470,7 @@ function CaptionMakerPageContent() {
   // Keep existing v4 projects intact; only sync projects with no valid acoustic sync version.
   useEffect(() => {
     if (
+      !savedReelId &&
       project.audio?.fileUrl &&
       project.audio.fileUrl !== '/sample-audio.mp3' &&
       (!project.isAudioSynced || ![4, 5].includes(project.syncVersion || 0) || project.transcript.length === 0) &&
@@ -1430,7 +1478,7 @@ function CaptionMakerPageContent() {
     ) {
       syncAudioWithTranscript(project, true);
     }
-  }, [project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion, project.transcript.length]);
+  }, [savedReelId, project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion, project.transcript.length]);
 
   const handleUpdateGroups = (groups: CaptionGroup[]) => {
     // Flatten words
@@ -1544,6 +1592,7 @@ function CaptionMakerPageContent() {
 
     // Mandatory Pre-Render Check 1: Ensure audio & text are 100% acoustic-synced before spending time rendering
     if (
+      !savedReelId &&
       activeProj.audio?.fileUrl &&
       activeProj.audio.fileUrl !== '/sample-audio.mp3' &&
       (!activeProj.isAudioSynced || ![4, 5].includes(activeProj.syncVersion || 0))
@@ -1576,7 +1625,7 @@ function CaptionMakerPageContent() {
     );
 
     // Auto-generate or resolve thumbnail data URL if mergeThumbnail is enabled
-    let thumbnailDataUrl = activeProj.thumbnailUrl;
+    let thumbnailDataUrl = activeProj.thumbnailUrl?.startsWith('data:image/') ? activeProj.thumbnailUrl : undefined;
     const shouldMerge = options?.mergeThumbnail !== false;
 
     if (shouldMerge && !thumbnailDataUrl && typeof window !== 'undefined') {
@@ -1639,6 +1688,7 @@ function CaptionMakerPageContent() {
       speaker1Color: activeProj.speaker1Color,
       speaker2Color: activeProj.speaker2Color,
       outputSettings: activeProj.outputSettings,
+      trimRange: activeProj.trimRange,
       thumbnailDataUrl,
       mergeThumbnail: shouldMerge,
       thumbnailMergeMode: options?.thumbnailMergeMode || 'intro_and_poster',
@@ -1808,6 +1858,8 @@ function CaptionMakerPageContent() {
     );
   }
 
+  if (savedReelId && !savedReelSession) return <DashboardLayout title="Saved Reel"><div className="p-6" role={savedReelLoadError ? 'alert' : 'status'}>{savedReelLoadError || 'Loading saved reel…'} <Link href="/saved-reels" className="text-amber-400">Return to Saved Reels</Link></div></DashboardLayout>;
+
   return (
     <DashboardLayout
       title="AI Reel Maker"
@@ -1889,9 +1941,9 @@ function CaptionMakerPageContent() {
         )}
 
         {/* Caption Studio Workspace Toolbar */}
-        <div className="h-12 border-b border-zinc-800 bg-zinc-900/60 px-4 flex items-center justify-between shrink-0 z-20 gap-3">
+        <div className="min-h-12 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2 flex flex-wrap items-center justify-between shrink-0 z-20 gap-2">
           {/* Project Name Editable & Language Switcher */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <input
               type="text"
               value={project.title}
@@ -2062,12 +2114,12 @@ function CaptionMakerPageContent() {
                     ? 'Cloud Synced'
                     : cloudSaveState === 'error'
                       ? 'Local only'
-                      : autosaveStatus === 'saving' ? 'Saving locally...' : 'Local autosave'}
+                      : savedReelId ? 'Explicit reel save' : autosaveStatus === 'saving' ? 'Saving locally...' : 'Local autosave'}
               </span>
             </div>
 
             {/* Save */}
-            <button
+            {!savedReelId && <button
               onClick={handleSaveProject}
               disabled={cloudSaveState === 'saving'}
               aria-label={cloudSaveState === 'error' ? `Saved locally only. ${cloudSaveError || ''}` : cloudSaveState === 'saved' ? 'Project saved to your account' : 'Save project to your account'}
@@ -2101,11 +2153,12 @@ function CaptionMakerPageContent() {
                   <span className="hidden sm:inline">Save</span>
                 </>
               )}
-            </button>
+            </button>}
 
             {/* Platform & Canvas Setting Trigger */}
             <button
               onClick={() => {
+                setCompactPanel('style');
                 if (rightTab === 'canvas') {
                   setRightTab('style');
                 } else {
@@ -2144,9 +2197,12 @@ function CaptionMakerPageContent() {
         </div>
 
       {/* Main 3-Column Studio Editor Workspace */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+      <div className="flex shrink-0 gap-1 border-b border-zinc-800 p-1.5 text-xs xl:hidden" role="tablist" aria-label="Editor panel">
+        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: 'Media & Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</button>)}
+      </div>
+      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
         {/* LEFT COLUMN: Assets & Audio and Transcript Tabs */}
-        <section className="w-full md:w-80 lg:w-96 flex flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0">
+        <section className={`${compactPanel === 'media' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
           {/* Tab Headers */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
             <button
@@ -2308,7 +2364,7 @@ function CaptionMakerPageContent() {
         </section>
 
         {/* CENTER COLUMN: Real-Time Canvas Video Preview OR Live Thumbnail Cover Output */}
-        <main className="flex-1 flex flex-col bg-zinc-950 items-center justify-center p-3 sm:p-4 overflow-hidden relative">
+        <main className={`${compactPanel === 'preview' ? 'flex' : 'hidden'} xl:flex flex-1 min-w-0 min-h-0 flex-col bg-zinc-950 items-center justify-center p-3 sm:p-4 overflow-hidden relative`}>
           <div className="flex flex-col items-center justify-center w-full h-full relative">
             {/* Center Mode Switcher Tabs */}
             <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md mb-2 px-1 text-xs">
@@ -2412,7 +2468,7 @@ function CaptionMakerPageContent() {
         </main>
 
         {/* RIGHT COLUMN: Caption Style & Thumbnail Style Tabs */}
-        <section className="w-full md:w-80 lg:w-96 flex flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 min-h-0">
+        <section className={`${compactPanel === 'style' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
           {/* Tab Headers: Clean 2 tabs only */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
             <button
@@ -2492,6 +2548,7 @@ function CaptionMakerPageContent() {
       </div>
 
       {/* BOTTOM SECTION: Full Interactive Scrubber & Audio Waveform Timeline */}
+      {savedReelLoadError ? <div role="alert" className="bg-red-950 px-4 py-3 text-sm text-red-200">{savedReelLoadError} · <a href="/saved-reels">Return to Saved Reels</a></div> : (!savedReelId || savedReelSession) && <SavedReelActions project={project} session={savedReelSession} onUpdateProject={updates => updateProjectWithHistory(previous => ({ ...previous, ...updates, updatedAt: new Date().toISOString() }))} onSaved={(reel) => { setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); if (!savedReelId) router.push(`/reel-maker?savedReel=${encodeURIComponent(reel.id)}`); }} />}
       <footer className="shrink-0">
         <CaptionTimeline
           showCaptionWords={false}

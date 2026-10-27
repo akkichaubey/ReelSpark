@@ -5,7 +5,7 @@ import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath, containsPathInsideProject, listProjects } from '@/lib/storage';
 import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
 import { mediaLifecycleEnabled } from '@/lib/cloudflare/media-lifecycle-state';
-import { deleteOwnedClippingProject } from '@/lib/cloudflare/media-lifecycle';
+import { deleteOwnedClippingProject, deleteOwnedClippingProjectDirect } from '@/lib/cloudflare/media-lifecycle';
 import { projectCloudEnabled } from '@/lib/cloudflare/project-documents';
 import { privateMediaEnabled } from '@/lib/cloudflare/private-media';
 import { fallbackJobs } from '@/lib/clipping-studio/export-job-registry';
@@ -21,7 +21,7 @@ export async function DELETE(
     if (access.error) return access.error;
     const { id: projectId } = await params;
     if (!/^[a-zA-Z0-9_-]{1,160}$/.test(projectId)) return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
-    const ownedProjectDir = await clippingProjectAccess(access.user.id, projectId);
+    const ownedProjectDir = await clippingProjectAccess(access.user.id, projectId, false, true);
     if (ownedProjectDir) {
       if ((await listProjects(access.user.id)).some(project => containsPathInsideProject(project, ownedProjectDir))) {
         return NextResponse.json({ error: 'This media is used by a linked AI project. Delete the AI project first to preserve shared media.' }, { status: 409 });
@@ -41,6 +41,10 @@ export async function DELETE(
     if (mediaLifecycleEnabled()) {
       await deleteOwnedClippingProject(access.user.id, projectId);
       return NextResponse.json({ success: true, cleanupPending: true, message: 'Project deleted; private objects are queued for maintenance cleanup' }, { status: 202 });
+    }
+    if (privateMediaEnabled() && ownedProjectDir && !projectCloudEnabled() && process.env.CLOUD_PROJECT_METADATA_ENABLED !== 'true') {
+      await deleteOwnedClippingProjectDirect(access.user.id, projectId);
+      return NextResponse.json({ success: true, message: 'Project deleted; independently saved reels retained' });
     }
     if (projectCloudEnabled() || process.env.CLOUD_PROJECT_METADATA_ENABLED === 'true' || privateMediaEnabled()) {
       return NextResponse.json({ error: 'Cloud deletion requires lifecycle migration/configuration; local project retained' }, { status: 503 });

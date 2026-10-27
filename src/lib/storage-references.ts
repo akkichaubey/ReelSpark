@@ -66,6 +66,12 @@ export async function loadStorageReferenceSnapshot(): Promise<StorageReferenceSn
   let hasInventoryRecord = false;
   const ownersWithSyncedReferences = new Set<string>();
   let valid = true;
+  try {
+    const { savedReelMediaReferences } = await import('./saved-reels/storage');
+    for (const reference of await savedReelMediaReferences()) references.add(normalizeManagedStorageReference(reference));
+  } catch {
+    valid = false; // A missing cloud catalog must never make saved media look orphaned.
+  }
   const directory = path.join(APP_CONFIG.storageRoot, REFERENCE_DIR);
   let ownerDirs: string[];
   try { ownerDirs = await fs.readdir(directory); }
@@ -126,7 +132,7 @@ export function isStoragePathReferencedByAnotherProject(
   projectId: string,
   targetDirectory: string,
 ): boolean {
-  if (!snapshot.projectInventoryValid) return true;
+  if (!snapshot.valid || !snapshot.projectInventoryValid) return true;
   const target = path.resolve(targetDirectory);
   for (const [projectKey, references] of snapshot.projectReferences) {
     if (projectKey === `${scope}:${projectId}`) continue;

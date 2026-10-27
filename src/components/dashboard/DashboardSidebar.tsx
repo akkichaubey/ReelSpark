@@ -17,6 +17,7 @@ import {
   X,
   Users,
   BookOpen,
+  Library,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ReelSparkLogo } from '@/components/ReelSparkLogo';
@@ -86,6 +87,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           href: '/clipping-studio?tab=export',
           icon: Download,
         },
+        { id: 'saved-reels', label: 'Saved Reels', href: '/saved-reels', icon: Library },
       ],
     },
     {

@@ -15,9 +15,11 @@ import { DEFAULT_OUTPUT_SETTINGS } from '@/lib/caption-maker/sample-data';
 import { saveBase64Image, mergeThumbnailIntoVideo, ThumbnailMergeMode } from '@/lib/caption-maker/thumbnail-merger';
 import { validateCaptionRenderRequest } from '@/lib/media-validation';
 import { registerStorageTask } from '@/lib/storage-runtime';
+import { prepareRenderTrim } from '@/lib/caption-maker/render-trim';
 
 export async function POST(req: NextRequest) {
   let finishStorageTask: (() => void) | undefined;
+  let cleanupTrim: (() => Promise<void>) | undefined;
   const renderAbort = new AbortController();
   const requestAbort = () => renderAbort.abort();
   req.signal.addEventListener('abort', requestAbort, { once: true });
@@ -166,8 +168,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Resolve transcript words and groups
-    const resolvedGroups: CaptionGroup[] = captionGroups || [];
-    const resolvedTranscript: TranscriptWord[] =
+    let resolvedGroups: CaptionGroup[] = captionGroups || [];
+    let resolvedTranscript: TranscriptWord[] =
       rawTranscript ||
       body.transcript ||
       (resolvedGroups.length > 0 ? resolvedGroups.flatMap((g) => g.words) : []);
@@ -201,6 +203,12 @@ export async function POST(req: NextRequest) {
       cancel: () => renderAbort.abort(),
     });
 
+    const trimmed = await prepareRenderTrim({ audioPath, imagePath, mediaType, range: body.trimRange, groups: resolvedGroups, words: resolvedTranscript, sfxCues: body.sfxCues, directory: renderDir, signal: renderAbort.signal });
+    cleanupTrim = trimmed.cleanup;
+    imagePath = trimmed.imagePath; audioPath = trimmed.audioPath;
+    resolvedGroups = trimmed.groups; resolvedTranscript = trimmed.words;
+    body.sfxCues = trimmed.sfxCues;
+
     // 5. Write SRT Subtitle File
     const srtContent =
       captionStyle.captionMode === 'word-by-word'
@@ -220,7 +228,7 @@ export async function POST(req: NextRequest) {
     const bgMusicFadeIn: number = typeof bgMusic?.fadeInDuration === 'number' ? bgMusic.fadeInDuration : 0.8;
     const bgMusicFadeOut: number = typeof bgMusic?.fadeOutDuration === 'number' ? bgMusic.fadeOutDuration : 1.2;
     const bgMusicAutoDucking: boolean = bgMusic?.autoDucking !== false;
-    const bgMusicOffset: number = typeof bgMusic?.startOffset === 'number' ? bgMusic.startOffset : 0;
+    const bgMusicOffset: number = (typeof bgMusic?.startOffset === 'number' ? bgMusic.startOffset : 0) + trimmed.offset;
 
     if (bgMusic?.fileUrl) {
       if (bgMusic.fileUrl.startsWith('/audio/bgm/')) {
@@ -233,6 +241,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (bgMusicPath && !fs.existsSync(/*turbopackIgnore: true*/ bgMusicPath)) await restorePrivateMedia(user.id, bgMusicPath);
     if ((bgMusicPath && !(await canUseRenderMedia(user.id, bgMusicPath))) ||
         (rawThumbnailPath && !(await canUseRenderMedia(user.id, rawThumbnailPath)))) {
       return NextResponse.json({ error: 'Media not found' }, { status: 404 });
@@ -330,6 +339,7 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   } finally {
+    await cleanupTrim?.();
     req.signal.removeEventListener('abort', requestAbort);
     finishStorageTask?.();
   }

@@ -1,13 +1,43 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { APP_CONFIG } from '../config';
-import { assertSafePath } from '../storage';
+import { assertSafePath, containsPathInsideProject } from '../storage';
 import { mediaUserNamespace } from '../media-access';
 import { d1Query } from './d1';
 import { deletePrivateObject, listPrivateObjects } from './private-r2';
-import { reservePrivateMediaOperation } from './private-media';
+import { reservePrivateMediaOperation, deletePrivateMedia } from './private-media';
 import { mediaLifecycleEnabled } from './media-lifecycle-state';
 import { fromStorageReference } from './storage-references';
+
+/** Safe deletion when private media is configured but the optional janitor is disabled. */
+export async function deleteOwnedClippingProjectDirect(ownerId: string, id: string): Promise<void> {
+  if (!/^[a-zA-Z0-9_-]{1,160}$/.test(id)) throw new Error('Invalid project ID');
+  const directory = assertSafePath(path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects', id));
+  const owner = JSON.parse(await fs.readFile(path.join(directory, '.owner.json'), 'utf8'));
+  if (owner.userId !== ownerId) throw new Error('Project not found');
+  const documents = await d1Query<{ kind: string; id: string; payload: string }>('SELECT kind, id, payload FROM project_documents WHERE owner_user_id = ?', [ownerId]);
+  if (!documents.success) throw new Error('Project reference catalog unavailable');
+  for (const document of documents.results) {
+    if (document.kind === 'clipping' && document.id === id || document.kind.startsWith('deleted-')) continue;
+    if (containsPathInsideProject(JSON.parse(document.payload), directory)) throw new Error('Project media is referenced by another saved project');
+  }
+  const now = new Date().toISOString();
+  const fenced = await d1Query<{ id: string }>("INSERT INTO project_documents (kind,id,owner_user_id,payload,updated_at) VALUES ('deleted-clipping',?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET updated_at=excluded.updated_at WHERE project_documents.owner_user_id=excluded.owner_user_id RETURNING id", [id, ownerId, '{}', now]);
+  if (!fenced.success || fenced.results.length !== 1) throw new Error('Could not protect project deletion state');
+  const prefix = `clipping-studio/projects/${id}/`;
+  const media = await d1Query<{ relative_path: string }>('SELECT relative_path FROM private_media WHERE owner_user_id = ? AND substr(relative_path,1,?) = ?', [ownerId, prefix.length, prefix]);
+  if (!media.success) throw new Error('Project media catalog unavailable');
+  for (const item of media.results) {
+    if (!item.relative_path.startsWith(prefix)) throw new Error('Invalid project media path');
+    await deletePrivateMedia(ownerId, assertSafePath(path.join(APP_CONFIG.storageRoot, item.relative_path)));
+  }
+  const removed = await d1Query("DELETE FROM project_documents WHERE kind = 'clipping' AND id = ? AND owner_user_id = ?", [id, ownerId]);
+  if (!removed.success) throw new Error('Could not remove project metadata');
+  const realRoot = await fs.realpath(path.dirname(directory));
+  const realDirectory = assertSafePath(await fs.realpath(directory), realRoot);
+  if (path.relative(realRoot, realDirectory) !== id) throw new Error('Unsafe project directory');
+  await fs.rm(realDirectory, { recursive: true, force: true });
+}
 
 /** Fence Clip Finder project recovery, delete its catalog records, and queue R2 cleanup. */
 export async function deleteOwnedClipFinderProject(ownerId: string, id: string): Promise<void> {

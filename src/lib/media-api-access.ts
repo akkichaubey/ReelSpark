@@ -18,9 +18,9 @@ export async function requireMediaUser(req: Request): Promise<Access> {
   return { user };
 }
 
-export async function clippingProjectAccess(userId: string, projectId: string, create = false): Promise<string | null> {
+export async function clippingProjectAccess(userId: string, projectId: string, create = false, allowDeleted = false): Promise<string | null> {
   if (typeof projectId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(projectId)) return null;
-  if (await clippingProjectDeleted(projectId)) return null;
+  if (!allowDeleted && await clippingProjectDeleted(projectId)) return null;
   const base = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
   const directory = assertSafePath(path.join(base, projectId), base);
   if (create) {

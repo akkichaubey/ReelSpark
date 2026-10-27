@@ -764,6 +764,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
       ...original,
       id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: `${original.name} (Copy)`,
+      savedReelId: undefined,
       orderIndex: project.clips.length,
       createdAt: now,
       updatedAt: now,

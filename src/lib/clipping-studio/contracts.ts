@@ -302,6 +302,7 @@ export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 export const ClipSchema = z.object({
   id: z.string(),
   sourceCandidateKey: z.string().optional(),
+  savedReelId: z.string().optional(),
   projectId: z.string(),
   mediaAssetId: z.string(),
   name: z.string().min(1, 'Clip name is required'),

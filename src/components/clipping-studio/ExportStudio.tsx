@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Download,
   Play,
@@ -68,6 +69,20 @@ export const ExportStudio: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [queueFilter, setQueueFilter] = useState<'all' | 'running' | 'completed' | 'failed'>('all');
+  const [savingReelJob, setSavingReelJob] = useState<string | null>(null);
+  const [savedReelJobs, setSavedReelJobs] = useState<Record<string, string>>({});
+  const [libraryMessage, setLibraryMessage] = useState('');
+  const saveCompletedReel = async (job: ExportJob) => {
+    const exportUrl = getExportDownloadUrl(job.outputPath);
+    if (!exportUrl || savingReelJob) return;
+    setSavingReelJob(job.id); setLibraryMessage('Saving completed video…');
+    try {
+      const response = await fetch('/api/saved-reels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exportUrl, title: job.outputPath?.split(/[/\\]/).pop() || 'Completed reel', originProjectId: activeProject?.id, originProjectName: activeProject?.name }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not save video');
+      setSavedReelJobs(previous => ({ ...previous, [job.id]: data.reel.id })); setLibraryMessage('Completed video saved independently to Saved Reels.');
+    } catch (error) { setLibraryMessage(error instanceof Error ? error.message : 'Save failed'); }
+    finally { setSavingReelJob(null); }
+  };
 
   const clips = activeProject?.clips || [];
   const recipes = activeProject?.mergeRecipes || [];
@@ -203,6 +218,7 @@ export const ExportStudio: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      {libraryMessage && <p role="status" className="text-sm text-amber-200">{libraryMessage} <Link href="/saved-reels" className="underline">Open Saved Reels</Link></p>}
       {/* Configuration & Action Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left 7 Columns: Export Job Setup */}
@@ -662,6 +678,7 @@ export const ExportStudio: React.FC = () => {
                               <span>Download</span>
                             </a>
                           )}
+                          {job.status === 'completed' && /\.(mp4|mov|webm)$/i.test(job.outputPath || '') && getExportDownloadUrl(job.outputPath) && (savedReelJobs[job.id] ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(savedReelJobs[job.id])}`} onClick={event => event.stopPropagation()} className="text-emerald-400">Saved · Edit Reel</Link> : <button disabled={Boolean(savingReelJob)} onClick={event => { event.stopPropagation(); void saveCompletedReel(job); }} className="font-semibold text-amber-400 disabled:opacity-40">{savingReelJob === job.id ? 'Saving…' : 'Save Reel'}</button>)}
                           {job.outputPath && (
                             <button
                               type="button"

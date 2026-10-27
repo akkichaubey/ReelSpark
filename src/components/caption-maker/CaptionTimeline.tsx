@@ -240,7 +240,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
     <div className="bg-zinc-950 border-t border-zinc-800 p-3 select-none flex flex-col gap-2 shadow-2xl">
       {/* Top Bar: Playback Controls, Timer, Trim Info, Zoom */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={onTogglePlay}
             className="w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-400 text-black flex items-center justify-center transition-transform active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"

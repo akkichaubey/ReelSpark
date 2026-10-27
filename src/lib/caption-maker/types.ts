@@ -370,6 +370,7 @@ export interface CaptionProject {
   renderedVideoPath?: string;
   renderedVideoUrl?: string;
   renderedSrtPath?: string;
+  renderedSrtUrl?: string;
   rawTranscriptHindi?: string;
   rawTranscriptEnglish?: string;
   rawTranscriptHinglish?: string;

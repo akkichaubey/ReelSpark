@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { createHash } from 'node:crypto';
 import { APP_CONFIG, getFfmpegPath } from '@/lib/config';
 import { assertSafePath, sanitizeFilename } from '@/lib/storage';
 import { extractClipAudio } from '@/lib/ffmpeg';
@@ -11,6 +12,10 @@ import { AudioAsset, ImageAsset } from '@/lib/caption-maker/types';
 import { requireMediaUser } from '@/lib/media-api-access';
 import { canReadMedia, mediaUserNamespace, recordMediaOwner } from '@/lib/media-access';
 import { backupPrivateMedia } from '@/lib/cloudflare/private-media';
+import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
+import { probeVideo } from '@/lib/ffmpeg';
+import { loadProject } from '@/lib/storage';
+import type { SyncedPhraseSegment } from '@/lib/caption-maker/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,7 +36,7 @@ export async function POST(req: NextRequest) {
       projectId,
     } = body;
 
-    if (!clipId || typeof startMs !== 'number' || typeof endMs !== 'number' || endMs <= startMs) {
+    if (typeof clipId !== 'string' || !clipId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs) {
       return NextResponse.json(
         { success: false, error: 'Invalid clip boundaries provided.' },
         { status: 400 }
@@ -40,6 +45,10 @@ export async function POST(req: NextRequest) {
 
     // 1. Resolve source file on disk
     let resolvedSourcePath = sourcePath;
+    if (resolvedSourcePath && typeof resolvedSourcePath === 'string') {
+      assertSafePath(resolvedSourcePath);
+      if (!fs.existsSync(resolvedSourcePath)) await restorePrivateMedia(access.user.id, resolvedSourcePath);
+    }
     if (!resolvedSourcePath || !fs.existsSync(/*turbopackIgnore: true*/ resolvedSourcePath)) {
       if (sourceFilename && projectId) {
         const candidate = path.join(
@@ -69,6 +78,8 @@ export async function POST(req: NextRequest) {
     if (!(await canReadMedia(access.user.id, resolvedSourcePath))) {
       return NextResponse.json({ error: 'Media not found' }, { status: 404 });
     }
+    const metadata = await probeVideo(resolvedSourcePath);
+    if (endMs > metadata.duration * 1000 + 1) return NextResponse.json({ success: false, error: 'Clip ends after source media' }, { status: 400 });
 
     // 2. Prepare target storage directory inside caption-maker
     const userNamespace = mediaUserNamespace(access.user.id);
@@ -80,10 +91,11 @@ export async function POST(req: NextRequest) {
     }
     await recordMediaOwner(targetDir, access.user.id);
 
-    const clipSafeId = sanitizeFilename(clipId);
+    const boundsKey = createHash('sha256').update(`${resolvedSourcePath}:${startMs}:${endMs}`).digest('hex').slice(0, 20);
+    const clipSafeId = `${sanitizeFilename(clipId).slice(0, 48)}_${boundsKey}`;
     const startSec = Math.max(0, startMs / 1000);
     const endSec = Math.max(startSec + 0.1, endMs / 1000);
-    const durationSec = Math.max(0.5, endSec - startSec);
+    const durationSec = endSec - startSec;
 
     // 3. Extract precise clip audio segment
     const outputAudioPath = path.join(targetDir, `${clipSafeId}_audio.mp3`);
@@ -198,14 +210,15 @@ export async function POST(req: NextRequest) {
           storagePath: outputVideoPath,
           fileName: `${cleanTitle}.mp4`,
           fileSize: videoStat.size,
-          width: 1080,
-          height: 1920,
+          width: metadata.width,
+          height: metadata.height,
           format: 'MP4',
           fitMode: 'cover',
           position: 'center',
           scale: 100,
           mediaType: 'video',
           duration: Math.round(audioDuration * 100) / 100,
+          muteSourceAudio: true,
         };
       }
     }
@@ -217,6 +230,16 @@ export async function POST(req: NextRequest) {
       try {
         cachedSync = JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ syncMetaPath, 'utf8'));
       } catch {}
+    }
+    if (!cachedSync?.segments?.length && typeof body.sourceProjectId === 'string') {
+      const source = await loadProject(body.sourceProjectId);
+      if (source?.ownerUserId === access.user.id && source.localVideoPath === resolvedSourcePath) {
+        const segments: SyncedPhraseSegment[] = source.transcript.filter(segment => segment.end > startSec && segment.start < endSec).map(segment => ({
+          id: segment.id, start: Math.max(0, segment.start - startSec), end: Math.min(durationSec, segment.end - startSec),
+          textEnglish: segment.text, textHindi: '', speakerId: segment.speaker,
+        }));
+        if (segments.length) cachedSync = { segments };
+      }
     }
 
     return NextResponse.json({

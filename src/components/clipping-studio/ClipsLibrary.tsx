@@ -26,6 +26,8 @@ import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { formatMsToTimestamp, Clip } from '@/lib/clipping-studio/contracts';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
 import { saveProjectToLocalStorage } from '@/lib/caption-maker/project-storage';
+import { saveReel } from '@/lib/saved-reels/client';
+import { ClipReviewModal } from './ClipReviewModal';
 
 export const ClipsLibrary: React.FC = () => {
   const router = useRouter();
@@ -52,6 +54,10 @@ export const ClipsLibrary: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [bridgingClipId, setBridgingClipId] = useState<string | null>(null);
+  const [reviewClip, setReviewClip] = useState<Clip | null>(null);
+  const [selectedToSave, setSelectedToSave] = useState<string[]>([]);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [savingSelected, setSavingSelected] = useState(false);
 
   const clips = activeProject?.clips || [];
 
@@ -113,8 +119,8 @@ export const ClipsLibrary: React.FC = () => {
   };
 
   // Seamless bridge to AI Reel Maker (/reel-maker)
-  const handleSendToCaptionMaker = async (clip: Clip) => {
-    if (!activeProject || bridgingClipId) return;
+  const handleSendToCaptionMaker = async (clip: Clip, saveToLibrary = false) => {
+    if (!activeProject || bridgingClipId) return false;
     const mediaAsset = activeProject.mediaAssets.find((a) => a.id === clip.mediaAssetId);
 
     setBridgingClipId(clip.id);
@@ -132,6 +138,7 @@ export const ClipsLibrary: React.FC = () => {
           sourceFilename: mediaAsset?.filename,
           hasVideo: Boolean(mediaAsset?.metadata?.hasVideo),
           projectId: activeProject.id,
+          sourceProjectId: activeProject.sourceProjectId,
         }),
       });
 
@@ -193,7 +200,15 @@ export const ClipsLibrary: React.FC = () => {
 
       // If video asset was extracted from source video, attach it as the project image/video
       if (data.video) {
-        captionProject.image = data.video;
+        captionProject.image = { ...data.video, muteSourceAudio: true };
+      }
+      if (!data.syncedSegments?.length) { captionProject.transcript = []; captionProject.captionGroups = []; }
+      captionProject.title = clip.name;
+      if (saveToLibrary) {
+        const reel = await saveReel(captionProject, { originProjectId: activeProject.id, originProjectName: activeProject.name });
+        updateClip(clip.id, { savedReelId: reel.id });
+        setSaveMessage(`“${clip.name}” saved independently to Saved Reels.`);
+        return true;
       }
 
       saveProjectToLocalStorage(captionProject);
@@ -201,10 +216,17 @@ export const ClipsLibrary: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to bridge clip to Reel Maker:', err);
       alert(err.message || 'Failed to prepare clip for Reel Maker');
+      return false;
     } finally {
       setBridgingClipId(null);
     }
   };
+
+  const renderSaveActions = (clip: Clip) => <>
+    <input type="checkbox" aria-label={`Select ${clip.name} to save`} disabled={Boolean(clip.savedReelId) || Boolean(bridgingClipId)} checked={selectedToSave.includes(clip.id)} onChange={e => setSelectedToSave(previous => e.target.checked ? [...previous, clip.id] : previous.filter(id => id !== clip.id))} />
+    <button disabled={Boolean(bridgingClipId)} onClick={() => setReviewClip(clip)} className="rounded border border-zinc-700 px-2 py-1 text-xs text-amber-300">Edit Timing</button>
+    {clip.savedReelId ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(clip.savedReelId)}`} className="text-xs text-emerald-300">Saved · Edit Reel</Link> : <button disabled={Boolean(bridgingClipId)} onClick={() => void handleSendToCaptionMaker(clip, true)} className="rounded bg-amber-400 px-2 py-1 text-xs font-bold text-black disabled:opacity-50">{bridgingClipId === clip.id ? 'Saving…' : 'Save Reel'}</button>}
+  </>;
 
   const getDurationBadgeColor = (durationMs: number) => {
     if (durationMs <= 30000) {
@@ -217,6 +239,12 @@ export const ClipsLibrary: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Link href="/saved-reels" className="text-amber-400">Open Saved Reels</Link>
+        <button disabled={savingSelected || Boolean(bridgingClipId) || !selectedToSave.length} className="rounded bg-amber-400 px-3 py-2 font-bold text-black disabled:opacity-40" onClick={async () => { setSavingSelected(true); const targets = clips.filter(item => selectedToSave.includes(item.id) && !item.savedReelId); const failed: string[] = []; try { for (const clip of targets) if (!(await handleSendToCaptionMaker(clip, true))) failed.push(clip.id); setSelectedToSave(failed); setSaveMessage(`Saved ${targets.length - failed.length} of ${targets.length} clips.${failed.length ? ' Failed clips remain selected for retry.' : ''}`); } finally { setSavingSelected(false); } }}>Save selected clips ({selectedToSave.length})</button>
+        <span role="status" className="text-zinc-400">{saveMessage}</span>
+      </div>
+      {reviewClip && activeProject?.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId) && <ClipReviewModal key={reviewClip.id} clip={reviewClip} asset={activeProject.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId)!} onSave={updates => updateClip(reviewClip.id, updates)} onClose={() => setReviewClip(null)} />}
       {/* Header & Search */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
         <div>
@@ -372,6 +400,7 @@ export const ClipsLibrary: React.FC = () => {
                     </td>
                     <td className="py-2 px-3 text-right">
                       <div className="flex items-center justify-end space-x-1" onClick={(e) => e.stopPropagation()}>
+                        {renderSaveActions(clip)}
                         <button
                           type="button"
                           onClick={() => handleAudition(clip)}
@@ -443,6 +472,7 @@ export const ClipsLibrary: React.FC = () => {
                 }`}
               >
                 {/* Title & Renaming */}
+                <div className="flex flex-wrap items-center gap-2" onClick={event => event.stopPropagation()}>{renderSaveActions(clip)}</div>
                 <div className="space-y-1">
                   {isEditing ? (
                     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>

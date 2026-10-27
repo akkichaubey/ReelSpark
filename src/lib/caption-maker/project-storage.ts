@@ -154,6 +154,7 @@ export function duplicateProject(project: CaptionProject, newTitle?: string): Ca
   clone.renderedVideoPath = undefined;
   clone.renderedVideoUrl = undefined;
   clone.renderedSrtPath = undefined;
+  clone.renderedSrtUrl = undefined;
   return clone;
 }
 
