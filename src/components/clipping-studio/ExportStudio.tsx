@@ -27,6 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
+import { getExportDownloadUrl } from '@/lib/clipping-studio/export-download';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import {
   ExportJob,
@@ -649,6 +650,18 @@ export const ExportStudio: React.FC = () => {
                         </span>
 
                         <div className="flex items-center space-x-2">
+                          {job.status === 'completed' && getExportDownloadUrl(job.outputPath) && (
+                            <a
+                              href={getExportDownloadUrl(job.outputPath)!}
+                              download={job.outputPath?.split(/[/\\]/).pop()}
+                              onClick={event => event.stopPropagation()}
+                              className="flex items-center gap-1 font-semibold text-amber-400 hover:text-amber-300"
+                              title="Download exported file"
+                            >
+                              <Download className="h-3 w-3" />
+                              <span>Download</span>
+                            </a>
+                          )}
                           {job.outputPath && (
                             <button
                               type="button"

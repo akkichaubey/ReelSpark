@@ -15,6 +15,7 @@ import { POST } from '../src/app/api/clipping-studio/link-project/route';
 import { DELETE as deleteStudio } from '../src/app/api/clipping-studio/projects/[id]/route';
 import { useClippingStore } from '../src/lib/clipping-studio/use-clipping-store';
 import { getCacheAccount, setCacheAccount } from '../src/lib/account-cache';
+import { getExportDownloadUrl } from '../src/lib/clipping-studio/export-download';
 
 const candidate = (id: string, selected = true): ClipCandidate => ({
   id, selected, title: `Moment ${id}`, titleHindi: 'क्षण', start: 1.234, end: 3.789, duration: 2.555,
@@ -34,6 +35,12 @@ const fixture = (): Project => ({
 });
 
 async function main() {
+  const exportRelative = 'clipping-studio/projects/studio_one/exports/export-one/My clip.mp4';
+  const expectedDownload = '/api/files/clipping-studio/projects/studio_one/exports/export-one/My%20clip.mp4';
+  assert.equal(getExportDownloadUrl(`/app/storage/${exportRelative}`), expectedDownload);
+  assert.equal(getExportDownloadUrl(`D:\\app\\storage\\${exportRelative.replace(/\//g, '\\')}`), expectedDownload);
+  assert.equal(getExportDownloadUrl(`reelspark-storage:${exportRelative}`), expectedDownload);
+  for (const invalid of [undefined, '', '/tmp/clip.mp4', 'https://other.example/clip.mp4', 'javascript:alert(1)', '/app/storage/clipping-studio/projects/id/exports/../secret.mp4', '/app/storage/clipping-studio/projects/id/exports/settings.json']) assert.equal(getExportDownloadUrl(invalid), null);
   const source = fixture();
   const snapshot = structuredClone(source);
   const linked = linkAnalysisProject(source);
