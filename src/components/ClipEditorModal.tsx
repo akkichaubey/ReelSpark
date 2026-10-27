@@ -12,6 +12,9 @@ import {
   ShieldCheck,
   Volume2,
   VolumeX,
+  Bookmark,
+  Trash2,
+  RotateCw,
 } from 'lucide-react';
 import { ClipCandidate, Project, TopicCategory } from '@/lib/types';
 import { verifyCandidateContext } from '@/lib/context-verifier';
@@ -21,6 +24,8 @@ interface ClipEditorModalProps {
   project: Project;
   candidate: ClipCandidate | null;
   onSave: (updatedCandidate: ClipCandidate) => void;
+  onSaveToLibrary?: (candidate: ClipCandidate) => Promise<void>;
+  onDelete?: (id: string) => void;
   onClose: () => void;
 }
 
@@ -76,10 +81,13 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   project,
   candidate,
   onSave,
+  onSaveToLibrary,
+  onDelete,
   onClose,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
 
   // Initial candidate boundary snapshot for "Reset Trim"
   const initialStart = candidate?.start ?? 0;
@@ -586,6 +594,37 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
     onSave(updated);
     onClose();
+  };
+
+  const handleSaveToLibrary = async () => {
+    if (!candidate || !isValidDuration || !onSaveToLibrary) return;
+    const newStart = Math.round(start * 100) / 100;
+    const newEnd = Math.round(end * 100) / 100;
+    const boundsChanged =
+      Math.abs(newStart - candidate.start) > 0.05 || Math.abs(newEnd - candidate.end) > 0.05;
+
+    const updated: ClipCandidate = {
+      ...candidate,
+      title: title.trim() || candidate.title,
+      titleEnglish: title.trim() || candidate.title,
+      titleHindi: titleHindi.trim() || candidate.titleHindi,
+      topic,
+      start: newStart,
+      end: newEnd,
+      duration: Math.round(duration * 100) / 100,
+      contextVerification: verification,
+      renderStatus: 'idle',
+      ...(boundsChanged ? { syncedSegments: undefined } : {}),
+    } as any;
+
+    setIsSavingToLibrary(true);
+    try {
+      await onSaveToLibrary(updated);
+      onSave(updated);
+      onClose();
+    } finally {
+      setIsSavingToLibrary(false);
+    }
   };
 
   if (!candidate) return null;
@@ -1167,18 +1206,37 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
         {/* Modal Footer Controls */}
         <div className="p-4 border-t border-white/10 bg-zinc-900/80 flex flex-wrap items-center justify-between gap-3">
-          {/* Download SRT Button */}
-          <button
-            type="button"
-            onClick={() =>
-              downloadSrtDirectly(project.transcript, start, end, title || candidate.title)
-            }
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 hover:text-amber-200 border border-amber-500/20 text-xs font-medium transition-colors"
-            title="Download SRT subtitle file for this exact custom trimmed range"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Trim SRT</span>
-          </button>
+          {/* Download SRT Button & Delete Clip */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                downloadSrtDirectly(project.transcript, start, end, title || candidate.title)
+              }
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 hover:text-amber-200 border border-amber-500/20 text-xs font-medium transition-colors"
+              title="Download SRT subtitle file for this exact custom trimmed range"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Trim SRT</span>
+            </button>
+
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (candidate && confirm(`Delete clip "${title || candidate.title}"?`)) {
+                    onDelete(candidate.id);
+                    onClose();
+                  }
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 transition-colors cursor-pointer"
+                title="Delete this clip"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Clip</span>
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center space-x-2.5">
             <button
@@ -1193,11 +1251,29 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={!isValidDuration}
-              className="flex items-center space-x-1.5 px-5 py-2 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-40 text-zinc-950 font-bold text-xs shadow-lg transition-all cursor-pointer active:scale-95"
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-white/20 disabled:opacity-40 text-white font-bold text-xs shadow transition-all cursor-pointer active:scale-95"
+              title="Apply trim adjustments to this clip"
             >
               <Check className="w-4 h-4" />
               <span>Apply Trim & Save</span>
             </button>
+
+            {onSaveToLibrary && (
+              <button
+                type="button"
+                onClick={handleSaveToLibrary}
+                disabled={!isValidDuration || isSavingToLibrary}
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-black font-bold text-xs shadow-lg shadow-amber-400/20 transition-all cursor-pointer active:scale-95"
+                title="Save this trimmed clip permanently to your Saved Reels library"
+              >
+                {isSavingToLibrary ? (
+                  <RotateCw className="w-4 h-4 animate-spin text-black" />
+                ) : (
+                  <Bookmark className="w-4 h-4 fill-black text-black" />
+                )}
+                <span>{isSavingToLibrary ? 'Saving…' : 'Save to Saved Reels'}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

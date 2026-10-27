@@ -2,6 +2,7 @@
 import { accountCache } from '@/lib/account-cache';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Play,
@@ -18,6 +19,9 @@ import {
   Copy,
   Check,
   Share2,
+  Trash2,
+  Bookmark,
+  BookmarkCheck,
 } from 'lucide-react';
 import { ClipCandidate } from '@/lib/types';
 import { getBilingualCandidateData } from '@/lib/bilingual';
@@ -32,6 +36,8 @@ interface ClipCardProps {
   onRenderClip: (id: string) => void;
   onDownloadSrt: (candidate: ClipCandidate) => void;
   onCreateReel?: (candidate: ClipCandidate, lang: 'en' | 'hi') => void | Promise<void>;
+  onSaveToLibrary?: (candidate: ClipCandidate, lang: 'en' | 'hi') => Promise<void>;
+  onDeleteClip?: (id: string) => void;
   isRenderingThis: boolean;
   globalLang?: 'en' | 'hi';
 }
@@ -46,6 +52,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   onRenderClip,
   onDownloadSrt,
   onCreateReel,
+  onSaveToLibrary,
+  onDeleteClip,
   isRenderingThis,
   globalLang,
 }) => {
@@ -58,6 +66,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [copiedQuote, setCopiedQuote] = useState(false);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
 
   const bData = getBilingualCandidateData(candidate, lang);
 
@@ -184,9 +193,32 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                 MP4
               </span>
             )}
+            {candidate.savedReelId && (
+              <Link
+                href={`/reel-maker?savedReel=${encodeURIComponent(candidate.savedReelId)}`}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/40 flex items-center gap-1 transition-colors"
+                title="Open this clip in Saved Reels"
+              >
+                <BookmarkCheck className="w-3 h-3 text-amber-400" />
+                <span>Saved Reel</span>
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Delete clip button */}
+            {onDeleteClip && (
+              <button
+                type="button"
+                onClick={() => onDeleteClip(candidate.id)}
+                className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                title="Delete this clip from results"
+                aria-label={`Delete clip ${bData.title}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             {/* Hindi / English Language Toggle */}
             <div className="flex items-center p-0.5 rounded-lg bg-zinc-950 border border-white/10 text-[11px] font-semibold flex-shrink-0">
               <button
@@ -430,6 +462,42 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             <Film className={`w-3.5 h-3.5 text-amber-400 ${isCreatingReel ? 'animate-pulse' : ''}`} />
             <span>{isCreatingReel ? 'Preparing...' : 'Create Reel'}</span>
           </button>
+
+          {/* Save Reel to Saved Reels Library */}
+          {candidate.savedReelId ? (
+            <Link
+              href={`/reel-maker?savedReel=${encodeURIComponent(candidate.savedReelId)}`}
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-emerald-200 font-semibold text-xs border border-emerald-500/40 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+              title="Open and edit this saved reel"
+            >
+              <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Saved · Edit</span>
+            </Link>
+          ) : (
+            onSaveToLibrary && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsSavingToLibrary(true);
+                  try {
+                    await onSaveToLibrary(candidate, lang);
+                  } finally {
+                    setIsSavingToLibrary(false);
+                  }
+                }}
+                disabled={isSavingToLibrary}
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-sm shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                title="Save this clip permanently to your Saved Reels library"
+              >
+                {isSavingToLibrary ? (
+                  <RotateCw className="w-3.5 h-3.5 animate-spin text-black" />
+                ) : (
+                  <Bookmark className="w-3.5 h-3.5 fill-black text-black" />
+                )}
+                <span>{isSavingToLibrary ? 'Saving…' : 'Save Reel'}</span>
+              </button>
+            )
+          )}
         </div>
 
         {/* Download Clip dropdown */}

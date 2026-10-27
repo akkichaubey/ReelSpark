@@ -105,6 +105,7 @@ export interface ClipCandidate {
   renderedSrtPath?: string;
   renderError?: string;
   customTitle?: string;
+  savedReelId?: string;
 }
 
 export interface TimelineCoverage {

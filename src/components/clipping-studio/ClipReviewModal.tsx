@@ -12,6 +12,7 @@ export function ClipReviewModal({
   clip,
   asset,
   onSave,
+  onSaveToLibrary,
   onClose,
   mediaUrl,
   showNotes = true,
@@ -19,11 +20,13 @@ export function ClipReviewModal({
   clip: Clip;
   asset: MediaAsset;
   onSave: (updates: Partial<Clip>) => void;
+  onSaveToLibrary?: (updates: Partial<Clip>) => Promise<void> | void;
   onClose: () => void;
   mediaUrl?: string;
   showNotes?: boolean;
 }) {
   const player = useRef<HTMLMediaElement>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [name, setName] = useState(clip.name);
   const [notes, setNotes] = useState(clip.notes || '');
   const [startText, setStartText] = useState(formatMsToTimestamp(clip.startMs));
@@ -241,10 +244,36 @@ export function ClipReviewModal({
               });
               onClose();
             }}
-            className="rounded bg-amber-400 px-4 py-2 font-bold text-black disabled:opacity-40"
+            className="rounded border border-zinc-500 bg-zinc-800 px-4 py-2 font-semibold text-white hover:bg-zinc-700 disabled:opacity-40"
           >
             Save Clip Changes
           </button>
+          {onSaveToLibrary && (
+            <button
+              disabled={!valid || savingToLibrary}
+              onClick={async () => {
+                player.current?.pause();
+                const updates = {
+                  name: name.trim(),
+                  notes: notes.trim(),
+                  startMs: start,
+                  endMs: end,
+                  durationMs: end - start,
+                };
+                onSave(updates);
+                setSavingToLibrary(true);
+                try {
+                  await onSaveToLibrary(updates);
+                  onClose();
+                } finally {
+                  setSavingToLibrary(false);
+                }
+              }}
+              className="rounded bg-amber-400 px-4 py-2 font-bold text-black hover:bg-amber-300 disabled:opacity-40"
+            >
+              {savingToLibrary ? 'Saving to Library…' : 'Save to Saved Reels'}
+            </button>
+          )}
         </div>
       </section>
     </div>

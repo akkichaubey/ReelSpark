@@ -15,6 +15,8 @@ import {
   Clock,
   Film,
   Scissors,
+  Bookmark,
+  RotateCw,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { Navbar } from '@/components/Navbar';
@@ -37,6 +39,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
+import { saveReel } from '@/lib/saved-reels/client';
 import { primaryWorkspaceForSource, studioProjectUrl } from '@/lib/clipping-studio/project-bridge';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
@@ -527,6 +530,120 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
     });
   };
 
+  // Handler: Delete single candidate clip
+  const handleDeleteCandidate = async (candidateId: string) => {
+    if (!activeProject) return;
+    const target = activeProject.candidates.find((c) => c.id === candidateId);
+    if (!confirm(`Delete clip "${target?.title || 'Clip'}"? Other clips will remain unaffected.`)) {
+      return;
+    }
+    const updatedCandidates = activeProject.candidates.filter((c) => c.id !== candidateId);
+    const updated = { ...activeProject, candidates: updatedCandidates };
+    setActiveProject(updated);
+
+    try {
+      await fetch(`/api/projects/${activeProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidates: updatedCandidates }),
+      });
+      showToast('Clip removed from project.', 'info');
+    } catch (err: any) {
+      console.error('Failed to update project candidates after delete:', err);
+    }
+  };
+
+  // Handler: Save candidate to Saved Reels Library
+  const handleSaveCandidateToLibrary = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
+    if (!activeProject) return;
+    try {
+      showToast(`Saving "${candidate.title}" to Saved Reels...`, 'info');
+      let audioOverride;
+      try {
+        const res = await fetch(`/api/projects/${activeProject.id}/clip-audio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clipId: candidate.id,
+            start: candidate.start,
+            end: candidate.end,
+          }),
+        });
+        const data = await res.json();
+        if (data?.success && data.audioUrl) {
+          audioOverride = {
+            audioUrl: data.audioUrl,
+            storagePath: data.audioPath,
+            duration: data.duration,
+            fileSize: data.fileSize,
+            syncedSegments: data.syncedSegments,
+            rawTranscriptHindi: data.rawTranscriptHindi,
+            rawTranscriptEnglish: data.rawTranscriptEnglish,
+            titleHindi: data.titleHindi,
+            titleEnglish: data.titleEnglish,
+            isAudioSynced: data.isAudioSynced,
+          };
+        }
+      } catch (e) {
+        console.warn('Clip audio sync endpoint returned error, using fallback', e);
+      }
+
+      const captionProject = createCaptionProjectFromClip(
+        candidate,
+        activeProject,
+        lang,
+        audioOverride
+      );
+      const reel = await saveReel(captionProject, {
+        originProjectId: activeProject.id,
+        originProjectName: activeProject.title,
+      });
+
+      const updatedCandidates = activeProject.candidates.map((c) =>
+        c.id === candidate.id ? { ...c, savedReelId: reel.id } : c
+      );
+      const updated = { ...activeProject, candidates: updatedCandidates };
+      setActiveProject(updated);
+
+      await fetch(`/api/projects/${activeProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidates: updatedCandidates }),
+      });
+
+      showToast(`“${candidate.title}” saved independently to Saved Reels!`, 'success');
+    } catch (err: any) {
+      console.error('Failed to save clip to library:', err);
+      showToast(err.message || 'Failed to save reel', 'error');
+    }
+  };
+
+  // Handler: Save all selected candidates to Saved Reels Library
+  const [isSavingSelectedToLibrary, setIsSavingSelectedToLibrary] = useState(false);
+  const handleSaveSelectedToLibrary = async () => {
+    if (!activeProject) return;
+    const selected = activeProject.candidates.filter((c) => c.selected);
+    if (!selected.length) {
+      showToast('Select one or more clips to save.', 'info');
+      return;
+    }
+    setIsSavingSelectedToLibrary(true);
+    let successCount = 0;
+    try {
+      for (const cand of selected) {
+        try {
+          await handleSaveCandidateToLibrary(cand, globalLang);
+          successCount++;
+        } catch {
+          // Continue with remaining candidates
+        }
+      }
+      showToast(`Saved ${successCount} of ${selected.length} clips to Saved Reels!`, 'success');
+    } finally {
+      setIsSavingSelectedToLibrary(false);
+    }
+  };
+
   // Handler: Delete Project
   const handleDeleteProject = async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project and all its rendered files?')) {
@@ -897,14 +1014,36 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
 
           {/* 6. Candidate Cards Grid */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between text-xs text-zinc-400 font-medium px-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 font-medium px-1">
               <span>
                 Showing {displayCandidates.length} of {activeProject.candidates.length} Clips
               </span>
-              <span>
-                Selected:{' '}
-                {activeProject.candidates.filter((c) => c.selected).length}
-              </span>
+              <div className="flex items-center gap-3">
+                <span>
+                  Selected:{' '}
+                  {activeProject.candidates.filter((c) => c.selected).length}
+                </span>
+                {activeProject.candidates.some((c) => c.selected) && (
+                  <button
+                    type="button"
+                    onClick={handleSaveSelectedToLibrary}
+                    disabled={isSavingSelectedToLibrary}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    title="Save all currently selected clips permanently to Saved Reels"
+                  >
+                    {isSavingSelectedToLibrary ? (
+                      <RotateCw className="w-3.5 h-3.5 animate-spin text-black" />
+                    ) : (
+                      <Bookmark className="w-3.5 h-3.5 fill-black text-black" />
+                    )}
+                    <span>
+                      {isSavingSelectedToLibrary
+                        ? 'Saving Selected…'
+                        : `Save Selected to Saved Reels (${activeProject.candidates.filter((c) => c.selected).length})`}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {displayCandidates.length === 0 ? (
@@ -927,6 +1066,8 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                     onRenderClip={(id) => handleRenderClip(id, true)}
                     onDownloadSrt={handleDownloadSrt}
                     onCreateReel={handleCreateReel}
+                    onSaveToLibrary={handleSaveCandidateToLibrary}
+                    onDeleteClip={handleDeleteCandidate}
                     isRenderingThis={renderingClipIds.includes(candidate.id)}
                     globalLang={globalLang}
                   />
@@ -1078,6 +1219,8 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           project={activeProject}
           candidate={editingCandidate}
           onSave={handleSaveCandidateEdit}
+          onSaveToLibrary={(cand) => handleSaveCandidateToLibrary(cand, globalLang)}
+          onDelete={handleDeleteCandidate}
           onClose={() => setEditingCandidate(null)}
         />
       )}

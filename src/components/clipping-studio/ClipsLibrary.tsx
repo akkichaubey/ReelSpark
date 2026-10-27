@@ -244,7 +244,19 @@ export const ClipsLibrary: React.FC = () => {
         <button disabled={savingSelected || Boolean(bridgingClipId) || !selectedToSave.length} className="rounded bg-amber-400 px-3 py-2 font-bold text-black disabled:opacity-40" onClick={async () => { setSavingSelected(true); const targets = clips.filter(item => selectedToSave.includes(item.id) && !item.savedReelId); const failed: string[] = []; try { for (const clip of targets) if (!(await handleSendToCaptionMaker(clip, true))) failed.push(clip.id); setSelectedToSave(failed); setSaveMessage(`Saved ${targets.length - failed.length} of ${targets.length} clips.${failed.length ? ' Failed clips remain selected for retry.' : ''}`); } finally { setSavingSelected(false); } }}>Save selected clips ({selectedToSave.length})</button>
         <span role="status" className="text-zinc-400">{saveMessage}</span>
       </div>
-      {reviewClip && activeProject?.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId) && <ClipReviewModal key={reviewClip.id} clip={reviewClip} asset={activeProject.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId)!} onSave={updates => updateClip(reviewClip.id, updates)} onClose={() => setReviewClip(null)} />}
+      {reviewClip && activeProject?.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId) && (
+        <ClipReviewModal
+          key={reviewClip.id}
+          clip={reviewClip}
+          asset={activeProject.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId)!}
+          onSave={updates => updateClip(reviewClip.id, updates)}
+          onSaveToLibrary={async (updates) => {
+            updateClip(reviewClip.id, updates);
+            await handleSendToCaptionMaker({ ...reviewClip, ...updates }, true);
+          }}
+          onClose={() => setReviewClip(null)}
+        />
+      )}
       {/* Header & Search */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
         <div>
