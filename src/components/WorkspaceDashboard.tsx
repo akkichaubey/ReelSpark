@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/components/ui/button';
 import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -39,7 +40,7 @@ import { filterCandidatesByTopic, sortCandidates, SortField } from '@/lib/rankin
 import { ClipCandidate, Project, SubtitleStyle, TopicCategory } from '@/lib/types';
 import { downloadSrtDirectly } from '@/lib/download-client';
 import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
-import { saveReel } from '@/lib/saved-reels/client';
+import { saveAnalysisCandidate } from '@/lib/saved-reels/analysis-client';
 import { primaryWorkspaceForSource, studioProjectUrl } from '@/lib/clipping-studio/project-bridge';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
@@ -85,6 +86,18 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const candidateWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const persistCandidateMutation = (id: string, mutation: Record<string, unknown>): Promise<Project> => {
+    const write = candidateWrites.current.catch(() => undefined).then(async () => {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mutation) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not update project');
+      setActiveProject(previous => previous?.id === id ? { ...previous, candidates: result.project.candidates } : previous);
+      return result.project as Project;
+    });
+    candidateWrites.current = write.catch(() => undefined);
+    return write;
+  };
   const [loading, setLoading] = useState(true);
   const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
   const [workspaceRetry, setWorkspaceRetry] = useState(0);
@@ -497,153 +510,65 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
     }
   };
 
-  // Handler: Toggle Select
+  // Candidate-scoped writes preserve other clips and saved-reel markers during batch operations.
   const handleToggleSelect = (candidateId: string) => {
     if (!activeProject) return;
-    const updatedCandidates = activeProject.candidates.map((c) =>
-      c.id === candidateId ? { ...c, selected: !c.selected } : c
-    );
-    const updated = { ...activeProject, candidates: updatedCandidates };
-    setActiveProject(updated);
-
-    fetch(`/api/projects/${activeProject.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidates: updatedCandidates }),
-    });
+    const candidate = activeProject.candidates.find(item => item.id === candidateId);
+    if (!candidate) return;
+    void persistCandidateMutation(activeProject.id, { candidateUpdate: { id: candidateId, changes: { selected: !candidate.selected } } }).catch(error => showToast(error.message, 'error'));
   };
 
-  // Handler: Select / Deselect All
-  const handleSelectAll = (select: boolean) => {
+  const handleSelectAll = (selected: boolean) => {
     if (!activeProject) return;
-    const updatedCandidates = activeProject.candidates.map((c) => ({
-      ...c,
-      selected: select,
-    }));
-    const updated = { ...activeProject, candidates: updatedCandidates };
-    setActiveProject(updated);
-
-    fetch(`/api/projects/${activeProject.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidates: updatedCandidates }),
-    });
+    void persistCandidateMutation(activeProject.id, { selectAllCandidates: selected }).catch(error => showToast(error.message, 'error'));
   };
 
-  // Handler: Delete single candidate clip
   const handleDeleteCandidate = async (candidateId: string) => {
-    if (!activeProject) return;
-    const target = activeProject.candidates.find((c) => c.id === candidateId);
-    if (!confirm(`Delete clip "${target?.title || 'Clip'}"? Other clips will remain unaffected.`)) {
-      return;
-    }
-    const updatedCandidates = activeProject.candidates.filter((c) => c.id !== candidateId);
-    const updated = { ...activeProject, candidates: updatedCandidates };
-    setActiveProject(updated);
-
+    if (!activeProject) return false;
+    const target = activeProject.candidates.find(item => item.id === candidateId);
+    if (!confirm(`Delete clip "${target?.title || 'Clip'}"? Other clips and saved reels will remain available.`)) return false;
     try {
-      await fetch(`/api/projects/${activeProject.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidates: updatedCandidates }),
-      });
-      showToast('Clip removed from project.', 'info');
-    } catch (err: any) {
-      console.error('Failed to update project candidates after delete:', err);
-    }
+      await persistCandidateMutation(activeProject.id, { deleteCandidateId: candidateId });
+      showToast('Clip removed from project.', 'info'); return true;
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Could not delete clip', 'error'); return false; }
   };
 
-  // Handler: Save candidate to Saved Reels Library
-  const handleSaveCandidateToLibrary = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en') => {
-    if (!activeProject) return;
+  const handleSaveCandidateToLibrary = async (candidate: ClipCandidate, lang: 'en' | 'hi' = 'en', edited = false) => {
+    if (!activeProject) throw new Error('Open a project before saving a clip.');
+    const source = activeProject;
     try {
       showToast(`Saving "${candidate.title}" to Saved Reels...`, 'info');
-      let audioOverride;
+      const reel = await saveAnalysisCandidate(source, candidate, lang);
+      const savedCandidate = edited ? { ...candidate, savedReelId: reel.id } : { savedReelId: reel.id };
       try {
-        const res = await fetch(`/api/projects/${activeProject.id}/clip-audio`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clipId: candidate.id,
-            start: candidate.start,
-            end: candidate.end,
-          }),
-        });
-        const data = await res.json();
-        if (data?.success && data.audioUrl) {
-          audioOverride = {
-            audioUrl: data.audioUrl,
-            storagePath: data.audioPath,
-            duration: data.duration,
-            fileSize: data.fileSize,
-            syncedSegments: data.syncedSegments,
-            rawTranscriptHindi: data.rawTranscriptHindi,
-            rawTranscriptEnglish: data.rawTranscriptEnglish,
-            titleHindi: data.titleHindi,
-            titleEnglish: data.titleEnglish,
-            isAudioSynced: data.isAudioSynced,
-          };
-        }
-      } catch (e) {
-        console.warn('Clip audio sync endpoint returned error, using fallback', e);
+        await persistCandidateMutation(source.id, { candidateUpdate: { id: candidate.id, changes: savedCandidate } });
+      } catch {
+        setActiveProject(previous => previous?.id === source.id ? { ...previous, candidates: previous.candidates.map(item => item.id === candidate.id ? { ...item, ...savedCandidate } : item) } : previous);
+        showToast('Reel saved in the library, but its project link could not sync. Open Saved Reels to edit it.', 'info');
+        return;
       }
-
-      const captionProject = createCaptionProjectFromClip(
-        candidate,
-        activeProject,
-        lang,
-        audioOverride
-      );
-      const reel = await saveReel(captionProject, {
-        originProjectId: activeProject.id,
-        originProjectName: activeProject.title,
-      });
-
-      const updatedCandidates = activeProject.candidates.map((c) =>
-        c.id === candidate.id ? { ...c, savedReelId: reel.id } : c
-      );
-      const updated = { ...activeProject, candidates: updatedCandidates };
-      setActiveProject(updated);
-
-      await fetch(`/api/projects/${activeProject.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidates: updatedCandidates }),
-      });
-
       showToast(`“${candidate.title}” saved independently to Saved Reels!`, 'success');
-    } catch (err: any) {
-      console.error('Failed to save clip to library:', err);
-      showToast(err.message || 'Failed to save reel', 'error');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to save reel', 'error');
+      throw error;
     }
   };
 
-  // Handler: Save all selected candidates to Saved Reels Library
   const [isSavingSelectedToLibrary, setIsSavingSelectedToLibrary] = useState(false);
   const handleSaveSelectedToLibrary = async () => {
-    if (!activeProject) return;
-    const selected = activeProject.candidates.filter((c) => c.selected);
-    if (!selected.length) {
-      showToast('Select one or more clips to save.', 'info');
-      return;
-    }
+    if (!activeProject || isSavingSelectedToLibrary) return;
+    const selected = activeProject.candidates.filter(candidate => candidate.selected && !candidate.savedReelId);
+    if (!selected.length) { showToast('Select unsaved clips to save.', 'info'); return; }
     setIsSavingSelectedToLibrary(true);
     let successCount = 0;
     try {
-      for (const cand of selected) {
-        try {
-          await handleSaveCandidateToLibrary(cand, globalLang);
-          successCount++;
-        } catch {
-          // Continue with remaining candidates
-        }
+      for (const candidate of selected) {
+        try { await handleSaveCandidateToLibrary(candidate, globalLang); successCount++; }
+        catch { /* Retain failed selections for retry. */ }
       }
-      showToast(`Saved ${successCount} of ${selected.length} clips to Saved Reels!`, 'success');
-    } finally {
-      setIsSavingSelectedToLibrary(false);
-    }
+      showToast(`Saved ${successCount} of ${selected.length} clips.${successCount < selected.length ? ' Failed clips remain selected for retry.' : ''}`, successCount === selected.length ? 'success' : 'error');
+    } finally { setIsSavingSelectedToLibrary(false); }
   };
-
   // Handler: Delete Project
   const handleDeleteProject = async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project and all its rendered files?')) {
@@ -677,23 +602,12 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
   };
 
   // Handler: Save candidate boundary edits
-  const handleSaveCandidateEdit = (updated: ClipCandidate) => {
-    if (!activeProject) return;
-    const updatedCandidates = activeProject.candidates.map((c) =>
-      c.id === updated.id ? updated : c
-    );
-    const updatedProj = { ...activeProject, candidates: updatedCandidates };
-    setActiveProject(updatedProj);
+  const handleSaveCandidateEdit = async (updated: ClipCandidate) => {
+    if (!activeProject) throw new Error('Project unavailable');
+    await persistCandidateMutation(activeProject.id, { candidateUpdate: { id: updated.id, changes: updated } });
     setPreviewCandidate(updated);
     showToast('Clip boundaries updated!', 'success');
-
-    fetch(`/api/projects/${activeProject.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidates: updatedCandidates }),
-    });
   };
-
   // Handler: Update Subtitle Style
   const handleUpdateSubtitleStyle = (style: SubtitleStyle) => {
     if (!activeProject) return;
@@ -824,20 +738,20 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           <AlertCircle className="h-8 w-8 text-red-400" aria-hidden="true" />
           <h2 className="text-base font-semibold text-zinc-100">Workspace didn’t load</h2>
           <p className="max-w-md text-sm text-zinc-400">{workspaceLoadError}</p>
-          <button
+          <Button
             type="button"
             onClick={() => setWorkspaceRetry((attempt) => attempt + 1)}
             className="mt-1 rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
           >
             Try again
-          </button>
+          </Button>
         </div>
       ) : isClipFinder && activeProject ? (
         /* ─── Active Project Studio (Clip Finder View) ──────────────────────── */
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-300">
           {/* Top Bar with Project Switcher */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
-            <button
+            <Button
               onClick={() => {
                 setActiveProject(null);
                 router.push('/');
@@ -846,7 +760,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
             >
               <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
               <span>Back to Dashboard</span>
-            </button>
+            </Button>
 
             {projects.length > 1 && (
               <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs max-w-full [scrollbar-width:none]">
@@ -863,19 +777,19 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                         : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-white'
                     }`}
                   >
-                    <button
+                    <Button
                       onClick={() => { setActiveProject(p); if (embedded) router.push(studioProjectUrl(p.id)); }}
                       className="truncate max-w-[160px] cursor-pointer"
                     >
                       {p.title}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => handleDeleteProject(p.id)}
                       className="text-zinc-500 hover:text-rose-400 p-0.5 rounded cursor-pointer"
                       title="Delete project"
                     >
                       <Trash2 className="w-3 h-3" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1024,7 +938,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                   {activeProject.candidates.filter((c) => c.selected).length}
                 </span>
                 {activeProject.candidates.some((c) => c.selected) && (
-                  <button
+                  <Button
                     type="button"
                     onClick={handleSaveSelectedToLibrary}
                     disabled={isSavingSelectedToLibrary}
@@ -1041,7 +955,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                         ? 'Saving Selected…'
                         : `Save Selected to Saved Reels (${activeProject.candidates.filter((c) => c.selected).length})`}
                     </span>
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -1092,13 +1006,13 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                 Select an analyzed video project to inspect viral moments, or analyze a new video.
               </p>
             </div>
-            <button
+            <Button
               onClick={() => setShowCreatorModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Analyze New Video</span>
-            </button>
+            </Button>
           </div>
 
           {projects.length === 0 ? (
@@ -1112,13 +1026,13 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                   Paste a YouTube URL or upload a long video/audio file to automatically detect 60-second viral clips with synchronized subtitles.
                 </p>
               </div>
-              <button
+              <Button
                 onClick={() => setShowCreatorModal(true)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-400 text-black font-bold text-xs rounded-xl hover:bg-amber-300 transition-all cursor-pointer shadow-md"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>Analyze Your First Video</span>
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1150,13 +1064,13 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
                         </p>
                       </div>
                     </div>
-                    <button
+                    <Button
                       onClick={() => setActiveProject(p)}
                       className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >
                       <span>Open in Clip Finder</span>
                       <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1219,7 +1133,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           project={activeProject}
           candidate={editingCandidate}
           onSave={handleSaveCandidateEdit}
-          onSaveToLibrary={(cand) => handleSaveCandidateToLibrary(cand, globalLang)}
+          onSaveToLibrary={(cand) => handleSaveCandidateToLibrary(cand, globalLang, true)}
           onDelete={handleDeleteCandidate}
           onClose={() => setEditingCandidate(null)}
         />

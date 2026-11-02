@@ -1,5 +1,8 @@
 'use client';
 
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -284,7 +287,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
               <div className="flex items-center space-x-2">
                 {isEditingTitle ? (
                   <form onSubmit={handleTitleSubmit} className="flex items-center space-x-1">
-                    <input
+                    <Input
                       type="text"
                       value={projectTitle}
                       onChange={(e) => setProjectTitle(e.target.value)}
@@ -294,7 +297,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     />
                   </form>
                 ) : (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setProjectTitle(activeProject.name);
@@ -305,12 +308,12 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   >
                     <span className="truncate">{activeProject.name}</span>
                     <Edit2 className="w-3 h-3 text-zinc-500 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
-                  </button>
+                  </Button>
                 )}
 
                 {/* Undo / Redo / Delete */}
                 <div className="flex items-center space-x-0.5 pl-1 border-l border-zinc-800">
-                  <button
+                  <Button
                     type="button"
                     disabled={!canUndo}
                     onClick={() => undo()}
@@ -318,8 +321,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-25 transition-colors cursor-pointer"
                   >
                     <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     disabled={!canRedo}
                     onClick={() => redo()}
@@ -327,8 +330,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-25 transition-colors cursor-pointer"
                   >
                     <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={async () => {
                       if (confirm(`Delete project "${activeProject.name}"?`)) {
@@ -341,7 +344,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -354,7 +357,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
-                <button
+                <Button
                   key={tab.id}
                   type="button"
                   onClick={() => chooseTab(tab.id)}
@@ -374,24 +377,24 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   >
                     {tab.num}
                   </span>
-                </button>
+                </Button>
               );
             })}
           </nav>
 
           {/* Right: Mode Switcher & Media Engine Status */}
           <div className="flex items-center space-x-2">
-            <button
+            <Button
               type="button"
               onClick={() => setShowCreateProject(true)}
               className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-zinc-950 transition-colors cursor-pointer"
             >
               <Film className="w-3.5 h-3.5" />
               <span>New Project</span>
-            </button>
+            </Button>
             {children && (
               <div className="flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800">
-                <button
+                <Button
                   type="button"
                   onClick={() => setViewMode('studio')}
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
@@ -402,8 +405,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                 >
                   <Scissors className="w-3 h-3 text-amber-400" />
                   <span>Studio</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setViewMode('ai_candidates')}
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
@@ -414,12 +417,12 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                 >
                   <ScanSearch className="w-3 h-3 text-amber-400" />
                   <span>AI Moments</span>
-                </button>
+                </Button>
               </div>
             )}
 
             {/* Local Media Engine Status Pill */}
-            <button
+            <Button
               type="button"
               onClick={() => checkServices()}
               disabled={isCheckingHealth}
@@ -439,7 +442,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
               <RefreshCw
                 className={`w-3 h-3 text-zinc-400 hover:text-zinc-200 ${isCheckingHealth ? 'animate-spin' : ''}`}
               />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -462,23 +465,23 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
               </optgroup>
             </select>
           </label>
-          <button type="button" onClick={() => setShowAnalysisCreator(true)} className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-300 hover:border-amber-400/60 hover:bg-amber-400/10 transition-colors">Upload & analyze</button>
-          {activeProject && <button type="button" disabled={linking} onClick={async () => {
+          <Button type="button" onClick={() => setShowAnalysisCreator(true)} className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-300 hover:border-amber-400/60 hover:bg-amber-400/10 transition-colors">Upload & analyze</Button>
+          {activeProject && <Button type="button" disabled={linking} onClick={async () => {
             saveActiveProject();
             if (useClippingStore.getState().saveStatus === 'error') { setLinkError('Could not save the workspace on this device. Free browser storage and retry.'); return; }
             await syncToCloudflare();
             const current = useClippingStore.getState();
             setLinkNotice(current.saveStatus === 'error' ? 'Saved on this device. Cloud sync failed; retry before using another device.' : current.cloudflareStatus?.configured ? 'Workspace saved on this device and synced to the cloud.' : 'Workspace saved on this device. Cloud metadata sync is not configured.');
-          }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">Save / Sync</button>}
+          }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">Save / Sync</Button>}
           {activeProject?.sourceProjectId ? (
-            <button type="button" disabled={linking || !projectResolved || analysisProject?.id !== activeProject.sourceProjectId || !analysisProject?.candidates.some(candidate => candidate.selected)} onClick={importSelected} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black hover:bg-amber-300 disabled:opacity-40">
+            <Button type="button" disabled={linking || !projectResolved || analysisProject?.id !== activeProject.sourceProjectId || !analysisProject?.candidates.some(candidate => candidate.selected)} onClick={importSelected} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black hover:bg-amber-300 disabled:opacity-40">
               Add selected AI clips to timeline
-            </button>
+            </Button>
           ) : activeProject?.mediaAssets.length ? (
-            <button type="button" disabled={linking} onClick={prepareAnalysis} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black disabled:opacity-40">Find AI moments in selected media</button>
+            <Button type="button" disabled={linking} onClick={prepareAnalysis} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black disabled:opacity-40">Find AI moments in selected media</Button>
           ) : null}
         </div>
-        {linkError && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"><span>{linkError}</span><button type="button" onClick={() => window.location.reload()} className="rounded border border-red-400/40 px-3 py-1">Retry</button></div>}
+        {linkError && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"><span>{linkError}</span><Button type="button" onClick={() => window.location.reload()} className="rounded border border-red-400/40 px-3 py-1">Retry</Button></div>}
         {linkNotice && <p role="status" className="border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">{linkNotice}</p>}
 
         {/* Crash Recovery Notification Banner */}
@@ -490,20 +493,20 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
               <span className="text-zinc-300">A newer recovery state was preserved from your previous session.</span>
             </div>
             <div className="flex items-center space-x-2 shrink-0">
-              <button
+              <Button
                 type="button"
                 onClick={() => restoreCrashRecovery()}
                 className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-500 text-zinc-950 font-bold text-xs transition-colors shadow-sm cursor-pointer"
               >
                 Restore Work
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => dismissCrashRecovery()}
                 className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs transition-colors cursor-pointer"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -518,7 +521,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                 <div className="mx-auto my-12 max-w-lg space-y-4 rounded-2xl border border-zinc-800 p-6 text-center">
                   <h2 className="text-lg font-bold text-white">Find AI moments in your media</h2>
                   <p className="text-sm text-zinc-400">Choose a saved AI project above, upload a video, or analyze the selected asset from your media library.</p>
-                  <button type="button" disabled={linking || !activeProject?.mediaAssets.length} onClick={prepareAnalysis} className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-black disabled:opacity-40">Use selected media</button>
+                  <Button type="button" disabled={linking || !activeProject?.mediaAssets.length} onClick={prepareAnalysis} className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-black disabled:opacity-40">Use selected media</Button>
                 </div>
               )}
             </div>
@@ -539,14 +542,14 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   Create a clipping project to import media, mark clips, and build export recipes.
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={() => setShowCreateProject(true)}
                 className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs shadow-md transition-all cursor-pointer"
               >
                 <Film className="w-4 h-4" />
                 <span>Create Clipping Project</span>
-              </button>
+              </Button>
             </div>
           ) : (
             /* Editor Workspaces (Phases 2 - 4) */
@@ -612,7 +615,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div>
                   <label htmlFor="clipping-project-name" className="mb-1 block text-xs font-semibold text-zinc-300">Project name</label>
-                  <input
+                  <Input
                     id="clipping-project-name"
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
@@ -624,7 +627,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                 </div>
                 <div>
                   <label htmlFor="clipping-project-description" className="mb-1 block text-xs font-semibold text-zinc-300">Description (optional)</label>
-                  <textarea
+                  <Textarea
                     id="clipping-project-description"
                     value={newProjectDescription}
                     onChange={(e) => setNewProjectDescription(e.target.value)}
@@ -634,8 +637,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setShowCreateProject(false)} className="rounded-xl bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700">Cancel</button>
-                  <button type="submit" className="rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300">Create &amp; Open</button>
+                  <Button type="button" onClick={() => setShowCreateProject(false)} className="rounded-xl bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700">Cancel</Button>
+                  <Button type="submit" className="rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300">Create &amp; Open</Button>
                 </div>
               </form>
             </div>

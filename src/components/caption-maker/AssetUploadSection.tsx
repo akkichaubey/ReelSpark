@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef, useState } from 'react';
 import {
   UploadCloud,
@@ -121,7 +122,6 @@ const CONTAIN_POSITIONS: {
 
 export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   image,
-  mediaAssets = [],
   audio,
   bgMusic,
   voiceVolume = 1.0,
@@ -478,8 +478,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             <p className="text-sm text-zinc-300">Your voice has been extracted. You can also use the same video as your background media.</p>
             <p className="truncate text-xs text-zinc-500">{pendingVideoVoice.originalVideoFileName}</p>
             <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" autoFocus onClick={() => { onAudioChange(pendingVideoVoice, false); setPendingVideoVoice(null); }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800">Keep current background</button>
-              <button type="button" onClick={() => { onAudioChange(pendingVideoVoice, true); setPendingVideoVoice(null); }} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300">Use video as background</button>
+              <Button type="button" autoFocus onClick={() => { onAudioChange(pendingVideoVoice, false); setPendingVideoVoice(null); }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800">Keep current background</Button>
+              <Button type="button" onClick={() => { onAudioChange(pendingVideoVoice, true); setPendingVideoVoice(null); }} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300">Use video as background</Button>
             </div>
           </div>
         </div>
@@ -536,7 +536,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </p>
               <p className="text-[9px] text-zinc-500">Additional files are queued and uploaded one at a time.</p>
             </div>
-            <button type="button" onClick={() => cancelUpload('media')} className="shrink-0 rounded border border-red-500/30 px-2 py-1 text-[9px] font-semibold text-red-300 hover:bg-red-500/10">Cancel queue</button>
+            <Button type="button" onClick={() => cancelUpload('media')} className="shrink-0 rounded border border-red-500/30 px-2 py-1 text-[9px] font-semibold text-red-300 hover:bg-red-500/10">Cancel queue</Button>
           </div>
         )}
 
@@ -605,7 +605,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 </div>
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => anyMediaInputRef.current?.click()}
                   className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white flex items-center space-x-1 shadow-md cursor-pointer"
@@ -613,15 +613,15 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Replace</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => onImageChange(undefined)}
                   className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 text-xs font-semibold text-white flex items-center space-x-1 shadow-md cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Remove</span>
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -638,7 +638,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </span>
               <div className="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-white/10 text-[10px] font-semibold">
                 {(['cover', 'contain', 'blur'] as ImageFitMode[]).map((mode) => (
-                  <button
+                  <Button
                     key={mode}
                     type="button"
                     onClick={() => onFitModeChange(mode)}
@@ -649,7 +649,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     }`}
                   >
                     {mode}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -673,7 +673,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     const isSelected = (image.position || 'bottom-left') === pos.id;
                     const IconComponent = pos.Icon;
                     return (
-                      <button
+                      <Button
                         key={pos.id}
                         type="button"
                         onClick={() => onPositionChange?.(pos.id)}
@@ -692,7 +692,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                             isSelected ? 'text-black stroke-[2.5]' : 'text-zinc-400 stroke-2'
                           }`}
                         />
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -719,7 +719,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     ].map((preset) => {
                       const isActive = (image.scale ?? 100) === preset.val;
                       return (
-                        <button
+                        <Button
                           key={preset.val}
                           type="button"
                           onClick={() => onScaleChange?.(preset.val)}
@@ -730,7 +730,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                           }`}
                         >
                           {preset.label}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -774,38 +774,38 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </div>
 
             {isUploadingMedia && (
-              <button
+              <Button
                 type="button"
                 onClick={() => cancelUpload('media')}
                 className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 <X className="h-3 w-3" />
                 Cancel upload
-              </button>
+              </Button>
             )}
 
             {/* Quick Upload Choice Buttons: Video and Image */}
             <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
-              <button
+              <Button
                 type="button"
                 onClick={() => videoInputRef.current?.click()}
                 className="flex-1 py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <Film className="w-3.5 h-3.5 text-amber-400" />
                 <span>{isUploadingMedia ? 'Add Videos' : 'Upload Video'}</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
                 className="flex-1 py-1.5 px-2 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-sky-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
                 <span>{isUploadingMedia ? 'Add Images' : 'Upload Image'}</span>
-              </button>
+              </Button>
             </div>
-            <button type="button" onClick={() => anyMediaInputRef.current?.click()} className="text-[10px] font-semibold text-zinc-400 underline decoration-white/20 underline-offset-2 hover:text-white">
+            <Button type="button" onClick={() => anyMediaInputRef.current?.click()} className="text-[10px] font-semibold text-zinc-400 underline decoration-white/20 underline-offset-2 hover:text-white">
               Select multiple images and videos
-            </button>
+            </Button>
             <p className="text-[9px] text-zinc-500 font-mono">
               MP4, MOV, WEBM or JPG, PNG, WEBP (Reel visual background)
             </p>
@@ -849,42 +849,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           }}
         />
 
-        {mediaAssets.length > 0 && (
-          <section className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2" aria-label="Uploaded project media">
-            <div className="flex items-center justify-between gap-2">
-              <h5 className="text-[11px] font-bold text-zinc-200">Project Media</h5>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono text-zinc-500">{mediaAssets.length} uploaded</span>
-                <button type="button" onClick={() => anyMediaInputRef.current?.click()} className="rounded border border-amber-500/30 px-2 py-1 text-[9px] font-semibold text-amber-300 hover:bg-amber-500/10">Add Media</button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto">
-              {mediaAssets.map((asset) => {
-                const active = asset.id === image?.id;
-                const assetIsVideo = asset.mediaType === 'video';
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onImageChange(asset)}
-                    className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                      active
-                        ? 'border-amber-400/60 bg-amber-500/10 text-amber-200'
-                        : 'border-white/10 bg-zinc-900 text-zinc-300 hover:border-white/20 hover:bg-zinc-800'
-                    }`}
-                  >
-                    {assetIsVideo ? <Film className="h-3.5 w-3.5 shrink-0 text-amber-400" /> : <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-400" />}
-                    <span className="min-w-0 flex-1 truncate text-[10px]">{asset.fileName}</span>
-                    <span className="shrink-0 text-[9px] uppercase text-zinc-500">{assetIsVideo ? 'Video' : 'Image'}</span>
-                    {active && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label="Active background" />}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[9px] text-zinc-500">Choose which uploaded image or video to use as the active background.</p>
-          </section>
-        )}
+
       </div>
 
       {/* 2. Audio Voice Recording Asset Card */}
@@ -919,7 +884,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         {audio ? (
           <div className="space-y-3">
             {audio.sourceType === 'video' && audio.sourceVideo?.mediaType === 'video' && (
-              <button
+              <Button
                 type="button"
                 disabled={isTranscribing || image?.id === audio.sourceVideo.id}
                 onClick={() => onImageChange(audio.sourceVideo)}
@@ -928,11 +893,11 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               >
                 <Film className="h-3.5 w-3.5" />
                 {image?.id === audio.sourceVideo.id ? 'Using voice video as background' : 'Use this video as background'}
-              </button>
+              </Button>
             )}
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center space-x-2.5 flex-1 min-w-0">
-                <button
+                <Button
                   type="button"
                   onClick={toggleAudioPlay}
                   aria-label={isPlayingAudio ? 'Pause uploaded audio preview' : 'Play uploaded audio preview'}
@@ -944,7 +909,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   ) : (
                     <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                   )}
-                </button>
+                </Button>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-zinc-100 truncate">{audio.fileName}</p>
                   <p className="text-[10px] text-zinc-500 font-mono">
@@ -954,30 +919,30 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </div>
 
               <div className="flex items-center space-x-1">
-                <button
+                <Button
                   type="button"
                   onClick={() => anyAudioInputRef.current?.click()}
                   className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                   title="Replace with Audio or Video"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => audioVideoInputRef.current?.click()}
                   className="p-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/25 text-zinc-400 hover:text-amber-300 transition-colors cursor-pointer"
                   title="Replace with Video file (extract voice)"
                 >
                   <Film className="w-3.5 h-3.5" />
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => onAudioChange(undefined)}
                   className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-600/80 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                   title="Remove audio"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               </div>
 
               <audio
@@ -1008,7 +973,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => onVoiceMutedChange?.(!voiceMuted)}
                     className={`p-1 rounded text-xs transition-colors cursor-pointer ${
@@ -1017,7 +982,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                     title={voiceMuted ? 'Unmute Voice' : 'Mute Voice'}
                   >
                     {voiceMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                  </button>
+                  </Button>
                   <span className="text-[11px] font-medium text-zinc-300">Voice Volume</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -1049,7 +1014,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   <Waves className="w-3 h-3 text-cyan-400" />
                   Studio Denoise (Fan/Room Noise)
                 </span>
-                <button
+                <Button
                   type="button"
                   onClick={() => onStudioDenoiseChange?.(!studioDenoise)}
                   className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
@@ -1059,7 +1024,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   }`}
                 >
                   {studioDenoise ? 'ON' : 'OFF'}
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1115,17 +1080,17 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </p>
               <div className="flex items-center gap-2">
                 {onOpenSmartEditor && (
-                  <button
+                  <Button
                     type="button"
                     onClick={onOpenSmartEditor}
                     className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
                   >
                     <Scissors className="w-3.5 h-3.5 text-amber-400" />
                     <span>Open Smart Studio</span>
-                  </button>
+                  </Button>
                 )}
                 {fillerSegments && fillerSegments.length > 0 && onTrimFillers && (
-                  <button
+                  <Button
                     type="button"
                     onClick={onTrimFillers}
                     disabled={isTrimmingFillers}
@@ -1133,7 +1098,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   >
                     <Scissors className="w-3.5 h-3.5" />
                     <span>{isTrimmingFillers ? 'Trimming...' : 'Quick Trim'}</span>
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -1145,7 +1110,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   <Zap className="w-3.5 h-3.5 text-yellow-400" />
                   <span className="text-[11px] font-medium text-zinc-300">AI Sound Effects (Auto-SFX)</span>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={() => onAutoSfxEnabledChange?.(!autoSfxEnabled)}
                   className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
@@ -1155,7 +1120,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   }`}
                 >
                   {autoSfxEnabled ? 'ON' : 'OFF'}
-                </button>
+                </Button>
               </div>
               {autoSfxEnabled && sfxCues.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
@@ -1218,7 +1183,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <span>AI Analyzing Voice & Synchronizing Captions...</span>
               </div>
             ) : (
-              <button
+              <Button
                 type="button"
                 onClick={onTranscribe}
                 className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
@@ -1227,7 +1192,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <span>
                   Re-analyze Audio & Sync Captions ({preferredLanguage === 'hi' ? 'हिन्दी' : preferredLanguage === 'hinglish' ? 'Hinglish' : 'English'})
                 </span>
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -1260,19 +1225,19 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             </div>
 
             {isUploadingAudio && (
-              <button
+              <Button
                 type="button"
                 onClick={() => cancelUpload('audio')}
                 className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 <X className="h-3 w-3" />
                 Cancel upload
-              </button>
+              </Button>
             )}
 
             {/* Quick Upload Choice Buttons: Audio and Video */}
             <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
-              <button
+              <Button
                 type="button"
                 onClick={() => audioInputRef.current?.click()}
                 disabled={isUploadingAudio}
@@ -1280,8 +1245,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               >
                 <Music className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Upload Audio</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => audioVideoInputRef.current?.click()}
                 disabled={isUploadingAudio}
@@ -1289,7 +1254,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               >
                 <Film className="w-3.5 h-3.5 text-amber-400" />
                 <span>Upload Video</span>
-              </button>
+              </Button>
             </div>
 
             <p className="text-[9px] text-zinc-500 font-mono">
@@ -1351,7 +1316,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
 
         {/* AI Recommended BGM Quick Action */}
         {audioAnalysis?.recommendedBgmId && (
-          <button
+          <Button
             type="button"
             onClick={() => {
               const rec = PRESET_BGM_TRACKS.find((t) => t.id === audioAnalysis.recommendedBgmId);
@@ -1369,12 +1334,12 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <span>AI Auto-Match: {PRESET_BGM_TRACKS.find((t) => t.id === audioAnalysis.recommendedBgmId)?.title}</span>
             </span>
             <span className="text-[10px] font-mono font-bold text-amber-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-700/50">Apply</span>
-          </button>
+          </Button>
         )}
 
         {/* Track Selection Grid */}
         <div className="grid grid-cols-2 gap-1.5">
-          <button
+          <Button
             type="button"
             onClick={() => {
               if (bgmPreviewRef.current) {
@@ -1391,12 +1356,12 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           >
             <span>None</span>
             {!bgMusic && <Check className="w-3 h-3 text-purple-400" />}
-          </button>
+          </Button>
           {PRESET_BGM_TRACKS.map((track) => {
             const isSelected = bgMusic?.id === track.id;
             const isAiRecommended = audioAnalysis?.recommendedBgmId === track.id;
             return (
-              <button
+              <Button
                 key={track.id}
                 type="button"
                 onClick={() => {
@@ -1424,7 +1389,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   )}
                 </div>
                 {isSelected && <Check className="w-3 h-3 text-purple-400 shrink-0" />}
-              </button>
+              </Button>
             );
           })}
           </div>
@@ -1460,14 +1425,14 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                       <div className="flex items-center gap-1 shrink-0">
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" aria-label="Upload complete" role="img" />
                         {isSelected && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                        <button
+                        <Button
                           type="button"
                           onClick={(e) => handleDeleteCustomBgm(e, customTrack.id)}
                           title="Remove track from library"
                           className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   );
@@ -1477,7 +1442,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           )}
 
           {/* Upload Custom Track Trigger Button */}
-          <button
+          <Button
             type="button"
             onClick={() => bgmCustomInputRef.current?.click()}
             disabled={isUploadingBgm}
@@ -1495,17 +1460,17 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   : `Uploading Track (${uploadProgress.bgm}%)...`
                 : '+ Upload Custom MP3 / WAV Music'}
             </span>
-          </button>
+          </Button>
 
           {isUploadingBgm && (
-            <button
+            <Button
               type="button"
               onClick={() => cancelUpload('bgm')}
               className="w-full inline-flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
             >
               <X className="h-3 w-3" />
               Cancel upload
-            </button>
+            </Button>
           )}
 
         <input
@@ -1525,7 +1490,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
           <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-white/5 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <button
+                <Button
                   type="button"
                   onClick={() =>
                     onBgMusicChange?.({
@@ -1541,21 +1506,21 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   title={bgMusic.muted ? 'Unmute BGM' : 'Mute BGM'}
                 >
                   {bgMusic.muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                </button>
+                </Button>
                 <span className="text-[11px] font-medium text-zinc-300">BGM Volume</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono text-purple-300 font-semibold">
                   {bgMusic.muted ? 'Muted' : `${Math.round((bgMusic.volume ?? 0.2) * 100)}%`}
                 </span>
-                <button
+                <Button
                   type="button"
                   onClick={toggleBgmTestPlay}
                   className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                   title="Preview BGM"
                 >
                   {isPreviewingBgm ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                </button>
+                </Button>
               </div>
             </div>
             <input
@@ -1631,7 +1596,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                 <span className="text-[10px] text-zinc-400 flex items-center gap-1">
                   <span>📉 Auto-Ducking (Dip while speaking)</span>
                 </span>
-                <button
+                <Button
                   type="button"
                   onClick={() =>
                     onBgMusicChange?.({
@@ -1646,7 +1611,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
                   }`}
                 >
                   {bgMusic.autoDucking !== false ? 'ON' : 'OFF'}
-                </button>
+                </Button>
               </div>
 
               {/* Start Offset (Hook / Drop Scrubber) */}

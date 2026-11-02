@@ -1,5 +1,9 @@
 'use client';
 
+
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Button } from '@/components/ui/button';
+
 import React, { useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { StudioShell } from '@/components/clipping-studio/StudioShell';
@@ -32,12 +36,11 @@ function ClippingStudioPageContent() {
               </span>
             </div>
           </Link>
-          <button
+          <div className="flex items-center gap-2"><ThemeToggle /><Button variant="authGate"
             onClick={() => openAuthModal('login')}
-            className="px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-sm transition-all"
           >
             Sign In / Register
-          </button>
+          </Button></div>
         </header>
 
         <main className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
@@ -50,12 +53,12 @@ function ClippingStudioPageContent() {
               Please sign in or create an account to import long videos, perform precise timeline trimming, and multi-clip exports.
             </p>
             <div className="pt-2">
-              <button
+              <Button
                 onClick={() => openAuthModal('login')}
                 className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
               >
                 Sign In to Continue
-              </button>
+              </Button>
             </div>
           </div>
         </main>

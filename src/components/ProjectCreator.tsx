@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileVideo, FolderPlus, AlertCircle, Music, Film, X, Loader2 } from 'lucide-react';
 import { ProjectSettings } from '@/lib/types';
@@ -179,7 +181,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
 
         {/* Tab Switcher */}
         <div className="grid grid-cols-2 gap-2 p-1.5 rounded-xl bg-zinc-900/80 border border-white/10 mb-6">
-          <button
+          <Button
             type="button"
             onClick={() => {
               setActiveTab('video');
@@ -194,8 +196,8 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             <Film className="w-4 h-4" />
             <span className="hidden sm:inline">Upload Video File</span>
             <span className="sm:hidden">Video</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => {
               setActiveTab('audio');
@@ -210,7 +212,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             <Music className="w-4 h-4" />
             <span className="hidden sm:inline">Upload Audio File</span>
             <span className="sm:hidden">Audio</span>
-          </button>
+          </Button>
         </div>
 
         {error && (
@@ -229,7 +231,7 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
               Project Title
             </label>
-            <input
+            <Input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -341,16 +343,16 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
           {/* Submit Button */}
           <div className="flex items-center justify-end space-x-3 pt-2">
             {onClose && (
-              <button
+              <Button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
                 className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors"
               >
                 Cancel
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="submit"
               disabled={isSubmitting}
               className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-zinc-950 font-semibold text-sm shadow-lg shadow-amber-400/10 transition-all"
@@ -388,16 +390,16 @@ export const ProjectCreator: React.FC<ProjectCreatorProps> = ({ onProjectCreated
                   <span>Launch Project</span>
                 </>
               )}
-            </button>
+            </Button>
             {(submitStage === 'uploading' || submitStage === 'finalizing') && (
-              <button
+              <Button
                 type="button"
                 onClick={() => uploadAbortController.current?.abort()}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 <X className="h-3.5 w-3.5" />
                 Cancel upload
-              </button>
+              </Button>
             )}
           </div>
         </form>

@@ -1,8 +1,16 @@
 'use client';
+
+import { Input } from '@/components/ui/input';
+import { updateCaptionSource } from '@/lib/timeline/caption-edits';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Button } from '@/components/ui/button';
 import { accountCache, ACCOUNT_WORKSPACE_FLUSH_EVENT } from '@/lib/account-cache';
 import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
 import { voiceVideoBackgroundUpdates } from '@/lib/caption-maker/voice-video-background';
 
+import { musicTime, normalizeTrimRange } from '@/lib/caption-maker/playback-time';
+import { removeReelMedia } from '@/lib/caption-maker/remove-reel-media';
+import { readCloudSaveResult } from '@/lib/caption-maker/cloud-save';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -26,7 +34,9 @@ import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-valid
 import { AssetUploadSection } from '@/components/caption-maker/AssetUploadSection';
 import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import { TranscriptEditor } from '@/components/caption-maker/TranscriptEditor';
-import { CaptionTimeline } from '@/components/caption-maker/CaptionTimeline';
+import { ProfessionalTimeline } from '@/components/caption-maker/ProfessionalTimeline';
+import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
+import { commitTimeline, projectTimelineAssets, synchronizeTimelineSources, timelineEnd } from '@/lib/timeline/model';
 import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
 import type { SavedReel } from '@/lib/saved-reels/types';
 import { saveReel } from '@/lib/saved-reels/client';
@@ -118,6 +128,7 @@ function CaptionMakerPageContent() {
   // Audio Playback State
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const [timelineSeekVersion, setTimelineSeekVersion] = useState(0);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -137,7 +148,7 @@ function CaptionMakerPageContent() {
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const [crashRecoverySnapshot, setCrashRecoverySnapshot] = useState<ProjectSnapshot | null>(null);
   const isInitialMount = useRef<boolean>(true);
-  const [cloudSaveState, setCloudSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [cloudSaveState, setCloudSaveState] = useState<'idle' | 'saving' | 'saved' | 'local' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
   const cloudSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cloudAutosaveTimerRef = useRef<number | null>(null);
@@ -156,7 +167,7 @@ function CaptionMakerPageContent() {
     thumbnailUrl?: string;
   } | null>(null);
 
-  const persistProjectToCloud = useCallback((projectToSave: CaptionProject): Promise<void> => {
+  const persistProjectToCloud = useCallback((projectToSave: CaptionProject): Promise<'saved' | 'local'> => {
     // Serialize writes so a slower older save can never replace a newer edit.
     const request = cloudSaveQueueRef.current.then(async () => {
       const response = await fetch('/api/caption-maker/projects', {
@@ -165,12 +176,9 @@ function CaptionMakerPageContent() {
         credentials: 'same-origin',
         body: JSON.stringify(projectToSave),
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.synced) {
-        throw new Error(result?.error || 'Cloud save failed. This project is saved only in this browser.');
-      }
+      return readCloudSaveResult(response);
     });
-    cloudSaveQueueRef.current = request.catch(() => undefined);
+    cloudSaveQueueRef.current = request.then(() => undefined, () => undefined);
     return request;
   }, []);
 
@@ -452,7 +460,8 @@ function CaptionMakerPageContent() {
     // accountCache is keyed by the authenticated user, so wait until the auth
     // check has selected that account before reading its local project cache.
     if (authLoading) return;
-    void loadProjectFromStorage();
+    let active = true;
+    queueMicrotask(() => { if (active) void loadProjectFromStorage(); });
 
     const handleReelProjectUpdated = () => {
       if (!savedReelId) loadProjectFromStorage();
@@ -463,6 +472,7 @@ function CaptionMakerPageContent() {
     window.addEventListener('popstate', handleReelProjectUpdated);
 
     return () => {
+      active = false;
       window.removeEventListener('reel_project_updated', handleReelProjectUpdated);
       window.removeEventListener('storage', handleReelProjectUpdated);
       window.removeEventListener('popstate', handleReelProjectUpdated);
@@ -499,27 +509,34 @@ function CaptionMakerPageContent() {
     }
   }, [project.audio?.duration]);
 
+  const editingSnapshot = useRef({ project, index: historyIndex });
+  useEffect(() => { editingSnapshot.current = { project, index: historyIndex }; }, [project, historyIndex]);
+
   // Push new state to undo/redo history
   const updateProjectWithHistory = useCallback(
     (updater: (prev: CaptionProject) => CaptionProject) => {
-      setProject((prev) => {
-        const updated = updater(prev);
-        const next = savedReelId ? { ...updated, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined, renderedSrtUrl: undefined } : updated;
-        setHistory((prevHist) => {
-          const cut = prevHist.slice(0, historyIndex + 1);
-          return [...cut, next];
-        });
-        setHistoryIndex((prevIdx) => prevIdx + 1);
-        return next;
+      const prev = editingSnapshot.current.project;
+      const historyPosition = editingSnapshot.current.index;
+      const updated = synchronizeTimelineSources(prev, updater(prev));
+      if (updated === prev) return;
+      const next = savedReelId || updated.timeline?.enabled ? { ...updated, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined, renderedSrtUrl: undefined } : updated;
+      setHistory((prevHist) => {
+        const cut = prevHist.slice(0, historyPosition + 1);
+        return [...cut, next];
       });
+      editingSnapshot.current = { project: next, index: historyPosition + 1 };
+      setHistoryIndex(historyPosition + 1);
+      setProject(next);
+      setRenderResult(null);
     },
-    [historyIndex, savedReelId]
+    [savedReelId]
   );
 
   const undo = () => {
     if (historyIndex > 0) {
       const target = history[historyIndex - 1];
       setHistoryIndex(historyIndex - 1);
+      audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false);
       setProject(target);
     }
   };
@@ -528,12 +545,14 @@ function CaptionMakerPageContent() {
     if (historyIndex < history.length - 1) {
       const target = history[historyIndex + 1];
       setHistoryIndex(historyIndex + 1);
+      audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false);
       setProject(target);
     }
   };
 
   // Audio Playback Sync
   const togglePlay = useCallback(() => {
+    if (project.timeline?.enabled) { setIsPlaying(value => !value); return; }
     if (!audioRef.current) return;
     if (isPlaying) {
       try {
@@ -546,11 +565,7 @@ function CaptionMakerPageContent() {
       }
       setIsPlaying(false);
     } else {
-      const trimStart = project.trimRange?.start ?? 0;
-      const trimEnd =
-        project.trimRange?.end && project.trimRange.end > 0
-          ? project.trimRange.end
-          : audioDuration;
+      const { start: trimStart, end: trimEnd } = normalizeTrimRange(audioDuration, project.trimRange);
 
       // Ensure playback starts within trimmed bounds
       if (currentTime < trimStart || (trimEnd > 0 && currentTime >= trimEnd)) {
@@ -562,6 +577,7 @@ function CaptionMakerPageContent() {
         const p = audioRef.current.play();
         if (p !== undefined) {
           p.catch((e) => {
+            if (audioRef.current?.paused) { setIsPlaying(false); bgMusicRef.current?.pause(); }
             if (e?.name !== 'AbortError' && e?.name !== 'NotAllowedError') {
               console.warn('Audio play prevented', e);
             }
@@ -574,7 +590,7 @@ function CaptionMakerPageContent() {
           bgMusicRef.current.volume = baseBgmVol;
           const offset = project.bgMusic.startOffset ?? 0;
           if (bgMusicRef.current.duration) {
-            bgMusicRef.current.currentTime = (offset + currentTime) % bgMusicRef.current.duration;
+            bgMusicRef.current.currentTime = musicTime(audioRef.current.currentTime, offset, bgMusicRef.current.duration);
           }
           const bgP = bgMusicRef.current.play();
           if (bgP !== undefined) bgP.catch(() => {});
@@ -582,7 +598,7 @@ function CaptionMakerPageContent() {
       }
       setIsPlaying(true);
     }
-  }, [isPlaying, project.bgMusic, project.trimRange, currentTime, audioDuration]);
+  }, [isPlaying, project.bgMusic, project.trimRange, project.timeline, currentTime, audioDuration]);
 
   // Handle trim range change from timeline drag handles
   const handleTrimChange = useCallback(
@@ -620,22 +636,23 @@ function CaptionMakerPageContent() {
 
   const handleSeek = useCallback(
     (time: number) => {
-      const clamped = Math.max(0, Math.min(time, audioDuration));
+      const clamped = Math.max(0, Math.min(Number.isFinite(time) ? time : 0, project.timeline?.enabled ? timelineEnd(project.timeline) / 1000 : audioDuration));
+      if (project.timeline?.enabled) { setTimelineSeekVersion(value => value + 1); setCurrentTime(clamped); return; }
       setCurrentTime(clamped);
       if (audioRef.current) {
         audioRef.current.currentTime = clamped;
       }
       if (bgMusicRef.current && bgMusicRef.current.duration) {
         const offset = project.bgMusic?.startOffset ?? 0;
-        bgMusicRef.current.currentTime = (offset + clamped) % bgMusicRef.current.duration;
+        bgMusicRef.current.currentTime = musicTime(clamped, offset, bgMusicRef.current.duration);
       }
     },
-    [audioDuration, project.bgMusic]
+    [audioDuration, project.bgMusic, project.timeline]
   );
 
   // 60fps playhead sync using requestAnimationFrame with live Auto-Ducking and Trim boundary looping
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || project.timeline?.enabled) return;
     let rafId: number | null = null;
     const tick = () => {
       if (audioRef.current && !audioRef.current.paused) {
@@ -644,8 +661,12 @@ function CaptionMakerPageContent() {
 
         // Trim boundary enforcement: loop back or pause when reaching trimEnd
         if (project.trimRange && project.trimRange.end > 0 && cur >= project.trimRange.end) {
-          audioRef.current.currentTime = project.trimRange.start;
-          setCurrentTime(project.trimRange.start);
+          const { start } = normalizeTrimRange(audioDuration, project.trimRange);
+          audioRef.current.currentTime = start;
+          setCurrentTime(start);
+          if (bgMusicRef.current && Number.isFinite(bgMusicRef.current.duration)) {
+            bgMusicRef.current.currentTime = musicTime(start, project.bgMusic?.startOffset ?? 0, bgMusicRef.current.duration);
+          }
         }
 
         // Live Auto-Ducking in browser preview (VN & Instagram Style)
@@ -669,21 +690,27 @@ function CaptionMakerPageContent() {
         cancelAnimationFrame(rafId);
       }
     };
-  }, [isPlaying, project.bgMusic, project.transcript, project.trimRange]);
+  }, [isPlaying, project.bgMusic, project.transcript, project.trimRange, project.timeline?.enabled, audioDuration]);
 
   // Audio element events
   const handleAudioTimeUpdate = () => {
+    if (project.timeline?.enabled) return;
     if (audioRef.current) {
       const cur = audioRef.current.currentTime;
       setCurrentTime(cur);
       if (project.trimRange && project.trimRange.end > 0 && cur >= project.trimRange.end) {
-        audioRef.current.currentTime = project.trimRange.start;
-        setCurrentTime(project.trimRange.start);
+        const { start } = normalizeTrimRange(audioDuration, project.trimRange);
+        audioRef.current.currentTime = start;
+        setCurrentTime(start);
+        if (bgMusicRef.current && Number.isFinite(bgMusicRef.current.duration)) {
+          bgMusicRef.current.currentTime = musicTime(start, project.bgMusic?.startOffset ?? 0, bgMusicRef.current.duration);
+        }
       }
     }
   };
 
   const handleAudioEnded = () => {
+    if (project.timeline?.enabled) return;
     setIsPlaying(false);
     setCurrentTime(0);
     if (audioRef.current) {
@@ -716,9 +743,11 @@ function CaptionMakerPageContent() {
       return;
     }
     if (savedReelId) return;
-    setAutosaveStatus('saving');
-    setCloudSaveState('idle');
-    setCloudSaveError(null);
+    const statusTimer = window.setTimeout(() => {
+      setAutosaveStatus('saving');
+      setCloudSaveState('idle');
+      setCloudSaveError(null);
+    }, 0);
     const localTimer = window.setTimeout(() => {
       saveProjectToLocalStorage(project);
       setAutosaveStatus('saved');
@@ -729,14 +758,14 @@ function CaptionMakerPageContent() {
       project.transcript.length || project.title !== 'Untitled Reel'
     );
     if (!user?.id || !hasUserContent) {
-      return () => window.clearTimeout(localTimer);
+      return () => { window.clearTimeout(statusTimer); window.clearTimeout(localTimer); };
     }
     const cloudTimer = window.setTimeout(() => {
       setCloudSaveState('saving');
       void persistProjectToCloud(project)
-        .then(() => {
+        .then(result => {
           setCloudSaveError(null);
-          setCloudSaveState('saved');
+          setCloudSaveState(result);
         })
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : 'Cloud sync failed. Project is saved on this device only.';
@@ -747,6 +776,7 @@ function CaptionMakerPageContent() {
     }, 6000);
     cloudAutosaveTimerRef.current = cloudTimer;
     return () => {
+      window.clearTimeout(statusTimer);
       window.clearTimeout(localTimer);
       window.clearTimeout(cloudTimer);
       if (cloudAutosaveTimerRef.current === cloudTimer) cloudAutosaveTimerRef.current = null;
@@ -798,9 +828,9 @@ function CaptionMakerPageContent() {
     try {
       saveProjectToLocalStorage(project);
       saveProjectSnapshot(project, 'Manual Save');
-      await persistProjectToCloud(project);
+      const result = await persistProjectToCloud(project);
       setAutosaveStatus('saved');
-      setCloudSaveState('saved');
+      setCloudSaveState(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Cloud save failed. This project remains saved locally.';
       console.error('Reel Maker cloud save failed:', e);
@@ -877,6 +907,7 @@ function CaptionMakerPageContent() {
       if (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
         target.isContentEditable
       ) {
         return;
@@ -1471,14 +1502,17 @@ function CaptionMakerPageContent() {
   useEffect(() => {
     if (
       !savedReelId &&
+      !project.timeline?.enabled &&
       project.audio?.fileUrl &&
       project.audio.fileUrl !== '/sample-audio.mp3' &&
       (!project.isAudioSynced || ![4, 5].includes(project.syncVersion || 0) || project.transcript.length === 0) &&
       !isTranscribing
     ) {
-      syncAudioWithTranscript(project, true);
+      let active = true;
+      queueMicrotask(() => { if (active) void syncAudioWithTranscript(project, true); });
+      return () => { active = false; };
     }
-  }, [savedReelId, project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion, project.transcript.length]);
+  }, [savedReelId, project.id, project.audio?.fileUrl, project.isAudioSynced, project.syncVersion, project.transcript.length, project.timeline?.enabled]);
 
   const handleUpdateGroups = (groups: CaptionGroup[]) => {
     // Flatten words
@@ -1550,6 +1584,8 @@ function CaptionMakerPageContent() {
       return {
         ...prev,
         outputSettings,
+        timeline: prev.timeline ? { ...prev.timeline, fps: outputSettings.fps } : undefined,
+        renderedVideoUrl: undefined,
         captionStyle: {
           ...prev.captionStyle,
           safeZoneOverrides: {
@@ -1579,7 +1615,7 @@ function CaptionMakerPageContent() {
       thumbnailIntroDuration?: number;
     }
   ) => {
-    if (!project.audio) {
+    if (!project.audio && !project.timeline?.enabled) {
       alert('Please upload an audio file before rendering.');
       return;
     }
@@ -1593,6 +1629,7 @@ function CaptionMakerPageContent() {
     // Mandatory Pre-Render Check 1: Ensure audio & text are 100% acoustic-synced before spending time rendering
     if (
       !savedReelId &&
+      !activeProj.timeline?.enabled &&
       activeProj.audio?.fileUrl &&
       activeProj.audio.fileUrl !== '/sample-audio.mp3' &&
       (!activeProj.isAudioSynced || ![4, 5].includes(activeProj.syncVersion || 0))
@@ -1605,7 +1642,7 @@ function CaptionMakerPageContent() {
     }
 
     // Mandatory Pre-Render Check 2: Validate & auto-heal word timestamps, overlaps, and pause boundaries
-    const preFlight = validateAndHealReelProject(activeProj, audioDuration);
+    const preFlight = activeProj.timeline?.enabled ? { ready: timelineEnd(activeProj.timeline) > 0, checks: [], autoFixedCount: 0, healedProject: activeProj } : validateAndHealReelProject(activeProj, audioDuration);
     if (!preFlight.ready) {
       setIsRendering(false);
       const errDetail = preFlight.checks.find((c) => c.status === 'error')?.detail || 'Project validation failed.';
@@ -1665,6 +1702,7 @@ function CaptionMakerPageContent() {
     }
 
     const payload = {
+      timelineProject: activeProj.timeline?.enabled ? activeProj : undefined,
       projectId: activeProj.id,
       projectTitle: activeProj.title,
       image: activeProj.image,
@@ -1696,8 +1734,8 @@ function CaptionMakerPageContent() {
     };
 
     try {
-      if (engine === 'remotion') {
-        const response = await fetch('/api/caption-maker/render-remotion?stream=true', {
+      if (engine === 'remotion' || activeProj.timeline?.enabled) {
+        const response = await fetch(activeProj.timeline?.enabled ? '/api/caption-maker/timeline-render' : '/api/caption-maker/render-remotion?stream=true', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1826,12 +1864,11 @@ function CaptionMakerPageContent() {
               </span>
             </div>
           </Link>
-          <button
+          <div className="flex items-center gap-2"><ThemeToggle /><Button variant="authGate"
             onClick={() => openAuthModal('login')}
-            className="px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-sm transition-all"
           >
             Sign In / Register
-          </button>
+          </Button></div>
         </header>
 
         <main className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
@@ -1844,12 +1881,12 @@ function CaptionMakerPageContent() {
               Please sign in or create an account to start editing animated captions, generating thumbnails, and rendering video reels.
             </p>
             <div className="pt-2">
-              <button
+              <Button
                 onClick={() => openAuthModal('login')}
                 className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
               >
                 Sign In to Continue
-              </button>
+              </Button>
             </div>
           </div>
         </main>
@@ -1875,7 +1912,7 @@ function CaptionMakerPageContent() {
         {/* Audio Engine element */}
         <audio
           ref={audioRef}
-          src={project.audio?.fileUrl || undefined}
+          src={project.timeline?.enabled ? undefined : project.audio?.fileUrl || undefined}
           onTimeUpdate={handleAudioTimeUpdate}
           onEnded={handleAudioEnded}
           onLoadedMetadata={(e) => {
@@ -1904,7 +1941,7 @@ function CaptionMakerPageContent() {
         {project.bgMusic?.fileUrl && (
           <audio
             ref={bgMusicRef}
-            src={project.bgMusic.fileUrl}
+            src={project.timeline?.enabled ? undefined : project.bgMusic.fileUrl}
             loop
             preload="auto"
             className="hidden"
@@ -1922,20 +1959,20 @@ function CaptionMakerPageContent() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => handleRestoreProject(crashRecoverySnapshot.project)}
                 className="px-2.5 py-1 bg-amber-400 text-black font-semibold rounded hover:bg-amber-300 transition-colors shadow-sm cursor-pointer"
               >
                 Restore Session
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setCrashRecoverySnapshot(null)}
                 className="px-2 py-1 bg-zinc-800 text-zinc-400 hover:text-white rounded transition-colors cursor-pointer"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1944,7 +1981,7 @@ function CaptionMakerPageContent() {
         <div className="min-h-12 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2 flex flex-wrap items-center justify-between shrink-0 z-20 gap-2">
           {/* Project Name Editable & Language Switcher */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <input
+            <Input
               type="text"
               value={project.title}
               onChange={(e) =>
@@ -1959,7 +1996,7 @@ function CaptionMakerPageContent() {
 
             {/* Multilingual Language Switcher Toggle (English / Hindi / Hinglish) */}
             <div className="flex items-center bg-zinc-800/90 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
-              <button
+              <Button
                 type="button"
                 onClick={() => handleSwitchLanguage('en')}
                 className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
@@ -1970,8 +2007,8 @@ function CaptionMakerPageContent() {
                 title="Show English captions"
               >
                 English
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => handleSwitchLanguage('hi')}
                 className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
@@ -1982,8 +2019,8 @@ function CaptionMakerPageContent() {
                 title="Show Hindi captions"
               >
                 हिन्दी
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => handleSwitchLanguage('hinglish')}
                 className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer ${
@@ -1994,7 +2031,7 @@ function CaptionMakerPageContent() {
                 title="Show Hinglish captions (Roman Hindi)"
               >
                 Hinglish
-              </button>
+              </Button>
             </div>
 
             {/* Word timing quality badge */}
@@ -2005,7 +2042,7 @@ function CaptionMakerPageContent() {
                 : 0;
               const hasStrongWordTiming = wordTimingCoverage >= 85;
               return (
-            <button
+            <Button
               type="button"
               onClick={handleTranscribe}
               disabled={isTranscribing}
@@ -2041,44 +2078,51 @@ function CaptionMakerPageContent() {
                   </span>
                 </>
               )}
-            </button>
+            </Button>
               );
             })()}
           </div>
 
           {/* Action Controls (Undo, Redo, Save, Render, Shortcuts) */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Undo / Redo */}
             <div className="flex items-center bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60">
-              <button
+              <Button
                 onClick={undo}
                 disabled={historyIndex <= 0}
                 title="Undo (Ctrl+Z)"
                 className="p-1 rounded hover:bg-zinc-700 text-zinc-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
               >
                 <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={redo}
                 disabled={historyIndex >= history.length - 1}
                 title="Redo (Ctrl+Shift+Z)"
                 className="p-1 rounded hover:bg-zinc-700 text-zinc-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
               >
                 <Redo2 className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
 
             {/* Reset */}
-            <button
+            <Button
               onClick={handleResetProject}
               title="Reset Project"
               className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-            </button>
+            </Button>
 
+            {/* Project history, snapshots and portable project files */}
+            <Button type="button" aria-label="Project history and snapshots"
+              title="Project history, snapshots and JSON import/export"
+              onClick={() => setIsHistoryModalOpen(true)}
+              className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer">
+              <FolderOpen className="w-3.5 h-3.5" />
+            </Button>
             {/* Safe Mode Toggle Button in Header */}
-            <button
+            <Button
               type="button"
               onClick={handleToggleSafeArea}
               title={
@@ -2094,7 +2138,7 @@ function CaptionMakerPageContent() {
             >
               <Shield className={`w-3.5 h-3.5 ${isSafeAreaOn ? 'text-sky-400' : 'text-zinc-500'}`} />
               <span>Safe Mode: {isSafeAreaOn ? 'ON' : 'OFF'}</span>
-            </button>
+            </Button>
 
             {/* Autosave Status Indicator */}
             <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/60 border border-zinc-700/50 text-[11px] text-zinc-400">
@@ -2114,16 +2158,16 @@ function CaptionMakerPageContent() {
                     ? 'Cloud Synced'
                     : cloudSaveState === 'error'
                       ? 'Local only'
-                      : savedReelId ? 'Explicit reel save' : autosaveStatus === 'saving' ? 'Saving locally...' : 'Local autosave'}
+                      : cloudSaveState === 'local' ? 'Saved on this device' : savedReelId ? 'Explicit reel save' : autosaveStatus === 'saving' ? 'Saving locally...' : 'Local autosave'}
               </span>
             </div>
 
             {/* Save */}
-            {!savedReelId && <button
+            {!savedReelId && <Button
               onClick={handleSaveProject}
               disabled={cloudSaveState === 'saving'}
-              aria-label={cloudSaveState === 'error' ? `Saved locally only. ${cloudSaveError || ''}` : cloudSaveState === 'saved' ? 'Project saved to your account' : 'Save project to your account'}
-              title={cloudSaveState === 'error' ? cloudSaveError || 'Cloud save failed; project remains on this device.' : cloudSaveState === 'saved' ? 'Project is saved to your account and can be opened on another device' : 'Save project to your account so it can be opened on another device'}
+              aria-label={cloudSaveState === 'local' ? 'Save on this device; cloud storage is disabled' : cloudSaveState === 'error' ? `Saved locally only. ${cloudSaveError || ''}` : cloudSaveState === 'saved' ? 'Project saved to your account' : 'Save project to your account'}
+              title={cloudSaveState === 'local' ? 'Cloud storage is disabled. Your draft is saved on this device. Use Save Reel to keep an independent copy on this server.' : cloudSaveState === 'error' ? cloudSaveError || 'Cloud save failed; project remains on this device.' : cloudSaveState === 'saved' ? 'Project is saved to your account and can be opened on another device' : 'Save project to your account so it can be opened on another device'}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer disabled:cursor-wait disabled:opacity-70 ${
                 cloudSaveState === 'error'
                   ? 'bg-red-950/60 border-red-500/60 text-red-200'
@@ -2142,6 +2186,8 @@ function CaptionMakerPageContent() {
                   <AlertCircle className="w-3.5 h-3.5 text-red-300" />
                   <span className="hidden sm:inline">Local only</span>
                 </>
+              ) : cloudSaveState === 'local' ? (
+                <><Save className="w-3.5 h-3.5" /><span>Saved locally</span></>
               ) : cloudSaveState === 'saved' ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -2153,10 +2199,10 @@ function CaptionMakerPageContent() {
                   <span className="hidden sm:inline">Save</span>
                 </>
               )}
-            </button>}
+            </Button>}
 
             {/* Platform & Canvas Setting Trigger */}
-            <button
+            <Button
               onClick={() => {
                 setCompactPanel('style');
                 if (rightTab === 'canvas') {
@@ -2183,29 +2229,29 @@ function CaptionMakerPageContent() {
               >
                 {project.outputSettings.aspectRatio}
               </span>
-            </button>
+            </Button>
 
             {/* Render / Export Modal Trigger */}
-            <button
+            <Button
               onClick={() => setIsExportOpen(true)}
               className="flex items-center gap-1.5 px-3.5 py-1 bg-amber-400 hover:bg-amber-300 text-black font-bold rounded-lg text-xs shadow-md shadow-amber-400/10 active:scale-95 transition-all cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Render Reel</span>
-            </button>
+            </Button>
           </div>
         </div>
 
       {/* Main 3-Column Studio Editor Workspace */}
       <div className="flex shrink-0 gap-1 border-b border-zinc-800 p-1.5 text-xs xl:hidden" role="tablist" aria-label="Editor panel">
-        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: 'Media & Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</button>)}
+        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: 'Media & Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <Button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</Button>)}
       </div>
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
         {/* LEFT COLUMN: Assets & Audio and Transcript Tabs */}
         <section className={`${compactPanel === 'media' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
           {/* Tab Headers */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
-            <button
+            <Button
               onClick={() => setLeftTab('assets')}
               className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                 leftTab === 'assets'
@@ -2215,8 +2261,8 @@ function CaptionMakerPageContent() {
             >
               <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
               Assets & Audio
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setLeftTab('transcript')}
               className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                 leftTab === 'transcript'
@@ -2231,18 +2277,18 @@ function CaptionMakerPageContent() {
                   {project.captionGroups.length}
                 </span>
               )}
-            </button>
+            </Button>
           </div>
 
           {/* Left Tab Body (Scrollable for assets, flex pinned for transcript) */}
           {transcriptionError && (
             <div role="alert" className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
               <p>{transcriptionError}</p>
-              <button type="button" disabled={isTranscribing || !project.audio}
+              <Button type="button" disabled={isTranscribing || !project.audio}
                 onClick={() => void syncAudioWithTranscript(project)}
                 className="mt-2 rounded bg-amber-400 px-3 py-1 font-semibold text-black disabled:opacity-50">
                 {isTranscribing ? 'Retrying speech recognition…' : 'Retry transcription'}
-              </button>
+              </Button>
             </div>
           )}
           <div
@@ -2353,7 +2399,10 @@ function CaptionMakerPageContent() {
                   }
                   currentTime={currentTime}
                   onUpdateGroups={handleUpdateGroups}
-                  onSeek={handleSeek}
+                  onSeek={sourceTime => {
+                    const clip = project.timeline?.enabled ? project.timeline.clips.find(clip => clip.assetId === project.audio?.id && project.timeline!.tracks.find(track => track.id === clip.trackId)?.kind === 'captions' && sourceTime * 1000 >= clip.sourceStartMs && sourceTime * 1000 < clip.sourceStartMs + clip.durationMs) : undefined;
+                    handleSeek(clip ? (clip.startMs + sourceTime * 1000 - clip.sourceStartMs) / 1000 : sourceTime);
+                  }}
                   onClearAll={handleClearAllTranscript}
                   onAutoDetectTranscript={handleTranscribe}
                   isTranscribing={isTranscribing}
@@ -2369,7 +2418,7 @@ function CaptionMakerPageContent() {
             {/* Center Mode Switcher Tabs */}
             <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md mb-2 px-1 text-xs">
               <div className="flex items-center gap-1.5 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 shadow-sm">
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     setCenterViewMode('video');
@@ -2384,8 +2433,8 @@ function CaptionMakerPageContent() {
                 >
                   <Film className="w-3.5 h-3.5" />
                   <span>Video Reel</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => {
                     setCenterViewMode('thumbnail');
@@ -2400,7 +2449,7 @@ function CaptionMakerPageContent() {
                 >
                   <ImageIcon className={`w-3.5 h-3.5 ${centerViewMode === 'thumbnail' ? 'fill-black' : 'text-amber-400'}`} />
                   <span>Thumbnail Cover</span>
-                </button>
+                </Button>
               </div>
 
               <span className="text-[11px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
@@ -2442,6 +2491,8 @@ function CaptionMakerPageContent() {
                   setThumbnailSubTab('content');
                 }}
               />
+            ) : project.timeline?.enabled ? (
+              <TimelinePreview seekVersion={timelineSeekVersion} project={project} currentTime={currentTime} playing={isPlaying} onTime={setCurrentTime} onPlaying={setIsPlaying} />
             ) : (
               <CaptionPreview
                 image={project.image}
@@ -2471,7 +2522,7 @@ function CaptionMakerPageContent() {
         <section className={`${compactPanel === 'style' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
           {/* Tab Headers: Clean 2 tabs only */}
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
-            <button
+            <Button
               onClick={() => {
                 setRightTab('style');
                 setCenterViewMode('video');
@@ -2484,9 +2535,9 @@ function CaptionMakerPageContent() {
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
               <span>Caption Styles</span>
-            </button>
+            </Button>
 
-            <button
+            <Button
               onClick={() => {
                 setRightTab('thumbnail');
                 setCenterViewMode('thumbnail');
@@ -2499,7 +2550,7 @@ function CaptionMakerPageContent() {
             >
               <Palette className="w-3.5 h-3.5 text-amber-400" />
               <span>Thumbnail Style</span>
-            </button>
+            </Button>
           </div>
 
           {/* Right Tab Body (Scrollable Box) */}
@@ -2511,13 +2562,13 @@ function CaptionMakerPageContent() {
                     <Tv className="w-4 h-4 text-amber-400" />
                     <span>Platform & Canvas Settings</span>
                   </div>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setRightTab('style')}
                     className="text-[11px] text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 cursor-pointer transition-colors"
                   >
                     Back to Styles
-                  </button>
+                  </Button>
                 </div>
                 <OutputSettingsPanel
                   settings={project.outputSettings}
@@ -2550,19 +2601,38 @@ function CaptionMakerPageContent() {
       {/* BOTTOM SECTION: Full Interactive Scrubber & Audio Waveform Timeline */}
       {savedReelLoadError ? <div role="alert" className="bg-red-950 px-4 py-3 text-sm text-red-200">{savedReelLoadError} · <a href="/saved-reels">Return to Saved Reels</a></div> : (!savedReelId || savedReelSession) && <SavedReelActions project={project} session={savedReelSession} onUpdateProject={updates => updateProjectWithHistory(previous => ({ ...previous, ...updates, updatedAt: new Date().toISOString() }))} onSaved={(reel) => { setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); if (!savedReelId) router.push(`/reel-maker?savedReel=${encodeURIComponent(reel.id)}`); }} />}
       <footer className="shrink-0">
-        <CaptionTimeline
-          showCaptionWords={false}
-          duration={audioDuration}
-          currentTime={currentTime}
-          isPlaying={isPlaying}
-          groups={project.captionGroups}
-          trimRange={project.trimRange}
-          onSeek={handleSeek}
-          onTogglePlay={togglePlay}
-          onTrimChange={handleTrimChange}
-          onUpdateGroups={handleUpdateGroups}
-          onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
-        />
+        <ProfessionalTimeline project={project} currentTime={currentTime} isPlaying={isPlaying} onSeek={handleSeek} onTogglePlay={togglePlay} onUndo={undo} onRedo={redo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1} onTrimChange={handleTrimChange} onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
+          onAutoSyncCaptions={handleTranscribe} isSyncingCaptions={isTranscribing}
+          onCaptionEffects={() => { setCompactPanel('style'); setRightTab('style'); }}
+          onCaptionSourceChange={(assetId, groups) => updateProjectWithHistory(previous => updateCaptionSource(previous, assetId, groups))}
+          onEditCaptions={() => { setCompactPanel('media'); setLeftTab('transcript'); }} onRemoveMedia={async assetId => {
+          const previous = editingSnapshot.current.project;
+          const asset = projectTimelineAssets(previous).find(asset => asset.id === assetId);
+          if (!asset) throw new Error('Media is no longer available.');
+          // Validate linked-track locks before deleting any stored bytes.
+          removeReelMedia(previous, assetId);
+          const response = await fetch('/api/caption-maker/media', {
+            method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileUrl: asset.fileUrl }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || 'Media deletion failed.');
+          const current = editingSnapshot.current.project;
+          const deleted = new Set<string>(result.deletedUrls);
+          let next = current;
+          for (const item of projectTimelineAssets(current)) {
+            if (deleted.has(item.fileUrl)) next = removeReelMedia(next, item.id);
+          }
+          // Permanent deletion must not leave Undo snapshots pointing at removed files.
+          editingSnapshot.current = { project: next, index: 0 };
+          setProject(next); setHistory([next]); setHistoryIndex(0); setRenderResult(null);
+          audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false); setCurrentTime(0);
+          setTimelineSeekVersion(value => value + 1);
+        }} onChange={timeline => {
+          audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false);
+          if (!project.timeline?.enabled) setCurrentTime(0);
+          updateProjectWithHistory(previous => ({ ...previous, timeline: commitTimeline({ ...timeline, fps: previous.outputSettings.fps, captionSources: { ...timeline.captionSources, ...(previous.audio ? { [previous.audio.id]: { transcript: previous.transcript, captionGroups: previous.captionGroups, sfxCues: previous.sfxCues } } : {}) } }), trimRange: undefined, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtUrl: undefined, renderedSrtPath: undefined, updatedAt: new Date().toISOString() }));
+        }} />
       </footer>
 
       {/* Render / Export Modal */}

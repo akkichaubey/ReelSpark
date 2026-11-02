@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
   if (!isSameOriginAuthRequest(req)) return NextResponse.json({ success: false, error: 'Invalid request origin' }, { status: 403 });
   if (!projectCloudEnabled()) {
-    return NextResponse.json({ success: false, synced: false, error: 'Cloud project storage is not enabled; this project is only saved on this device.' }, { status: 503 });
+    return NextResponse.json({ success: true, enabled: false, synced: false, code: 'CLOUD_STORAGE_DISABLED', message: 'Cloud project storage is disabled. Save this project on this device or use Saved Reels.' }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
 
   try {

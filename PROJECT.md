@@ -1,5 +1,45 @@
 # PROJECT: ReelSpark — Local-First Video to Reels Studio
 
+## Timeline implementation update — 2026-10-31
+
+Thumbnail follow-up: cached video frames now form zoom-responsive viewport strips
+without the old 100-tile cutoff. A single muted hover player previews source
+frames with clip/time information. Queued/processing/failure/retry and lazy-image
+states are visible. [Sampling, compatibility and QA](docs/timeline-thumbnails.md).
+Existing rules and source data remain unchanged.
+
+Motion follow-up: per-clip transforms, opacity/effect curves, easing/Bezier
+controls, curve graphs, animation-speed ramps, keyframe copy/paste and presets
+use the shared Player/export scene. Animation phase survives trim and split.
+Media playback-speed ramps remain a separate pending feature; source playback
+rates are unchanged. [Usage and verification](docs/timeline-motion.md). Existing
+rules below are preserved.
+
+Caption follow-up: inline word text and boundary editing now share source data
+with Transcript and export. The timeline exposes the existing speech-sync and
+effects flows. Source-sharing, lock behavior and pending browser/provider QA are
+documented in [the caption guide](docs/timeline-caption-editing.md). Existing
+rules and preservation requirements below continue to apply.
+
+Reel Maker now includes advanced clip editing and audio waveform controls.
+The original rules and requirements below remain in force. Existing source
+files, integrations, legacy projects and editor interactions must be retained.
+
+- Clip edits: compatible cross-track drag/drop, trim/split/copy/duplicate/delete,
+  ripple trim/delete, roll/slip/slide, snapping, synchronized gap removal and
+  linked multi-selection/grouping. [Usage](docs/advanced-timeline-editing.md).
+- Audio: real cached waveform peaks, selected-clip volume/fade handles,
+  source-relative automation, mute/solo/ducking and detach/resync with linked
+  video. [Usage, compatibility and limits](docs/timeline-audio-editing.md).
+- Shared shadcn/Radix controls retain the existing theme, responsive geometry and
+  specialized media gestures. [Component conventions](docs/ui-components.md).
+- Current audio work passes typecheck, audio/advanced-edit regressions and the
+  real-media timeline suite. New browser listening/pointer QA and measured audio
+  automation exports remain pending; earlier rendering results are historical.
+- Keep feature/verification Markdown aligned with implementation, with explicit
+  PASS versus pending results. Preserve existing rules when updating these files.
+  The existing application server must not be started or restarted for this work.
+
 ## 1. Project Overview
 
 **ReelSpark** is a professional, local-first web application engineered to extract the most motivational, philosophical, and thought-provoking short clips from long-form speeches, podcasts, and interviews (optimized for Osho speeches, Alan Watts, J. Krishnamurti, and deep educational talks).

@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
     if (!isSameOriginAuthRequest(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
     const userNamespace = mediaUserNamespace(user.id);
     const body = await req.json();
+    if (body.timeline?.enabled || body.timelineProject?.timeline?.enabled) return NextResponse.json({ error: 'Use the timeline render endpoint for multi-track exports.' }, { status: 400 });
     const validationError = validateCaptionRenderRequest(body);
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const {

@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useMemo } from 'react';
 import {
   Layers,
@@ -129,14 +131,14 @@ export const MergeStudio: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
           type="button"
           onClick={() => setShowCreateModal(true)}
           className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
         >
           <Plus className="w-4 h-4 text-zinc-900" />
           <span>New Merge Recipe</span>
-        </button>
+        </Button>
       </div>
 
       {recipes.length === 0 ? (
@@ -151,13 +153,13 @@ export const MergeStudio: React.FC = () => {
               Create your first recipe to combine clips in any custom order, preview the sequence, and prepare for multi-clip exporting.
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={() => setShowCreateModal(true)}
             className="px-5 py-2 rounded-xl bg-white text-zinc-950 font-bold text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
           >
             Create First Recipe
-          </button>
+          </Button>
         </div>
       ) : (
         /* Two-Column Master / Detail Layout */
@@ -166,14 +168,14 @@ export const MergeStudio: React.FC = () => {
           <div className="lg:col-span-4 space-y-3">
             <div className="flex items-center justify-between text-xs text-zinc-400 font-semibold px-1">
               <span>RECIPES ({recipes.length})</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
                 className="text-amber-400 hover:text-amber-300 flex items-center space-x-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add</span>
-              </button>
+              </Button>
             </div>
 
             <div className="space-y-2">
@@ -214,7 +216,7 @@ export const MergeStudio: React.FC = () => {
                     </div>
 
                     <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100">
-                      <button
+                      <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -224,8 +226,8 @@ export const MergeStudio: React.FC = () => {
                         className="p-1 rounded text-zinc-400 hover:text-white transition-colors cursor-pointer"
                       >
                         <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -237,7 +239,7 @@ export const MergeStudio: React.FC = () => {
                         className="p-1 rounded text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
@@ -255,25 +257,25 @@ export const MergeStudio: React.FC = () => {
                   <div className="flex items-center space-x-2 w-full sm:w-auto">
                     {editingTitle ? (
                       <div className="flex items-center space-x-1.5 w-full">
-                        <input
+                        <Input
                           type="text"
                           value={titleInput}
                           onChange={(e) => setTitleInput(e.target.value)}
                           className="px-2 py-1 text-sm bg-zinc-950 border border-amber-400 rounded text-white focus:outline-none"
                           autoFocus
                         />
-                        <button
+                        <Button
                           type="button"
                           onClick={handleRename}
                           className="px-2.5 py-1 text-xs bg-white text-zinc-950 font-bold rounded cursor-pointer"
                         >
                           Save
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <div className="flex items-center space-x-2">
                         <h3 className="text-lg font-black text-white tracking-tight">{activeRecipe.name}</h3>
-                        <button
+                        <Button
                           type="button"
                           onClick={() => {
                             setTitleInput(activeRecipe.name);
@@ -282,7 +284,7 @@ export const MergeStudio: React.FC = () => {
                           className="p-1 text-zinc-400 hover:text-white cursor-pointer"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -297,7 +299,7 @@ export const MergeStudio: React.FC = () => {
                       ~{estimatedFileSizeMb} MB
                     </span>
 
-                    <button
+                    <Button
                       type="button"
                       onClick={() => reverseRecipeItems(activeRecipe.id)}
                       disabled={activeRecipe.items.length < 2}
@@ -306,9 +308,9 @@ export const MergeStudio: React.FC = () => {
                     >
                       <ArrowUpDown className="w-3.5 h-3.5" />
                       <span>Reverse</span>
-                    </button>
+                    </Button>
 
-                    <button
+                    <Button
                       type="button"
                       onClick={handleProceedToExport}
                       className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs shadow transition-colors cursor-pointer"
@@ -316,7 +318,7 @@ export const MergeStudio: React.FC = () => {
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Export</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -411,7 +413,7 @@ export const MergeStudio: React.FC = () => {
                     <Scissors className="w-6 h-6 text-zinc-600 mx-auto" />
                     <p className="text-xs text-zinc-400">No clips added to this recipe yet.</p>
                     <p className="text-[11px] text-zinc-500">
-                      Click the "+" button on any clip in the pool below to add it to the sequence.
+                      Click the &quot;+&quot; button on any clip in the pool below to add it to the sequence.
                     </p>
                   </div>
                 ) : (
@@ -451,18 +453,18 @@ export const MergeStudio: React.FC = () => {
                               {/* Reordering & Action Controls */}
                               <div className="flex items-center space-x-1">
                                 {clip && (
-                                  <button
+                                  <Button
                                     type="button"
                                     onClick={() => handleAuditionClip(clip)}
                                     title="Audition clip bounds in player"
                                     className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer mr-1"
                                   >
                                     <Play className="w-3.5 h-3.5" />
-                                  </button>
+                                  </Button>
                                 )}
 
                                 {/* Move Up */}
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => moveRecipeItem(activeRecipe.id, idx, 'up')}
                                   disabled={idx === 0}
@@ -470,10 +472,10 @@ export const MergeStudio: React.FC = () => {
                                   className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 transition-colors cursor-pointer"
                                 >
                                   <ArrowUp className="w-3.5 h-3.5" />
-                                </button>
+                                </Button>
 
                                 {/* Move Down */}
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => moveRecipeItem(activeRecipe.id, idx, 'down')}
                                   disabled={idx === arr.length - 1}
@@ -481,17 +483,17 @@ export const MergeStudio: React.FC = () => {
                                   className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 transition-colors cursor-pointer"
                                 >
                                   <ArrowDown className="w-3.5 h-3.5" />
-                                </button>
+                                </Button>
 
                                 {/* Remove from recipe */}
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => removeClipFromRecipe(activeRecipe.id, item.id)}
                                   title="Remove clip from recipe (Original clip remains in library)"
                                   className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors ml-1 cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                </Button>
                               </div>
                             </div>
 
@@ -523,22 +525,22 @@ export const MergeStudio: React.FC = () => {
                       <span>Available Project Clips ({clips.length})</span>
                     </h4>
                     {clips.length > 0 && (
-                      <button
+                      <Button
                         type="button"
                         onClick={handleAddAllClips}
                         className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
                       >
                         + Add All Clips
-                      </button>
+                      </Button>
                     )}
                   </div>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setActiveTab('timeline')}
                     className="text-xs text-zinc-400 hover:text-zinc-200 hover:underline cursor-pointer"
                   >
                     + Create More Clips in Timeline
-                  </button>
+                  </Button>
                 </div>
 
                 {clips.length === 0 ? (
@@ -570,14 +572,14 @@ export const MergeStudio: React.FC = () => {
                             )}
                           </div>
 
-                          <button
+                          <Button
                             type="button"
                             onClick={() => addClipToRecipe(activeRecipe.id, clip.id)}
                             className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-sm transition-colors cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>Add</span>
-                          </button>
+                          </Button>
                         </div>
                       );
                     })}
@@ -597,7 +599,7 @@ export const MergeStudio: React.FC = () => {
             <form onSubmit={handleCreateRecipe} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Recipe Name</label>
-                <input
+                <Input
                   type="text"
                   value={newRecipeName}
                   onChange={(e) => setNewRecipeName(e.target.value)}
@@ -609,19 +611,19 @@ export const MergeStudio: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-end space-x-2 pt-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-bold shadow-md cursor-pointer"
                 >
                   Create Recipe
-                </button>
+                </Button>
               </div>
             </form>
           </div>

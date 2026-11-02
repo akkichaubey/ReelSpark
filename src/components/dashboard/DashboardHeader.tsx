@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -56,14 +57,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       {/* Left: Mobile Menu Trigger + Breadcrumb / Title */}
       <div className="flex items-center gap-3">
         {/* Mobile Hamburger Button */}
-        <button
+        <Button
           type="button"
           onClick={onOpenMobileSidebar}
           className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
           title="Open navigation menu"
         >
           <Menu className="w-5 h-5" />
-        </button>
+        </Button>
 
         {/* Title & Breadcrumbs */}
         <div className="flex flex-col">
@@ -128,7 +129,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
         {/* AI Engine Badge */}
         {systemStatus && onOpenSettings && (
-          <button
+          <Button
             type="button"
             onClick={onOpenSettings}
             title={
@@ -149,25 +150,25 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             <span className="text-zinc-400 font-mono text-[11px] truncate max-w-[100px]">
               {activeModel}
             </span>
-          </button>
+          </Button>
         )}
 
         {/* New Project Action */}
         {onNewProject && (
-          <button
+          <Button
             type="button"
             onClick={onNewProject}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all shadow-md shadow-amber-400/10 cursor-pointer active:scale-95"
           >
             <PlusCircle className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">New Project</span>
-          </button>
+          </Button>
         )}
 
         {/* User Account / Profile Dropdown */}
         {user && (
           <div className="relative pl-1 border-l border-zinc-800">
-            <button
+            <Button
               type="button"
               onClick={() => setUserDropdownOpen(!userDropdownOpen)}
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 hover:border-zinc-500 text-xs transition-all cursor-pointer"
@@ -176,7 +177,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <ChevronDown className="w-3 h-3 text-zinc-400" />
-            </button>
+            </Button>
 
             {userDropdownOpen && (
               <div
@@ -189,7 +190,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 </div>
 
                 {onOpenSettings && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       onOpenSettings();
@@ -199,10 +200,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   >
                     <Sliders className="w-3.5 h-3.5 text-zinc-400" />
                     <span>AI Engine Settings</span>
-                  </button>
+                  </Button>
                 )}
 
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     logout();
@@ -212,7 +213,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign Out</span>
-                </button>
+                </Button>
               </div>
             )}
           </div>

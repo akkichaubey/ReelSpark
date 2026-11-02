@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect } from 'react';
 import {
   Plus,
@@ -636,7 +638,7 @@ export const SocialAccountsManager: React.FC = () => {
             </div>
           </div>
 
-          <button
+          <Button
             type="button"
             onClick={() => {
               setConfigModalPlatform('instagram');
@@ -646,7 +648,7 @@ export const SocialAccountsManager: React.FC = () => {
           >
             <Key className="w-3.5 h-3.5 text-amber-400" />
             <span>Configure API Keys</span>
-          </button>
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -691,23 +693,23 @@ export const SocialAccountsManager: React.FC = () => {
                         <Check className="w-3 h-3 stroke-[3]" />
                         <span>Connected</span>
                       </span>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleDisconnectOAuth(item.platform)}
                         className="text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
                       >
                         Disconnect
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleConnectOAuth(item.platform)}
                     className="w-full text-center text-xs font-bold py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700 transition-all cursor-pointer block"
                   >
                     Connect Account
-                  </button>
+                  </Button>
                 )}
               </div>
             );
@@ -730,21 +732,21 @@ export const SocialAccountsManager: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <Button
           type="button"
           onClick={() => handleOpenAdd()}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-md shadow-amber-400/10 transition-all cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Add Social Account</span>
-        </button>
+        </Button>
       </div>
 
       {/* Quick Add Pills */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-zinc-500 font-medium">Quick Add:</span>
         {platforms.map((p) => (
-          <button
+          <Button
             key={p.key}
             type="button"
             onClick={() => handleOpenAdd(p.key)}
@@ -752,7 +754,7 @@ export const SocialAccountsManager: React.FC = () => {
           >
             <SocialPlatformIcon platform={p.key} className="w-3.5 h-3.5" />
             <span>{p.label}</span>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -773,14 +775,14 @@ export const SocialAccountsManager: React.FC = () => {
               Add your YouTube channel, Instagram page, Threads, Facebook, or Website to enable auto-formatted bio links in generated social posts.
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={() => handleOpenAdd()}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold text-xs shadow-md transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Your First Account</span>
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -857,28 +859,28 @@ export const SocialAccountsManager: React.FC = () => {
                   >
                     {/* Step Up button */}
                     {idx > 0 && (
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleMoveStep(idx, idx - 1)}
                         title="Move priority up"
                         className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
                       >
                         <ChevronUp className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
                     )}
                     {/* Step Down button */}
                     {idx < accounts.length - 1 && (
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleMoveStep(idx, idx + 1)}
                         title="Move priority down"
                         className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
                       >
                         <ChevronDown className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
                     )}
 
-                    <button
+                    <Button
                       type="button"
                       onClick={() => handleToggleEnable(acc)}
                       title={acc.enabled ? 'Click to disable' : 'Click to enable'}
@@ -888,23 +890,23 @@ export const SocialAccountsManager: React.FC = () => {
                         }`}
                     >
                       <Power className="w-3.5 h-3.5" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => handleOpenEdit(acc)}
                       title="Edit account"
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => handleDelete(acc)}
                       title="Remove account"
                       className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -924,7 +926,7 @@ export const SocialAccountsManager: React.FC = () => {
                   </a>
 
                   {/* Copy Account Link Button */}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleCopyUrl(acc.accountUrl, acc.id)}
                     title={`Copy ${acc.platform} link`}
@@ -935,7 +937,7 @@ export const SocialAccountsManager: React.FC = () => {
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -959,7 +961,7 @@ export const SocialAccountsManager: React.FC = () => {
               <span className="text-[10px] font-mono text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1.5 py-0.2 rounded font-semibold">
                 {(preferences.fixedHashtags || []).filter((h) => h.enabled).length} active
               </span>
-              <button
+              <Button
                 type="button"
                 onClick={handleSaveHashtags}
                 disabled={savingHashtags}
@@ -967,7 +969,7 @@ export const SocialAccountsManager: React.FC = () => {
               >
                 {savingHashtags ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 <span>Save Tags</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -981,7 +983,7 @@ export const SocialAccountsManager: React.FC = () => {
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
                 <Hash className="w-3.5 h-3.5 text-amber-400" />
               </div>
-              <input
+              <Input
                 type="text"
                 value={newTagInput}
                 onChange={(e) => setNewTagInput(e.target.value)}
@@ -989,13 +991,13 @@ export const SocialAccountsManager: React.FC = () => {
                 className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
               />
             </div>
-            <button
+            <Button
               type="submit"
               className="flex items-center gap-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-colors cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5 text-amber-400" />
               <span>Add</span>
-            </button>
+            </Button>
           </form>
 
           {/* Hashtags Checklist */}
@@ -1014,7 +1016,7 @@ export const SocialAccountsManager: React.FC = () => {
                     }`}
                 >
                   {/* Tick / Checkbox */}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleToggleHashtag(ht.id)}
                     className="flex items-center gap-2.5 text-left flex-1 cursor-pointer group"
@@ -1041,10 +1043,10 @@ export const SocialAccountsManager: React.FC = () => {
                         Off
                       </span>
                     )}
-                  </button>
+                  </Button>
 
                   {/* Copy Button */}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleCopyHashtag(ht.tag, ht.id)}
                     title={`Copy ${ht.tag}`}
@@ -1055,17 +1057,17 @@ export const SocialAccountsManager: React.FC = () => {
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                  </button>
+                  </Button>
 
                   {/* Remove Button */}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleDeleteHashtag(ht.id)}
                     title={`Remove ${ht.tag}`}
                     className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0 ml-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               ))
             )}
@@ -1086,7 +1088,7 @@ export const SocialAccountsManager: React.FC = () => {
                 Live Link Engine Preview
               </h3>
             </div>
-            <button
+            <Button
               type="button"
               onClick={handleSaveHeading}
               disabled={savingHeading}
@@ -1094,14 +1096,14 @@ export const SocialAccountsManager: React.FC = () => {
             >
               {savingHeading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
               <span>Save Heading</span>
-            </button>
+            </Button>
           </div>
 
           {/* Target Platform Simulation Selector */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] text-zinc-400">
               <span>{preferences.excludeTargetPlatform !== false ? 'Simulate Target Platform:' : 'Target Platform Exclusion:'}</span>
-              <button
+              <Button
                 type="button"
                 onClick={handleToggleExcludeTarget}
                 className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md font-mono text-[10px] transition-all cursor-pointer border ${
@@ -1121,14 +1123,14 @@ export const SocialAccountsManager: React.FC = () => {
                     ? 'Excludes target link: ON'
                     : 'Excludes target link: OFF'}
                 </span>
-              </button>
+              </Button>
             </div>
 
             {/* When excludeTargetPlatform is OFF, hide platform simulation buttons */}
             {preferences.excludeTargetPlatform !== false && (
               <div className="grid grid-cols-4 gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                 {(['youtube', 'instagram', 'threads', 'facebook'] as SocialPlatformKey[]).map((pKey) => (
-                  <button
+                  <Button
                     key={pKey}
                     type="button"
                     onClick={() => setPreviewPlatform(pKey)}
@@ -1139,7 +1141,7 @@ export const SocialAccountsManager: React.FC = () => {
                     }`}
                   >
                     {pKey}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -1153,7 +1155,7 @@ export const SocialAccountsManager: React.FC = () => {
                 <span>Link Section Callout Heading</span>
               </label>
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => setThreeDotsSpacer((prev) => !prev)}
                   className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
@@ -1166,7 +1168,7 @@ export const SocialAccountsManager: React.FC = () => {
                   <span className="font-mono tracking-wider font-bold">•••</span>
                   <span>3 Dots Spacer</span>
                   {threeDotsSpacer && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
-                </button>
+                </Button>
                 <span className="text-[11px] text-zinc-500 hidden sm:inline">(Leave blank to omit heading)</span>
               </div>
             </div>
@@ -1174,7 +1176,7 @@ export const SocialAccountsManager: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
               {/* Left Side: Single-line input with heading text only and matching height */}
               <div className="relative flex-1">
-                <input
+                <Input
                   type="text"
                   value={customHeading}
                   onChange={(e) => {
@@ -1185,14 +1187,14 @@ export const SocialAccountsManager: React.FC = () => {
                   className="w-full h-9 bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl px-3.5 pr-8 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-colors"
                 />
                 {customHeading && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setCustomHeading('')}
                     title="Clear heading"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -1226,7 +1228,7 @@ export const SocialAccountsManager: React.FC = () => {
                 </span>
               </div>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleCopyPreview}
                 disabled={!previewFormattedText}
@@ -1243,7 +1245,7 @@ export const SocialAccountsManager: React.FC = () => {
                     <span>Copy Snippet</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
 
             {previewFormattedText ? (
@@ -1271,12 +1273,12 @@ export const SocialAccountsManager: React.FC = () => {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="relative w-full max-w-md p-6 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl space-y-4">
-            <button
+            <Button
               onClick={() => setShowAddModal(false)}
               className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
 
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center">
@@ -1325,7 +1327,7 @@ export const SocialAccountsManager: React.FC = () => {
                   <span>Profile URL or Handle</span>
                   <span className="text-[10px] text-zinc-500 font-normal">e.g. @reelspark or full link</span>
                 </label>
-                <input
+                <Input
                   type="text"
                   value={accountUrl}
                   onChange={(e) => setAccountUrl(e.target.value)}
@@ -1354,7 +1356,7 @@ export const SocialAccountsManager: React.FC = () => {
                 <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
                   Display Label (Optional)
                 </label>
-                <input
+                <Input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -1378,20 +1380,20 @@ export const SocialAccountsManager: React.FC = () => {
 
               {/* Actions */}
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-zinc-800">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowAddModal(false)}
                   className="px-3 py-1.5 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
                   disabled={submitting}
                   className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-black font-bold rounded-xl text-xs transition-all shadow-md shadow-amber-400/10 cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? 'Saving...' : 'Save Account'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

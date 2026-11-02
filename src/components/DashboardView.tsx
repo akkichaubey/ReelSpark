@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React from 'react';
 import Link from 'next/link';
 import {
@@ -57,13 +58,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
+            <Button
               onClick={onNewProject}
               className="flex items-center space-x-2 px-5 py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-sm shadow-xl shadow-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>New Project</span>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -174,13 +175,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {projects.length + editingProjects.length > 0 && (
-            <button
+            <Button
               onClick={onNewProject}
               className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               <span>Create Another Project</span>
-            </button>
+            </Button>
           )}
         </div>
 
@@ -196,13 +197,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 You haven&apos;t created any video projects yet. Click below to start your first project or choose any studio tool from above.
               </p>
             </div>
-            <button
+            <Button
               onClick={onNewProject}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs shadow-md transition-all cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Start a New Project</span>
-            </button>
+            </Button>
           </div>
         ) : (
           /* Projects Grid */
@@ -249,21 +250,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
 
                 <div className="mt-5 pt-3 border-t border-white/5 flex items-center justify-between">
-                  <button
+                  <Button
                     onClick={() => onOpenProject(project)}
                     className="text-xs font-semibold text-white hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     <span>Open Project</span>
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
                     onClick={() => onDeleteProject(project.id)}
                     className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
                     title="Delete project"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}

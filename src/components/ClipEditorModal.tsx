@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X,
@@ -23,9 +25,9 @@ import { downloadSrtDirectly } from '@/lib/download-client';
 interface ClipEditorModalProps {
   project: Project;
   candidate: ClipCandidate | null;
-  onSave: (updatedCandidate: ClipCandidate) => void;
+  onSave: (updatedCandidate: ClipCandidate) => void | Promise<void>;
   onSaveToLibrary?: (candidate: ClipCandidate) => Promise<void>;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => boolean | Promise<boolean>;
   onClose: () => void;
 }
 
@@ -88,6 +90,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Initial candidate boundary snapshot for "Reset Trim"
   const initialStart = candidate?.start ?? 0;
@@ -130,7 +133,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
   // Total source duration
   const totalDuration = Math.max(
-    60,
+    0,
     project.videoMetadata?.duration || project.timelineCoverage?.totalSeconds || 7200
   );
 
@@ -147,7 +150,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   const duration = Math.max(0, end - start);
   const isTooLong = duration > 60;
   const isTooShort = duration < 3;
-  const isValidDuration = !isTooLong && !isTooShort;
+  const isValidDuration = !isTooLong && !isTooShort && Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end <= totalDuration;
 
   // Real-time context verification
   const verification = verifyCandidateContext(
@@ -160,7 +163,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
   // Video source determination
   const relativeVideoPath =
-    candidate?.renderStatus === 'completed' && candidate?.renderedVideoPath
+    !project.localVideoPath && candidate?.renderStatus === 'completed' && candidate?.renderedVideoPath
       ? candidate.renderedVideoPath.split('storage/')[1] ||
         candidate.renderedVideoPath.split('storage\\')[1]
       : project.localVideoPath?.split('storage/')[1] ||
@@ -257,7 +260,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   const resolveSubtitleAtTime = useCallback(
     (absOrRelTime: number) => {
       const isRenderedClip =
-        candidate?.renderStatus === 'completed' && Boolean(candidate?.renderedVideoPath);
+        !project.localVideoPath && candidate?.renderStatus === 'completed' && Boolean(candidate?.renderedVideoPath);
       const relTime = isRenderedClip ? absOrRelTime : absOrRelTime - start;
       const absTime = isRenderedClip ? start + absOrRelTime : absOrRelTime;
 
@@ -269,7 +272,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
       const activeSeg = project.transcript.find((s) => absTime >= s.start && absTime <= s.end);
       return activeSeg ? activeSeg.text : '';
     },
-    [candidate?.renderStatus, candidate?.renderedVideoPath, start, end, syncedSegments, project.transcript]
+    [candidate?.renderStatus, candidate?.renderedVideoPath, start, end, syncedSegments, project.transcript, project.localVideoPath]
   );
 
   // 60fps requestAnimationFrame subtitle & playhead sync while video is playing
@@ -558,18 +561,19 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
   };
 
   // Save changes
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!candidate || !isValidDuration) return;
 
     const newStart = Math.round(start * 100) / 100;
     const newEnd = Math.round(end * 100) / 100;
     const boundsChanged =
-      Math.abs(newStart - candidate.start) > 0.05 || Math.abs(newEnd - candidate.end) > 0.05;
+      Math.abs(newStart - candidate.start) > 0.0005 || Math.abs(newEnd - candidate.end) > 0.0005;
 
     const updated: ClipCandidate = {
       ...candidate,
       title: title.trim() || candidate.title,
       titleEnglish: title.trim() || candidate.title,
+      customTitle: title.trim() || candidate.title,
       titleHindi: titleHindi.trim() || candidate.titleHindi,
       topic,
       start: newStart,
@@ -577,7 +581,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
       duration: Math.round(duration * 100) / 100,
       contextVerification: verification,
       renderStatus: 'idle', // Mark for fresh FFmpeg rendering
-      ...(boundsChanged ? { syncedSegments: undefined } : {}),
+      ...(boundsChanged ? { syncedSegments: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined } : {}),
     } as any;
 
     if (boundsChanged && project?.id) {
@@ -592,8 +596,11 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
       }).catch(() => {});
     }
 
-    onSave(updated);
-    onClose();
+    setIsSavingToLibrary(true);
+    setSaveError(null);
+    try { await onSave(updated); onClose(); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not save clip'); }
+    finally { setIsSavingToLibrary(false); }
   };
 
   const handleSaveToLibrary = async () => {
@@ -601,12 +608,13 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
     const newStart = Math.round(start * 100) / 100;
     const newEnd = Math.round(end * 100) / 100;
     const boundsChanged =
-      Math.abs(newStart - candidate.start) > 0.05 || Math.abs(newEnd - candidate.end) > 0.05;
+      Math.abs(newStart - candidate.start) > 0.0005 || Math.abs(newEnd - candidate.end) > 0.0005;
 
     const updated: ClipCandidate = {
       ...candidate,
       title: title.trim() || candidate.title,
       titleEnglish: title.trim() || candidate.title,
+      customTitle: title.trim() || candidate.title,
       titleHindi: titleHindi.trim() || candidate.titleHindi,
       topic,
       start: newStart,
@@ -614,14 +622,16 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
       duration: Math.round(duration * 100) / 100,
       contextVerification: verification,
       renderStatus: 'idle',
-      ...(boundsChanged ? { syncedSegments: undefined } : {}),
+      ...(boundsChanged ? { syncedSegments: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined } : {}),
     } as any;
 
     setIsSavingToLibrary(true);
+    setSaveError(null);
     try {
       await onSaveToLibrary(updated);
-      onSave(updated);
       onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save reel');
     } finally {
       setIsSavingToLibrary(false);
     }
@@ -657,14 +667,15 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
             </div>
           </div>
 
-          <button
+          <Button
             type="button"
             onClick={onClose}
+            disabled={isSavingToLibrary}
             className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-white/10 transition-colors"
             title="Close editor (Esc)"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Scrollable Workspace Body */}
@@ -675,7 +686,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
               <label className="block text-[11px] font-semibold uppercase text-zinc-400 mb-1">
                 English Title
               </label>
-              <input
+              <Input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -688,7 +699,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
               <label className="block text-[11px] font-semibold uppercase text-zinc-400 mb-1">
                 Hindi Title (हिंदी शीर्षक)
               </label>
-              <input
+              <Input
                 type="text"
                 value={titleHindi}
                 onChange={(e) => setTitleHindi(e.target.value)}
@@ -716,7 +727,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
           </div>
 
           {/* 1. Video Preview Player with Synchronized Subtitles */}
-          <div className="relative rounded-2xl bg-black border border-white/10 overflow-hidden shadow-2xl flex flex-col items-center justify-center max-h-[320px] aspect-video w-full mx-auto group">
+          <div data-theme-media="true" className="relative rounded-2xl bg-black border border-white/10 overflow-hidden shadow-2xl flex flex-col items-center justify-center max-h-[320px] aspect-video w-full mx-auto group">
             {videoSrc ? (
               <video
                 ref={videoRef}
@@ -750,7 +761,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
             )}
 
             {/* Quick Play/Pause Center Button on Hover */}
-            <button
+            <Button
               type="button"
               onClick={handleTogglePlay}
               className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
@@ -758,32 +769,32 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
               <div className="p-3.5 rounded-full bg-white/90 text-zinc-950 shadow-2xl hover:scale-110 transition-transform">
                 {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
               </div>
-            </button>
+            </Button>
 
             {/* Mute Button in Corner */}
-            <button
+            <Button
               type="button"
               onClick={() => setIsMuted(!isMuted)}
               className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 hover:bg-black/80 text-white border border-white/10 transition-colors z-20"
               title={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-white" />}
-            </button>
+            </Button>
           </div>
 
           {/* 2. Playback & In/Out Quick Capture Buttons */}
           <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-xl bg-zinc-900/90 border border-white/10 text-xs">
             <div className="flex items-center space-x-2">
-              <button
+              <Button
                 type="button"
                 onClick={handleTogglePlay}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold shadow-md transition-all active:scale-95 cursor-pointer"
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 <span>{isPlaying ? 'Pause' : 'Play'}</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleAuditionTrim}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl font-semibold border transition-all cursor-pointer ${
@@ -795,37 +806,37 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
               >
                 <Play className="w-3.5 h-3.5 text-amber-400" />
                 <span>{isAuditioning ? 'Auditioning Clip...' : 'Audition Trim'}</span>
-              </button>
+              </Button>
             </div>
 
             {/* Quick Set Start / Set End Buttons */}
             <div className="flex items-center space-x-2">
-              <button
+              <Button
                 type="button"
                 onClick={handleSetStartToCurrent}
                 className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30 font-semibold text-xs transition-colors cursor-pointer"
                 title="Set Start point (In) to current playback position"
               >
                 <span>[ Set Start</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleSetEndToCurrent}
                 className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30 font-semibold text-xs transition-colors cursor-pointer"
                 title="Set End point (Out) to current playback position"
               >
                 <span>Set End ]</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleResetTrim}
                 className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-white/10 transition-colors"
                 title="Reset Trim to initial candidate bounds"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
 
             {/* Current Position Display */}
@@ -848,7 +859,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
               {/* Zoom Switcher */}
               <div className="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-white/10 text-[11px]">
-                <button
+                <Button
                   type="button"
                   onClick={() => setTimelineZoom('focus')}
                   className={`px-2 py-0.5 rounded-md transition-all cursor-pointer font-medium ${
@@ -859,8 +870,8 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                   title="Focus ±25 seconds around the clip for high precision dragging"
                 >
                   Clip Zoom
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setTimelineZoom('full')}
                   className={`px-2 py-0.5 rounded-md transition-all cursor-pointer font-medium ${
@@ -871,7 +882,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                   title="View full speech video timeline"
                 >
                   Full Video
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1012,7 +1023,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                 <span className="text-[10px] text-zinc-400 font-mono">{start.toFixed(2)}s</span>
               </div>
 
-              <input
+              <Input
                 type="text"
                 value={startInput}
                 onChange={(e) => setStartInput(e.target.value)}
@@ -1024,54 +1035,54 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
               {/* Nudge Buttons */}
               <div className="flex items-center justify-between pt-1 gap-1">
-                <button
+                <Button
                   type="button"
                   onClick={() => nudgeStart(-1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move start point back 1 second"
                 >
                   -1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeStart(-0.1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move start point back 0.1s"
                 >
                   -0.1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeStart(-0.04)}
                   className="px-1.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-[10px] font-mono text-amber-300"
                   title="Move start point back 1 frame (0.04s)"
                 >
                   -1f
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeStart(0.04)}
                   className="px-1.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-[10px] font-mono text-amber-300"
                   title="Move start point forward 1 frame (0.04s)"
                 >
                   +1f
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeStart(0.1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move start point forward 0.1s"
                 >
                   +0.1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeStart(1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move start point forward 1 second"
                 >
                   +1s
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1084,7 +1095,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                 <span className="text-[10px] text-zinc-400 font-mono">{end.toFixed(2)}s</span>
               </div>
 
-              <input
+              <Input
                 type="text"
                 value={endInput}
                 onChange={(e) => setEndInput(e.target.value)}
@@ -1096,54 +1107,54 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
 
               {/* Nudge Buttons */}
               <div className="flex items-center justify-between pt-1 gap-1">
-                <button
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(-1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move end point back 1 second"
                 >
                   -1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(-0.1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move end point back 0.1s"
                 >
                   -0.1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(-0.04)}
                   className="px-1.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-[10px] font-mono text-amber-300"
                   title="Move end point back 1 frame (0.04s)"
                 >
                   -1f
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(0.04)}
                   className="px-1.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-[10px] font-mono text-amber-300"
                   title="Move end point forward 1 frame (0.04s)"
                 >
                   +1f
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(0.1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move end point forward 0.1s"
                 >
                   +0.1s
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => nudgeEnd(1)}
                   className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-300"
                   title="Move end point forward 1 second"
                 >
                   +1s
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1205,10 +1216,11 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
         </div>
 
         {/* Modal Footer Controls */}
+        {saveError && <p role="alert" className="px-4 py-2 text-sm text-red-300">{saveError}</p>}
         <div className="p-4 border-t border-white/10 bg-zinc-900/80 flex flex-wrap items-center justify-between gap-3">
           {/* Download SRT Button & Delete Clip */}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
               onClick={() =>
                 downloadSrtDirectly(project.transcript, start, end, title || candidate.title)
@@ -1218,48 +1230,47 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download Trim SRT</span>
-            </button>
+            </Button>
 
             {onDelete && (
-              <button
+              <Button
                 type="button"
-                onClick={() => {
-                  if (candidate && confirm(`Delete clip "${title || candidate.title}"?`)) {
-                    onDelete(candidate.id);
-                    onClose();
-                  }
+                onClick={async () => {
+                  if (candidate && await onDelete(candidate.id)) onClose();
                 }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 transition-colors cursor-pointer"
                 title="Delete this clip"
+                disabled={isSavingToLibrary}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete Clip</span>
-              </button>
+              </Button>
             )}
           </div>
 
           <div className="flex items-center space-x-2.5">
-            <button
+            <Button
               type="button"
               onClick={onClose}
+              disabled={isSavingToLibrary}
               className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
             >
               Cancel
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="button"
               onClick={handleSave}
-              disabled={!isValidDuration}
+              disabled={!isValidDuration || isSavingToLibrary}
               className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-white/20 disabled:opacity-40 text-white font-bold text-xs shadow transition-all cursor-pointer active:scale-95"
               title="Apply trim adjustments to this clip"
             >
               <Check className="w-4 h-4" />
               <span>Apply Trim & Save</span>
-            </button>
+            </Button>
 
             {onSaveToLibrary && (
-              <button
+              <Button
                 type="button"
                 onClick={handleSaveToLibrary}
                 disabled={!isValidDuration || isSavingToLibrary}
@@ -1272,7 +1283,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
                   <Bookmark className="w-4 h-4 fill-black text-black" />
                 )}
                 <span>{isSavingToLibrary ? 'Saving…' : 'Save to Saved Reels'}</span>
-              </button>
+              </Button>
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { CaptionGroup, CaptionStyle, ImageFitMode, ImagePosition, OutputSettings, SfxCue, TranscriptWord } from '../lib/caption-maker/types';
 
 export interface RemotionCaptionProps extends Record<string, unknown> {
+  timelinePlan?: import('../lib/timeline/model').TimelinePlan;
   imageSrc?: string;
   audioSrc?: string;
   voiceVolume?: number;

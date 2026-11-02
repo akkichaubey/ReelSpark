@@ -21,7 +21,21 @@ export function isDemoLoginAllowed(): boolean {
 export function isSameOriginAuthRequest(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return true;
-  try { return origin === runtimeOrigin(req.url); }
+  try {
+    const expected = runtimeOrigin(req.url);
+    // Next dev can expose a canonical localhost URL for a 127.0.0.1 request.
+    // Use the actual browser Host only when BOTH hosts are loopback, on the
+    // same port, outside production. Never trust forwarded-host headers.
+    const request = new URL(req.url);
+    const loopback = (hostname: string) => ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+    const host = req.headers.get('host');
+    if (process.env.NODE_ENV !== 'production' && loopback(request.hostname) && host) {
+      if (/[\\/@?#\s]/.test(host)) return false;
+      const actual = new URL(`${request.protocol}//${host}`);
+      return loopback(actual.hostname) && actual.port === request.port && origin === actual.origin;
+    }
+    return origin === expected;
+  }
   catch { return false; }
 }
 

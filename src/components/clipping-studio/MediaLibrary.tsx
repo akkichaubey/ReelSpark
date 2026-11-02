@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useRef } from 'react';
 import {
   UploadCloud,
@@ -149,7 +151,7 @@ export const MediaLibrary: React.FC = () => {
               Supports MP4, MOV, WEBM, MKV, AVI, MP3, WAV, M4A, AAC, OGG (Original remains untouched)
             </p>
             {isUploading && (
-              <button
+              <Button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -159,7 +161,7 @@ export const MediaLibrary: React.FC = () => {
               >
                 <X className="h-3 w-3" />
                 Cancel upload
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -273,34 +275,34 @@ export const MediaLibrary: React.FC = () => {
                         Enter new local file path on PC:
                       </span>
                       <div className="flex items-center space-x-1.5">
-                        <input
+                        <Input
                           type="text"
                           value={newRelinkPath}
                           onChange={(e) => setNewRelinkPath(e.target.value)}
                           placeholder="C:\NewLocation\file.mp4"
                           className="flex-1 px-2 py-1 text-xs bg-zinc-900 border border-white/10 rounded text-white"
                         />
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleRelink(asset.id)}
                           className="px-2.5 py-1 text-[11px] bg-amber-400 text-zinc-950 font-bold rounded"
                         >
                           Relink
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           onClick={() => setRelinkingAssetId(null)}
                           className="px-2 py-1 text-[11px] bg-zinc-800 text-zinc-400 rounded"
                         >
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
 
                   {/* Actions Bar */}
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                    <button
+                    <Button
                       type="button"
                       onClick={() => {
                         setRelinkingAssetId(asset.id);
@@ -310,10 +312,10 @@ export const MediaLibrary: React.FC = () => {
                     >
                       <Link2 className="w-3.5 h-3.5" />
                       <span>Relink Path</span>
-                    </button>
+                    </Button>
 
                     <div className="flex items-center space-x-2">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => {
                           if (confirm(`Remove media source "${asset.filename}" and its associated clips?`)) {
@@ -324,9 +326,9 @@ export const MediaLibrary: React.FC = () => {
                         className="p-1 rounded text-zinc-400 hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
 
-                      <button
+                      <Button
                         type="button"
                         onClick={() => {
                           selectAsset(asset.id);
@@ -340,7 +342,7 @@ export const MediaLibrary: React.FC = () => {
                       >
                         <Play className="w-3 h-3" />
                         <span>{isSelected ? 'Open Timeline' : 'Load Source'}</span>
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>

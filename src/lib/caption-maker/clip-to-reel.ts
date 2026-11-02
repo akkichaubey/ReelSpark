@@ -135,7 +135,7 @@ export function createCaptionProjectFromClip(
 
   // Duration in seconds
   const duration = Math.max(
-    3,
+    0.01,
     audioOverride?.duration || candidate.duration || (candidate.end - candidate.start) || 15
   );
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Play, Pause, Clapperboard } from 'lucide-react';
 import {
@@ -372,6 +373,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
     <div className="flex flex-col items-center justify-center w-full">
       <div
         ref={containerRef}
+        data-theme-media="true"
         className={`relative rounded-2xl overflow-hidden border border-white/15 bg-black shadow-2xl flex items-center justify-center select-none ${getAspectRatioClasses()} w-full max-w-sm sm:max-w-md mx-auto group`}
       >
         {/* 1. Background Media Layer (Video or Image) */}
@@ -910,7 +912,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
         })()}
 
         {/* 4. Center Play/Pause Clickable Overlay */}
-        <button
+        <Button
           type="button"
           onClick={onTogglePlay}
           className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -922,7 +924,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
               <Play className="w-6 h-6 fill-current ml-0.5" />
             )}
           </div>
-        </button>
+        </Button>
       </div>
 
       {/* Preset & Time Badge underneath preview */}
@@ -930,7 +932,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
         <span className="capitalize">{outputSettings.preset.replace('-', ' ')}</span>
         <div className="flex items-center gap-2">
           {onUpdateStyle && (
-            <button
+            <Button
               type="button"
               onClick={() => onUpdateStyle({ showSafeArea: !captionStyle.showSafeArea })}
               className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
@@ -942,7 +944,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
             >
               <span>🛡️</span>
               <span>Safe Area: {captionStyle.showSafeArea ? 'ON' : 'OFF'}</span>
-            </button>
+            </Button>
           )}
           <span className="text-zinc-200 font-bold">
             {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s

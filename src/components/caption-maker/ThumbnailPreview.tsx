@@ -1,6 +1,7 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   ThumbnailSettings,
@@ -237,6 +238,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
       {/* Main Viewport Container (100% pixel-perfect identical to CaptionPreview frame) */}
       <div
         ref={containerRef}
+        data-theme-media="true"
         className={`relative rounded-2xl overflow-hidden border border-white/15 bg-black shadow-2xl flex items-center justify-center select-none ${getAspectRatioClasses()} w-full max-w-sm sm:max-w-md mx-auto group`}
       >
         {/* 1. Background Media Layer (100% pixel-perfect identical DOM layer to Video Reel) */}
@@ -523,7 +525,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
 
         <div className="flex items-center gap-2">
           {onToggleSafeArea && (
-            <button
+            <Button
               type="button"
               onClick={onToggleSafeArea}
               className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
@@ -535,9 +537,9 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             >
               <span>🛡️</span>
               <span>Safe Area: {settings.showSafeArea !== false ? 'ON' : 'OFF'}</span>
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => onDownload?.('png')}
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400 hover:bg-amber-300 text-black font-bold text-[10px] transition-colors cursor-pointer shadow-sm"
@@ -545,7 +547,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
           >
             <Download className="w-3 h-3 stroke-[2.5]" />
             <span>Download PNG</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -359,12 +362,12 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <Button
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Scrollable Content Body */}
@@ -460,7 +463,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
               {/* Mode Switcher */}
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setMode('single');
@@ -475,8 +478,8 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                     }`}
                   >
                     Individual Post
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={() => {
                       setMode('multi');
@@ -491,26 +494,26 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                     }`}
                   >
                     Group Post (Multi)
-                  </button>
+                  </Button>
                 </div>
 
                 {mode === 'multi' && (
                   <div className="flex items-center gap-2 text-xs">
-                    <button
+                    <Button
                       type="button"
                       onClick={selectAll}
                       className="text-amber-400 hover:text-amber-300 font-semibold transition-colors cursor-pointer"
                     >
                       Select All
-                    </button>
+                    </Button>
                     <span className="text-zinc-600">|</span>
-                    <button
+                    <Button
                       type="button"
                       onClick={deselectAll}
                       className="text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer"
                     >
                       Deselect All
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -579,7 +582,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                     </div>
 
                     {!isConnected ? (
-                      <button
+                      <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -588,7 +591,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                         className="mt-2 text-center text-[10px] font-bold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg py-1 px-2 transition-all block cursor-pointer"
                       >
                         Connect Account
-                      </button>
+                      </Button>
                     ) : (
                       <div className="mt-1 flex items-center justify-between text-[10px]">
                         <span className="text-emerald-400 flex items-center gap-1 font-semibold">
@@ -639,7 +642,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                 <label className="text-[11px] text-zinc-400 font-semibold mb-1 block">
                   YouTube Shorts Title (1-100 characters):
                 </label>
-                <input
+                <Input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -660,7 +663,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                   {caption.length} characters
                 </span>
               </div>
-              <textarea
+              <Textarea
                 rows={5}
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
@@ -749,14 +752,14 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                         </a>
                       )}
                       {record.status === 'failed' && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleRetryPlatform(record.id)}
                           className="flex items-center gap-1 px-2.5 py-1 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                         >
                           <RotateCw className="w-3 h-3" />
                           <span>Retry</span>
-                        </button>
+                        </Button>
                       )}
                       {(record.status === 'uploading' || record.status === 'processing') && (
                         <ProgressCircle value={record.progressPercent} size={28} strokeWidth={3} label={`${record.platform} publishing progress`} />
@@ -771,15 +774,15 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-zinc-800 bg-zinc-900/80 flex items-center justify-between gap-3 shrink-0">
-          <button
+          <Button
             type="button"
             onClick={onClose}
             className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors cursor-pointer"
           >
             {activeJob?.status === 'completed' ? 'Done' : 'Cancel'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={handlePublishNow}
             disabled={isPublishing || selectedPlatforms.length === 0 || !selectedVideo}
@@ -800,7 +803,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
                 </span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 

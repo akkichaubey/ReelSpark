@@ -1,4 +1,6 @@
 'use client';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -31,7 +33,10 @@ function Library() {
     const sequence = ++loadSequence.current;
     setLoading(true);
     try {
-      const response = await fetch(`/api/saved-reels?${new URLSearchParams({ page: String(page), q: query, sort, filter })}`, { cache: 'no-store' });
+      const response = await fetch(
+        `/api/saved-reels?${new URLSearchParams({ page: String(page), q: query, sort, filter })}`,
+        { cache: 'no-store' }
+      );
       const data = await response.json();
       if (sequence !== loadSequence.current) return;
       if (!response.ok) throw new Error(data.error || 'Could not load reels');
@@ -123,9 +128,9 @@ function Library() {
           </p>
         </div>
         {!user ? (
-          <button onClick={() => openAuthModal('login')} className={button}>
+          <Button onClick={() => openAuthModal('login')} className={button}>
             Sign in to open your Saved Reels
-          </button>
+          </Button>
         ) : (
           <>
             <p className="text-sm text-zinc-400">
@@ -134,17 +139,23 @@ function Library() {
                 : 'Saved on this server · persistent storage or cloud library storage is needed to keep reels across deployments.'}
             </p>
             <div className="flex flex-wrap gap-2">
-              <input
+              <Input
                 aria-label="Search saved reels"
                 placeholder="Search title or original project…"
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); setPage(0); }}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(0);
+                }}
                 className="min-w-[180px] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 p-2"
               />
               <select
                 aria-label="Sort reels"
                 value={sort}
-                onChange={(e) => { setSort(e.target.value); setPage(0); }}
+                onChange={(e) => {
+                  setSort(e.target.value);
+                  setPage(0);
+                }}
                 className={button}
               >
                 <option value="updated">Last modified</option>
@@ -155,7 +166,10 @@ function Library() {
               <select
                 aria-label="Filter reels"
                 value={filter}
-                onChange={(e) => { setFilter(e.target.value); setPage(0); }}
+                onChange={(e) => {
+                  setFilter(e.target.value);
+                  setPage(0);
+                }}
                 className={button}
               >
                 <option value="all">All reels</option>
@@ -163,23 +177,23 @@ function Library() {
                 <option value="editable">Editable / needs render</option>
                 <option value="captions">With captions</option>
               </select>
-              <button
+              <Button
                 className={button}
                 aria-pressed={view === 'grid'}
                 onClick={() => setView('grid')}
               >
                 Grid
-              </button>
-              <button
+              </Button>
+              <Button
                 className={button}
                 aria-pressed={view === 'list'}
                 onClick={() => setView('list')}
               >
                 List
-              </button>
-              <button className={button} onClick={() => void load()}>
+              </Button>
+              <Button className={button} onClick={() => void load()}>
                 Refresh
-              </button>
+              </Button>
             </div>
             {loading ? (
               <p role="status">Loading reels…</p>
@@ -210,7 +224,7 @@ function Library() {
                     key={reel.id}
                     className={`rounded-xl border border-zinc-800 bg-zinc-900 p-4 ${view === 'list' ? 'sm:flex sm:items-center sm:gap-4' : ''}`}
                   >
-                    <button
+                    <Button
                       aria-label={`Play ${reel.title}`}
                       onClick={() => setPreview(reel)}
                       className={`relative block overflow-hidden rounded-lg bg-black ${view === 'list' ? 'h-28 w-full shrink-0 sm:w-40' : 'h-40 w-full'}`}
@@ -247,7 +261,7 @@ function Library() {
                       <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white">
                         ▶ Play
                       </span>
-                    </button>
+                    </Button>
                     <div className="min-w-0 flex-1 space-y-2 pt-3">
                       <h2 className="truncate font-bold" title={reel.title}>
                         {reel.title}
@@ -282,20 +296,20 @@ function Library() {
                         >
                           Edit
                         </Link>
-                        <button
+                        <Button
                           className={button}
                           disabled={busy === reel.id}
                           onClick={() => void action(reel, 'rename')}
                         >
                           Rename
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           className={button}
                           disabled={busy === reel.id}
                           onClick={() => void action(reel, 'duplicate')}
                         >
                           Duplicate
-                        </button>
+                        </Button>
                         {reel.project.renderedVideoUrl ? (
                           <a
                             className={button}
@@ -312,19 +326,39 @@ function Library() {
                             Render & Download
                           </Link>
                         )}
-                        <button
+                        <Button
                           className={`${button} text-red-300`}
                           disabled={busy === reel.id}
                           onClick={() => void action(reel, 'delete')}
                         >
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </article>
                 ))}
               </div>
             )}
+            <nav
+              aria-label="Saved reels pages"
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              <Button
+                className={button}
+                disabled={loading || page === 0}
+                onClick={() => setPage((previous) => Math.max(0, previous - 1))}
+              >
+                Previous page
+              </Button>
+              <span>Page {page + 1}</span>
+              <Button
+                className={button}
+                disabled={loading || !hasMore}
+                onClick={() => setPage((previous) => previous + 1)}
+              >
+                Next page
+              </Button>
+            </nav>
           </>
         )}
         {message && (
@@ -348,13 +382,13 @@ function Library() {
           >
             <div className="mb-3 flex justify-between gap-3">
               <h2 className="truncate font-bold">{preview.title}</h2>
-              <button
+              <Button
                 autoFocus
                 onClick={() => setPreview(null)}
                 className={button}
               >
                 Close preview
-              </button>
+              </Button>
             </div>
             <SavedReelPlayer key={preview.id} project={preview.project} />
           </section>

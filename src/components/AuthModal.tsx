@@ -1,9 +1,12 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { X, Mail, Lock, User, Loader2, ArrowRight } from 'lucide-react';
 import { ReelSparkLogo } from './ReelSparkLogo';
+import { DialogSurface, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const GOOGLE_AUTH_ERRORS: Record<string, string> = {
   google_not_configured: 'Google sign-in is not available yet. Please use email and password.',
@@ -90,11 +93,8 @@ export const AuthModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="auth-modal-title"
+    <DialogSurface onClose={closeAuthModal}
+        overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
         className="relative w-full max-w-md p-6 sm:p-8 bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -103,28 +103,28 @@ export const AuthModal: React.FC = () => {
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Close Button */}
-        <button
+        <Button
           type="button"
           onClick={closeAuthModal}
           aria-label="Close sign-in dialog"
           className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/60 transition-colors"
         >
           <X className="w-5 h-5" />
-        </button>
+        </Button>
 
         {/* Header */}
         <div className="text-center mb-6">
           <div className="flex justify-center mb-3">
             <ReelSparkLogo variant="icon" className="w-12 h-12 shadow-lg shadow-amber-500/10" />
           </div>
-          <h2 id="auth-modal-title" className="text-xl font-bold text-white tracking-tight">
+          <DialogTitle asChild><h2 className="text-xl font-bold text-white tracking-tight">
             {mode === 'login' ? 'Welcome Back' : 'Create an Account'}
-          </h2>
-          <p className="text-xs text-zinc-400 mt-1">
+          </h2></DialogTitle>
+          <DialogDescription asChild><p className="text-xs text-zinc-400 mt-1">
             {mode === 'login'
               ? 'Sign in to access your projects and cloud reels'
               : 'Sign up to create, save, and export viral AI reels'}
-          </p>
+          </p></DialogDescription>
         </div>
 
         {/* Google Sign In Button */}
@@ -134,8 +134,8 @@ export const AuthModal: React.FC = () => {
           const nextInput = event.currentTarget.elements.namedItem('next') as HTMLInputElement;
           nextInput.value = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         }}>
-        <input type="hidden" name="next" defaultValue="/" />
-        <button
+        <Input type="hidden" name="next" defaultValue="/" />
+        <Button
           type="submit"
           disabled={!googleReady || providersLoading || isSubmitting || googleRedirecting}
           className="w-full mb-3 py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs border border-white/10 hover:border-white/20 flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
@@ -160,7 +160,7 @@ export const AuthModal: React.FC = () => {
           </svg>
           {googleRedirecting && <Loader2 className="w-4 h-4 animate-spin" />}
           <span className="group-hover:text-white transition-colors">{googleRedirecting ? 'Opening Google…' : 'Continue with Google'}</span>
-        </button>
+        </Button>
         </form>
         {!providersLoading && !googleReady && <p className="mb-3 text-center text-[11px] text-zinc-500">Google sign-in is not available yet. You can use email below.</p>}
 
@@ -172,7 +172,7 @@ export const AuthModal: React.FC = () => {
 
         {/* Tab switch */}
         <div className="flex bg-zinc-900 border border-white/10 rounded-xl p-1 mb-4 text-xs font-semibold">
-          <button
+          <Button
             type="button"
             onClick={() => {
               openAuthModal('login');
@@ -185,8 +185,8 @@ export const AuthModal: React.FC = () => {
             }`}
           >
             Sign In
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => {
               openAuthModal('register');
@@ -199,12 +199,12 @@ export const AuthModal: React.FC = () => {
             }`}
           >
             Create Account
-          </button>
+          </Button>
         </div>
 
         {/* Error message */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+          <div role="alert" className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
             <span>⚠️</span>
             <span>{error}</span>
           </div>
@@ -217,7 +217,7 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="auth-name" className="block text-zinc-300 font-medium mb-1.5">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
-                <input
+                <Input
                   id="auth-name"
                   name="name"
                   type="text"
@@ -237,7 +237,7 @@ export const AuthModal: React.FC = () => {
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
-              <input
+              <Input
                 id="auth-email"
                 name="email"
                 type="email"
@@ -255,7 +255,7 @@ export const AuthModal: React.FC = () => {
             <label htmlFor="auth-password" className="block text-zinc-300 font-medium mb-1.5">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
-              <input
+              <Input
                 id="auth-password"
                 name="password"
                 type="password"
@@ -269,7 +269,7 @@ export const AuthModal: React.FC = () => {
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={isSubmitting || googleRedirecting}
             className="w-full mt-2 py-3 px-4 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
@@ -285,7 +285,7 @@ export const AuthModal: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
-          </button>
+          </Button>
         </form>
 
         {/* Footer info */}
@@ -293,28 +293,27 @@ export const AuthModal: React.FC = () => {
           {mode === 'login' ? (
             <p>
               Don&apos;t have an account?{' '}
-              <button
+              <Button
                 type="button"
                 onClick={() => openAuthModal('register')}
                 className="text-white hover:underline font-semibold"
               >
                 Sign up free
-              </button>
+              </Button>
             </p>
           ) : (
             <p>
               Already have an account?{' '}
-              <button
+              <Button
                 type="button"
                 onClick={() => openAuthModal('login')}
                 className="text-white hover:underline font-semibold"
               >
                 Sign in
-              </button>
+              </Button>
             </p>
           )}
         </div>
-      </div>
-    </div>
+    </DialogSurface>
   );
 };

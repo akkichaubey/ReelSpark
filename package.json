@@ -40,6 +40,7 @@
     "test:caption-preview": "tsx tests/caption_preview_render.test.tsx",
     "test:voice-background": "tsx tests/voice_video_background.test.tsx",
     "test:saved-reels": "tsx tests/saved_reels.test.ts",
+    "test:clip-review": "tsx tests/antigravity_saved_reels.test.ts",
     "test:caption-remotion": "tsx tests/caption_remotion_render.test.ts",
     "test:hooks": "tsx tests/hook_quality.test.ts",
     "test:qa": "tsx tests/qa_full_audit.ts",
@@ -50,17 +51,30 @@
     "cf:d1:migrate:local": "wrangler d1 execute reelspark-db --local --file=src/lib/cloudflare/schema.sql",
     "cf:r2:create": "wrangler r2 bucket create reelspark-storage",
     "cf:deploy": "wrangler pages deploy .next",
-    "cf:dev": "wrangler pages dev .next --port 3001"
+    "cf:dev": "wrangler pages dev .next --port 3001",
+    "test:timeline": "tsx tests/professional_timeline.test.ts",
+    "test:timeline-advanced": "tsx tests/advanced_timeline_edits.test.ts",
+    "test:timeline-audio": "tsx tests/timeline_audio_editing.test.ts",
+    "test:timeline-captions": "tsx tests/timeline_caption_editing.test.ts",
+    "test:timeline-motion": "tsx tests/timeline_motion.test.ts",
+    "test:timeline-thumbnails": "tsx tests/timeline_thumbnails.test.ts",
+    "test:timeline-render": "tsx tests/professional_timeline.test.ts --render"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1156.0",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-select": "2.4.1",
+    "@radix-ui/react-slot": "1.5.0",
     "@remotion/bundler": "^4.0.534",
+    "@remotion/player": "4.0.538",
     "@remotion/renderer": "^4.0.534",
     "archiver": "^8.0.0",
+    "class-variance-authority": "0.7.1",
     "gsap": "^3.15.0",
     "jose": "6.2.13",
     "lucide-react": "^1.54.0",
     "next": "16.4.2",
+    "next-themes": "0.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "^4.0.534",
@@ -68,15 +82,29 @@
     "zustand": "^5.0.15"
   },
   "overrides": {
-    "@remotion/studio": { "zod": "4.6.7" },
-    "@remotion/elevenlabs": { "zod": "4.6.7" },
-    "@remotion/media": { "zod": "4.6.7" },
-    "@remotion/openai-whisper": { "zod": "4.6.7" },
-    "@remotion/studio-protocol": { "zod": "4.6.7" },
-    "miniflare": { "undici": "7.30.1" }
+    "@remotion/studio": {
+      "zod": "4.6.7"
+    },
+    "@remotion/elevenlabs": {
+      "zod": "4.6.7"
+    },
+    "@remotion/media": {
+      "zod": "4.6.7"
+    },
+    "@remotion/openai-whisper": {
+      "zod": "4.6.7"
+    },
+    "@remotion/studio-protocol": {
+      "zod": "4.6.7"
+    },
+    "miniflare": {
+      "undici": "7.30.1"
+    }
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@cloudflare/workers-types": "^5.20261019.1",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/archiver": "^8.0.0",
     "@types/node": "^20",

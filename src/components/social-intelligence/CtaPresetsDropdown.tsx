@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ChevronDown,
@@ -136,7 +138,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
   return (
     <div ref={dropdownRef} className={`relative ${className}`}>
       {/* Dropdown Trigger Button */}
-      <button
+      <Button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className={`w-full h-9 flex items-center justify-between gap-2 px-3 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
@@ -160,7 +162,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
             isOpen ? 'rotate-180 text-amber-400' : ''
           }`}
         />
-      </button>
+      </Button>
 
       {/* Floating Popover Menu */}
       {isOpen && (
@@ -172,14 +174,14 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                 <MessageSquareText className="w-3.5 h-3.5 text-amber-400" />
                 <span>Reels Description Headings & CTAs</span>
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
                 title="Close"
               >
                 <X className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
 
             {/* Language Filter Tabs */}
@@ -192,7 +194,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                   { key: 'hinglish', label: 'Hinglish' },
                 ] as const
               ).map((tab) => (
-                <button
+                <Button
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveLang(tab.key)}
@@ -203,7 +205,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                   }`}
                 >
                   {tab.label}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -212,7 +214,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
               <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-zinc-500">
                 <Search className="w-3 h-3 text-amber-400/80" />
               </div>
-              <input
+              <Input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
@@ -221,13 +223,13 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                 className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-400 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none transition-colors"
               />
               {searchQuery && (
-                <button
+                <Button
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-zinc-500 hover:text-zinc-300 cursor-pointer"
                 >
                   <X className="w-3 h-3" />
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -260,7 +262,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                           currentValue.trim().toLowerCase() === preset.text.trim().toLowerCase();
 
                         return (
-                          <button
+                          <Button
                             key={preset.id}
                             type="button"
                             onClick={() => handleSelectPreset(preset)}
@@ -289,7 +291,7 @@ export const CtaPresetsDropdown: React.FC<CtaPresetsDropdownProps> = ({
                               </span>
                               {isSelected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
                             </div>
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>

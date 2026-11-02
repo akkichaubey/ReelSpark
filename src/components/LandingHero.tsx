@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import React, { useState } from 'react';
 import {
   BrainCircuit,
@@ -98,19 +101,19 @@ export const LandingHero: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-          <button
+          <Button
             onClick={() => openAuthModal('login')}
             className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-sm shadow-xl shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Sign In to Access Studio</span>
             <ArrowRight className="w-4 h-4" />
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => openAuthModal('register')}
             className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-transparent hover:bg-amber-400/10 text-amber-300 font-bold text-sm border border-amber-400/50 hover:border-amber-300 transition-all cursor-pointer"
           >
             <span>Create Free Account</span>
-          </button>
+          </Button>
         </div>
 
         {/* Feature Cards Grid */}
@@ -181,14 +184,14 @@ export const LandingHero: React.FC = () => {
       <footer className="w-full border-t border-white/10 py-6 px-4 text-center text-xs text-zinc-500 relative z-10 flex flex-col sm:flex-row items-center justify-between max-w-5xl mx-auto gap-3">
         <p>© {new Date().getFullYear()} ReelMaker — AI Video Reel Studio. All rights reserved.</p>
         <div className="flex items-center gap-4 text-zinc-400">
-          <button
+          <Button
             type="button"
             onClick={() => setShowContactModal(true)}
             className="hover:text-amber-400 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Mail className="w-3.5 h-3.5 text-amber-400" />
             <span>Contact & Support</span>
-          </button>
+          </Button>
           <span>•</span>
           <span className="text-zinc-500">Built for Creators</span>
         </div>
@@ -198,14 +201,14 @@ export const LandingHero: React.FC = () => {
       {showContactModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div role="dialog" aria-modal="true" aria-labelledby="contact-support-title" className="relative w-full max-w-md p-6 bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl text-left">
-            <button
+            <Button
               type="button"
               onClick={() => setShowContactModal(false)}
               aria-label="Close contact and support dialog"
               className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/60 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
 
             <div className="flex items-center gap-2.5 mb-4">
               <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center">
@@ -234,7 +237,7 @@ export const LandingHero: React.FC = () => {
                 )}
                 <div>
                   <label htmlFor="support-name" className="block text-[11px] font-semibold text-zinc-300 mb-1">Your Name</label>
-                  <input
+                  <Input
                     id="support-name"
                     name="name"
                     type="text"
@@ -247,7 +250,7 @@ export const LandingHero: React.FC = () => {
                 </div>
                 <div>
                   <label htmlFor="support-email" className="block text-[11px] font-semibold text-zinc-300 mb-1">Email Address</label>
-                  <input
+                  <Input
                     id="support-email"
                     name="email"
                     type="email"
@@ -260,7 +263,7 @@ export const LandingHero: React.FC = () => {
                 </div>
                 <div>
                   <label htmlFor="support-message" className="block text-[11px] font-semibold text-zinc-300 mb-1">Message</label>
-                  <textarea
+                  <Textarea
                     id="support-message"
                     name="message"
                     rows={3}
@@ -271,14 +274,14 @@ export const LandingHero: React.FC = () => {
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-400 transition-colors resize-none"
                   />
                 </div>
-                <button
+                <Button
                   type="submit"
                   disabled={isSubmittingContact}
                   className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{isSubmittingContact ? 'Sending…' : 'Send Message'}</span>
-                </button>
+                </Button>
               </form>
             )}
           </div>

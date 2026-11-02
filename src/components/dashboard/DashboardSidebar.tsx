@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import { Button } from '@/components/ui/button';
+import React, { useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -21,6 +22,21 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ReelSparkLogo } from '@/components/ReelSparkLogo';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+
+const mobileNavigationQuery = '(width < 48rem)';
+const subscribeMobileNavigation = (notify: () => void, closeOnDesktop: () => void) => {
+  const media = window.matchMedia(mobileNavigationQuery);
+  const change = () => {
+    if (!media.matches) closeOnDesktop();
+    notify();
+  };
+  media.addEventListener('change', change);
+  return () => media.removeEventListener('change', change);
+};
+const mobileNavigationSnapshot = () => window.matchMedia(mobileNavigationQuery).matches;
+const serverMobileNavigationSnapshot = () => false;
 
 interface NavItem {
   id: string;
@@ -57,6 +73,8 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const searchParams = useSearchParams();
   const currentView = searchParams.get('view');
   const { user, logout } = useAuthStore();
+  const subscribeMobile = useCallback((notify: () => void) => subscribeMobileNavigation(notify, onCloseMobile), [onCloseMobile]);
+  const isMobileViewport = useSyncExternalStore(subscribeMobile, mobileNavigationSnapshot, serverMobileNavigationSnapshot);
 
   // Navigation structure mapped directly to working ReelSpark features
   const navSections: NavSection[] = [
@@ -178,14 +196,14 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
         {/* Desktop Collapse Toggle */}
         {!isCollapsed && (
-          <button
+          <Button
             type="button"
             onClick={onToggleCollapse}
             title="Collapse sidebar (Rail mode)"
             className="hidden lg:flex p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -265,21 +283,22 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       {/* Secondary Bottom Actions: Settings, Help & User Profile */}
       <div className={`border-t border-zinc-800 space-y-2 shrink-0 bg-zinc-950/40 ${isCollapsed ? 'p-2' : 'p-3'}`}>
+        <ThemeToggle expanded={!isCollapsed} className={`w-full ${isCollapsed ? '' : 'justify-start px-3 py-2'}`} />
         {/* Expand Sidebar button when collapsed */}
         {isCollapsed && (
-          <button
+          <Button
             type="button"
             onClick={onToggleCollapse}
             title="Expand sidebar"
             className="hidden lg:flex w-full items-center justify-center p-2.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
-          </button>
+          </Button>
         )}
 
         {/* AI Engine & Settings */}
         {onOpenSettings && (
-          <button
+          <Button
             type="button"
             onClick={onOpenSettings}
             title={isCollapsed ? 'AI Engine Settings (Ollama & Gemini)' : undefined}
@@ -289,12 +308,12 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           >
             <Sliders className="w-4 h-4 shrink-0 text-zinc-400" />
             {!isCollapsed && <span className="truncate">AI Engine & Settings</span>}
-          </button>
+          </Button>
         )}
 
         {/* Help & Keyboard Shortcuts */}
         {onOpenHelp && (
-          <button
+          <Button
             type="button"
             onClick={onOpenHelp}
             title={isCollapsed ? 'Help & Shortcuts' : undefined}
@@ -304,7 +323,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           >
             <HelpCircle className="w-4 h-4 shrink-0 text-zinc-400" />
             {!isCollapsed && <span className="truncate">Help & Shortcuts</span>}
-          </button>
+          </Button>
         )}
 
         {/* User Account / Profile & Sign Out */}
@@ -327,14 +346,14 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             </div>
 
             {!isCollapsed && (
-              <button
+              <Button
                 type="button"
                 onClick={() => logout()}
                 title="Sign Out"
                 className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
               >
                 <LogOut className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
@@ -355,30 +374,25 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
       </aside>
 
       {/* Mobile Drawer (Slide-out Overlay) */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          {/* Backdrop */}
-          <div
-            onClick={onCloseMobile}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in"
-          />
-
-          {/* Drawer Container */}
-          <div className="relative w-72 max-w-[85vw] bg-zinc-950 border-r border-zinc-800 h-full flex flex-col z-50 animate-in slide-in-from-left duration-200 shadow-2xl">
+      {mobileOpen && isMobileViewport && (
+        <DialogSurface onClose={onCloseMobile} dismissOnOutside aria-describedby={undefined}
+          overlayClassName="fixed inset-0 z-50 md:hidden flex bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in"
+          className="relative w-72 max-w-[85vw] bg-zinc-950 border-r border-zinc-800 h-full flex flex-col z-50 animate-in slide-in-from-left duration-200 shadow-2xl">
+            <DialogTitle className="sr-only">Navigation</DialogTitle>
             {/* Close Button */}
             <div className="absolute top-4 right-4 z-10">
-              <button
+              <Button
                 type="button"
+                aria-label="Close navigation menu"
                 onClick={onCloseMobile}
                 className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
 
             {sidebarContent}
-          </div>
-        </div>
+        </DialogSurface>
       )}
     </>
   );

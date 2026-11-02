@@ -1,6 +1,10 @@
 'use strict';
 'use client';
 
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CaptionProject, ImageAsset, ThumbnailSettings } from '@/lib/caption-maker/types';
 import {
@@ -275,14 +279,19 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
     }
   };
 
+  const handleClose = () => {
+    onSaveThumbnailSettings?.(settings);
+    onClose();
+  };
+
   const filteredFonts = POPULAR_GOOGLE_FONTS.filter((f) =>
     f.name.toLowerCase().includes(fontSearch.toLowerCase()) ||
     f.badge.toLowerCase().includes(fontSearch.toLowerCase())
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+
+      <DialogSurface onClose={handleClose} aria-describedby={undefined} overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in" className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header Bar */}
         <div className="px-5 py-3.5 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -290,12 +299,12 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               <ImageIcon className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <DialogTitle asChild><h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                 Reel Cover & Thumbnail Creator
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
                   {settings.aspectRatio} • {getThumbnailDimensions(settings.aspectRatio).width}×{getThumbnailDimensions(settings.aspectRatio).height}
                 </span>
-              </h2>
+              </h2></DialogTitle>
               <p className="text-xs text-zinc-400">
                 Generate high-conversion viral hooks with customizable typography & layout
               </p>
@@ -303,16 +312,13 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                onSaveThumbnailSettings?.(settings);
-                onClose();
-              }}
+            <Button
+              onClick={handleClose}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               title="Close modal"
             >
               <X className="w-5 h-5" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -323,7 +329,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
             {/* Aspect Ratio Switcher Pills */}
             <div className="flex items-center gap-1.5 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 mb-3 shadow-inner">
               {(['9:16', '4:5', '1:1', '16:9'] as const).map((ratio) => (
-                <button
+                <Button
                   key={ratio}
                   onClick={() => setSettings((prev) => ({ ...prev, aspectRatio: ratio }))}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
@@ -336,13 +342,14 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                   {ratio === '4:5' && '4:5 Feed'}
                   {ratio === '1:1' && '1:1 Square'}
                   {ratio === '16:9' && '16:9 Cover'}
-                </button>
+                </Button>
               ))}
             </div>
 
             {/* Canvas Viewport Container */}
             <div className="flex-1 flex items-center justify-center w-full min-h-0 relative my-auto">
               <div
+                data-theme-media="true"
                 className="relative rounded-xl overflow-hidden shadow-2xl border border-zinc-700/60 bg-black flex items-center justify-center max-h-[58vh] max-w-full"
                 style={{
                   aspectRatio:
@@ -386,24 +393,24 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
 
             {/* Bottom Action Controls on Preview Pane */}
             <div className="w-full max-w-md flex flex-wrap items-center justify-center gap-2.5 mt-4 pt-3 border-t border-zinc-800/80">
-              <button
+              <Button
                 onClick={() => handleDownload('png')}
                 className="flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-black font-bold rounded-xl text-xs shadow-lg shadow-amber-400/20 active:scale-95 transition-all"
               >
                 <Download className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Download PNG</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={() => handleDownload('jpeg')}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs border border-zinc-700 transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Download JPEG</span>
-              </button>
+              </Button>
 
               {onApplyAsProjectCover && (
-                <button
+                <Button
                   onClick={handleApplyAsProjectCover}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${
                     appliedNotice
@@ -422,7 +429,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                       <span>Set as Reel Image</span>
                     </>
                   )}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -431,7 +438,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
           <div className="w-full md:w-[460px] lg:w-[500px] flex flex-col bg-zinc-900 min-h-0 shrink-0">
             {/* Tabs Header */}
             <div className="flex border-b border-zinc-800 bg-zinc-950/70 p-1.5 gap-1 shrink-0">
-              <button
+              <Button
                 onClick={() => setActiveTab('content')}
                 className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                   activeTab === 'content'
@@ -441,9 +448,9 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               >
                 <Type className="w-3.5 h-3.5 text-amber-400" />
                 Text & Hook
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={() => setActiveTab('presets')}
                 className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                   activeTab === 'presets'
@@ -453,9 +460,9 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               >
                 <Wand2 className="w-3.5 h-3.5 text-amber-400" />
                 Presets
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={() => setActiveTab('typography')}
                 className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                   activeTab === 'typography'
@@ -465,9 +472,9 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               >
                 <Palette className="w-3.5 h-3.5 text-amber-400" />
                 Style & Font
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={() => setActiveTab('layout')}
                 className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                   activeTab === 'layout'
@@ -477,7 +484,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
               >
                 <Layout className="w-3.5 h-3.5 text-amber-400" />
                 Layout & Bg
-              </button>
+              </Button>
             </div>
 
             {/* Scrollable Tab Content Body */}
@@ -496,7 +503,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         {settings.title.length} chars
                       </span>
                     </div>
-                    <textarea
+                    <Textarea
                       rows={3}
                       value={settings.title}
                       onChange={(e) =>
@@ -510,7 +517,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                       <span className="text-[10px] text-zinc-400">Quick Ideas:</span>
                       {suggestedTitles.map((phrase, i) => (
-                        <button
+                        <Button
                           key={i}
                           onClick={() =>
                             setSettings((prev) => ({ ...prev, title: phrase }))
@@ -519,7 +526,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           title={phrase}
                         >
                           {phrase}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -541,7 +548,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           const clean = normalizeHookWord(word);
                           const isHl = (settings.highlightWords || []).includes(clean);
                           return (
-                            <button
+                            <Button
                               key={idx}
                               onClick={() => toggleHighlightWord(word)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
@@ -551,7 +558,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                               }`}
                             >
                               {word}
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -563,7 +570,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     <label className="font-semibold text-zinc-200 mb-1.5 block">
                       Subtitle / Supporting Hook (Optional)
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={settings.subtitle || ''}
                       onChange={(e) =>
@@ -590,7 +597,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         </div>
                       </div>
 
-                      <button
+                      <Button
                         type="button"
                         role="switch"
                         aria-checked={settings.badgeEnabled !== false}
@@ -613,7 +620,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                             settings.badgeEnabled !== false ? 'translate-x-5' : 'translate-x-0 bg-zinc-300'
                           }`}
                         />
-                      </button>
+                      </Button>
                     </div>
 
                     {settings.badgeEnabled !== false && (
@@ -649,7 +656,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                               { label: 'Relaxed', val: 44 },
                               { label: 'Wide', val: 68 },
                             ].map((p) => (
-                              <button
+                              <Button
                                 key={p.val}
                                 type="button"
                                 onClick={() =>
@@ -665,7 +672,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                                 }`}
                               >
                                 {p.label} ({p.val}px)
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         </div>
@@ -677,18 +684,18 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                               Badge Text
                             </label>
                             {settings.badgeText && (
-                              <button
+                              <Button
                                 onClick={() =>
                                   setSettings((prev) => ({ ...prev, badgeText: '' }))
                                 }
                                 className="text-[10px] text-red-400 hover:underline"
                               >
                                 Clear text
-                              </button>
+                              </Button>
                             )}
                           </div>
 
-                          <input
+                          <Input
                             type="text"
                             value={settings.badgeText || ''}
                             onChange={(e) =>
@@ -701,7 +708,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           {/* Quick Badge Chips */}
                           <div className="flex flex-wrap gap-1.5 pt-1">
                             {QUICK_BADGES.map((badge) => (
-                              <button
+                              <Button
                                 key={badge}
                                 type="button"
                                 onClick={() =>
@@ -714,7 +721,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                                 }`}
                               >
                                 {badge}
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         </div>
@@ -817,7 +824,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     <label className="font-semibold text-zinc-200 mb-1.5 block">
                       Creator Handle / Branding (Bottom Watermark)
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={settings.brandingText || ''}
                       onChange={(e) =>
@@ -895,7 +902,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                       Google Font Family
                     </label>
                     <div className="relative">
-                      <button
+                      <Button
                         onClick={() => setIsFontDropdownOpen(!isFontDropdownOpen)}
                         className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-xl px-3 py-2 text-left flex items-center justify-between text-zinc-200"
                       >
@@ -908,11 +915,11 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-mono">
                           Change Font
                         </span>
-                      </button>
+                      </Button>
 
                       {isFontDropdownOpen && (
                         <div className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-2 z-30 max-h-56 overflow-y-auto space-y-1">
-                          <input
+                          <Input
                             type="text"
                             value={fontSearch}
                             onChange={(e) => setFontSearch(e.target.value)}
@@ -920,7 +927,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none mb-2"
                           />
                           {filteredFonts.map((font) => (
-                            <button
+                            <Button
                               key={font.name}
                               onClick={() => {
                                 setSettings((prev) => ({
@@ -941,7 +948,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                               <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-400 font-mono">
                                 {font.badge}
                               </span>
-                            </button>
+                            </Button>
                           ))}
                         </div>
                       )}
@@ -1155,7 +1162,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           { id: 'custom', icon: SlidersHorizontal, label: 'Custom' },
                         ] as const
                       ).map(({ id, icon: Icon, label }) => (
-                        <button
+                        <Button
                           key={id}
                           type="button"
                           onClick={() => setSettings((prev) => ({ ...prev, textAlign: id }))}
@@ -1167,7 +1174,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         >
                           <Icon className="w-3.5 h-3.5" />
                           <span className="text-[11px]">{label}</span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -1212,7 +1219,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           { id: 'custom', label: 'Custom' },
                         ] as const
                       ).map((pos) => (
-                        <button
+                        <Button
                           key={pos.id}
                           type="button"
                           onClick={() => setSettings((prev) => ({ ...prev, position: pos.id }))}
@@ -1223,7 +1230,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           }`}
                         >
                           <span className="text-[11px]">{pos.label}</span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -1311,7 +1318,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                     </label>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button
+                      <Button
                         onClick={() =>
                           setSettings((prev) => ({
                             ...prev,
@@ -1328,9 +1335,9 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         <span className="text-[10px] opacity-75">
                           {project.image ? 'Using uploaded frame' : 'Default media frame'}
                         </span>
-                      </button>
+                      </Button>
 
-                      <button
+                      <Button
                         onClick={() =>
                           setSettings((prev) => ({
                             ...prev,
@@ -1347,14 +1354,14 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                         <span className="text-[10px] opacity-75">
                           Clean colored backdrop
                         </span>
-                      </button>
+                      </Button>
                     </div>
 
                     {/* Gradient Picker if Gradient Mode */}
                     {settings.backgroundType === 'gradient' && (
                       <div className="grid grid-cols-3 gap-2 pt-1">
                         {THUMBNAIL_GRADIENTS.map((grad) => (
-                          <button
+                          <Button
                             key={grad.id}
                             onClick={() =>
                               setSettings((prev) => ({
@@ -1372,7 +1379,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                             <span className="text-[10px] font-bold text-white drop-shadow block">
                               {grad.name}
                             </span>
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     )}
@@ -1398,13 +1405,13 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
                           />
                         </label>
                         {customBgProgress !== null && (
-                          <button
+                          <Button
                             type="button"
                             onClick={() => customBgReadController.current?.abort()}
                             className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                           >
                             <X className="h-3 w-3" /> Cancel
-                          </button>
+                          </Button>
                         )}
                       </div>
                       {customBgError && <p role="alert" className="text-[10px] text-red-300">{customBgError}</p>}
@@ -1415,7 +1422,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
+
   );
 };

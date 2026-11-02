@@ -1,7 +1,11 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useRef, useState, useMemo } from 'react';
+import { normalizeTrimRange } from '@/lib/caption-maker/playback-time';
+import { getActiveTranscriptWordAtTime } from '@/lib/caption-maker/caption-timing';
 import { CaptionGroup, TranscriptWord } from '@/lib/caption-maker/types';
 import {
   Play,
@@ -42,15 +46,9 @@ interface CaptionTimelineProps {
   onSelectWord?: (wordId: string | null) => void;
   onOpenSmartEditor?: () => void;
   showCaptionWords?: boolean;
+  waveformPeaks?: number[];
 }
 
-// Deterministic static waveform bar heights (integers between 15 and 100) to prevent any SSR/client hydration floating-point mismatch
-const STATIC_WAVEFORM_BARS: number[] = Array.from({ length: 120 }, (_, i) => {
-  const progress = i / 120;
-  const base = Math.sin(progress * Math.PI * 14) * 0.3 + 0.5;
-  const noise = (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.4;
-  return Math.round(Math.min(100, Math.max(15, (base + noise) * 80)));
-});
 
 export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   duration,
@@ -65,6 +63,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   onSelectWord,
   onOpenSmartEditor,
   showCaptionWords = true,
+  waveformPeaks = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = fit, 2 = 2x, 3 = 3x
@@ -72,14 +71,11 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
   const [activeWordDragId, setActiveWordDragId] = useState<string | null>(null);
 
-  const safeDuration = duration > 0 ? duration : 0;
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
 
   // Active trim bounds
-  const activeStart = Math.max(0, trimRange?.start ?? 0);
-  const activeEnd =
-    trimRange?.end && trimRange.end > 0
-      ? Math.min(safeDuration, trimRange.end)
-      : safeDuration;
+  const { start: activeStart, end: activeEnd } = normalizeTrimRange(safeDuration, trimRange);
+  const minimumTrim = Math.min(0.5, safeDuration);
   const isTrimmed = safeDuration > 0 && (activeStart > 0.05 || activeEnd < safeDuration - 0.05);
   const trimmedDuration = Math.max(0, activeEnd - activeStart);
 
@@ -102,7 +98,8 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
     return groups.find((g) => g.words.some((w) => w.id === selectedWordId)) || null;
   }, [groups, selectedWordId]);
 
-  const waveformBars = STATIC_WAVEFORM_BARS;
+  const waveformBars = waveformPeaks.map(peak => Math.max(0, Math.min(1, Number.isFinite(peak) ? peak : 0)) * 100);
+  const activeWord = getActiveTranscriptWordAtTime(allWords, currentTime);
 
   const getTimeFromEvent = (e: React.PointerEvent<HTMLDivElement>): number => {
     if (!containerRef.current || safeDuration <= 0) return 0;
@@ -176,13 +173,13 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
       onSeek(rawTime);
     } else if (activeDrag === 'start') {
       const snapped = snapToWordBoundary(rawTime);
-      const clampedStart = Math.max(0, Math.min(snapped, activeEnd - 0.5));
+      const clampedStart = Math.max(0, Math.min(snapped, activeEnd - minimumTrim));
       const rounded = Number(clampedStart.toFixed(2));
       onTrimChange?.(rounded, activeEnd);
       onSeek(rounded);
     } else if (activeDrag === 'end') {
       const snapped = snapToWordBoundary(rawTime);
-      const clampedEnd = Math.min(safeDuration, Math.max(snapped, activeStart + 0.5));
+      const clampedEnd = Math.min(safeDuration, Math.max(snapped, activeStart + minimumTrim));
       const rounded = Number(clampedEnd.toFixed(2));
       onTrimChange?.(activeStart, rounded);
       onSeek(rounded);
@@ -241,7 +238,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
       {/* Top Bar: Playback Controls, Timer, Trim Info, Zoom */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <button
+          <Button
             onClick={onTogglePlay}
             className="w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-400 text-black flex items-center justify-center transition-transform active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"
             title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
@@ -251,15 +248,15 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             ) : (
               <Play className="w-4 h-4 fill-black ml-0.5" />
             )}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={() => onSeek(activeStart)}
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
             title="Restart from active clip start"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+          </Button>
 
           {/* Current / Duration Timer */}
           <div className="font-mono text-xs text-zinc-300 flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg">
@@ -284,14 +281,14 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             </div>
 
             {isTrimmed && (
-              <button
+              <Button
                 type="button"
                 onClick={handleResetTrim}
                 className="text-[10px] text-zinc-400 hover:text-amber-300 underline cursor-pointer"
                 title="Reset clip trimming to full length"
               >
                 Reset Trim
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -299,7 +296,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
         {/* Actions: AI Smart Edit & Zoom Controls */}
         <div className="flex items-center gap-2.5">
           {onOpenSmartEditor && (
-            <button
+            <Button
               type="button"
               onClick={onOpenSmartEditor}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition-all cursor-pointer shadow-sm"
@@ -307,32 +304,32 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             >
               <Scissors className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Smart Edit</span>
-            </button>
+            </Button>
           )}
 
           {/* Zoom Controls */}
           <div className="flex items-center gap-2 text-zinc-400">
             <span className="text-[11px] text-zinc-500 hidden sm:inline">Zoom:</span>
             <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
-              <button
+              <Button
                 onClick={() => setZoomLevel((z) => Math.max(1, z - 0.5))}
                 className="p-1 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
                 disabled={zoomLevel <= 1}
                 title="Zoom out"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
-              </button>
+              </Button>
               <span className="text-[10px] font-mono px-1.5 text-zinc-300">
                 {zoomLevel.toFixed(1)}x
               </span>
-              <button
+              <Button
                 onClick={() => setZoomLevel((z) => Math.min(3, z + 0.5))}
                 className="p-1 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
                 disabled={zoomLevel >= 3}
                 title="Zoom in"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -346,7 +343,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             <span className="text-[10px] font-mono font-bold bg-amber-400 text-black px-1.5 py-0.5 rounded shrink-0">
               WORD TIMING
             </span>
-            <input
+            <Input
               type="text"
               value={selectedWord.text}
               onChange={(e) => {
@@ -370,68 +367,68 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             {/* Start Nudge */}
             <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg p-0.5">
               <span className="text-zinc-500 px-1 font-mono text-[9px]">Start</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(nudgeWordTiming(groups, selectedWord.id, -0.05, 0))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Nudge word start earlier by 0.05s"
               >
                 -0.05s
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(nudgeWordTiming(groups, selectedWord.id, 0.05, 0))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Nudge word start later by 0.05s"
               >
                 +0.05s
-              </button>
+              </Button>
             </div>
 
             {/* End Nudge */}
             <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg p-0.5">
               <span className="text-zinc-500 px-1 font-mono text-[9px]">End</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(nudgeWordTiming(groups, selectedWord.id, 0, -0.05))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Nudge word end earlier by 0.05s"
               >
                 -0.05s
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(nudgeWordTiming(groups, selectedWord.id, 0, 0.05))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Nudge word end later by 0.05s"
               >
                 +0.05s
-              </button>
+              </Button>
             </div>
 
             {/* Whole Word Shift */}
             <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg p-0.5">
               <span className="text-zinc-500 px-1 font-mono text-[9px]">Shift</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(shiftWordTiming(groups, selectedWord.id, -0.05))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Shift entire word 0.05s earlier"
               >
                 ◀ 0.05s
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(shiftWordTiming(groups, selectedWord.id, 0.05))}
                 className="px-1.5 py-0.5 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded cursor-pointer"
                 title="Shift entire word 0.05s later"
               >
                 0.05s ▶
-              </button>
+              </Button>
             </div>
 
             {/* Snap to Playhead */}
-            <button
+            <Button
               type="button"
               onClick={() => onUpdateGroups(snapWordToTime(groups, selectedWord.id, currentTime))}
               className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 hover:border-amber-400 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors"
@@ -439,11 +436,11 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             >
               <Target className="w-3 h-3 text-amber-400" />
               <span>Snap to Playhead</span>
-            </button>
+            </Button>
 
             {/* Auto Distribute Group Words */}
             {selectedGroup && selectedGroup.words.length > 1 && (
-              <button
+              <Button
                 type="button"
                 onClick={() => onUpdateGroups(autoDistributeGroupWords(groups, selectedGroup.id))}
                 className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors"
@@ -451,11 +448,11 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
               >
                 <Wand2 className="w-3 h-3 text-amber-400" />
                 <span>Auto-Distribute Phrase</span>
-              </button>
+              </Button>
             )}
 
             {/* Important Word Toggle */}
-            <button
+            <Button
               type="button"
               onClick={() => {
                 const updated = updateWordInGroups(groups, selectedWord.id, {
@@ -471,10 +468,10 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
               title="Toggle highlight punch on this word"
             >
               <Star className="w-3.5 h-3.5 fill-current" />
-            </button>
+            </Button>
 
             {/* Delete Word */}
-            <button
+            <Button
               type="button"
               onClick={() => {
                 const updated = deleteWordFromGroups(groups, selectedWord.id);
@@ -485,17 +482,17 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
               title="Delete word from captions"
             >
               <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            </Button>
 
             {/* Deselect / Close button */}
-            <button
+            <Button
               type="button"
               onClick={() => setSelectedWordId(null)}
               className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white cursor-pointer transition-colors"
               title="Close word timing inspector"
             >
               <X className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -507,13 +504,15 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onLostPointerCapture={() => { setActiveDrag(null); setActiveWordDragId(null); }}
           style={{ width: `${zoomLevel * 100}%` }}
-          className={`relative ${showCaptionWords ? 'h-28' : 'h-20'} cursor-pointer select-none rounded-lg overflow-hidden bg-zinc-950/90`}
+          className={`relative ${showCaptionWords ? 'h-28' : 'h-20'} cursor-pointer touch-none select-none rounded-lg overflow-hidden bg-zinc-950/90`}
         >
           {/* Time Ruler / Ticks */}
           <div className="absolute top-0 left-0 right-0 h-5 border-b border-zinc-800/80 flex items-center pointer-events-none">
             {ticks.map((t) => {
-              const tickLeft = (t / safeDuration) * 100;
+              const tickLeft = safeDuration > 0 ? (t / safeDuration) * 100 : 0;
               return (
                 <div
                   key={t}
@@ -529,7 +528,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
             })}
           </div>
 
-          {/* Audio Waveform Canvas / Mock Bars */}
+          {/* Only analyzed audio peaks are shown; unavailable analysis stays empty. */}
           <div
             suppressHydrationWarning
             className={`absolute top-5 left-0 right-0 ${showCaptionWords ? 'bottom-11' : 'bottom-1'} flex items-center justify-between px-1 pointer-events-none opacity-40`}
@@ -560,7 +559,7 @@ export const CaptionTimeline: React.FC<CaptionTimelineProps> = ({
               const width = safeDuration > 0
                 ? Number(Math.max(1.2, ((word.end - word.start) / safeDuration) * 100).toFixed(2))
                 : 0;
-              const isCurrent = currentTime >= word.start && currentTime <= word.end;
+              const isCurrent = activeWord?.id === word.id;
               const isSelected = selectedWordId === word.id;
 
               return (

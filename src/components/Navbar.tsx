@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -21,6 +22,7 @@ import {
 import { useAuthStore } from '@/lib/use-auth-store';
 import { AuthModal } from './AuthModal';
 import { ReelSparkLogo } from './ReelSparkLogo';
+import { ThemeToggle } from './theme-toggle';
 
 interface NavbarProps {
   systemStatus: {
@@ -124,6 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* System Status Indicators & Actions */}
       <div className="flex items-center gap-2.5">
+        <ThemeToggle />
         {user ? (
           <>
             {/* FFmpeg Indicator */}
@@ -151,7 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 : (systemStatus?.ollama?.model || 'gemma4');
 
               return (
-                <button
+                <Button
                   type="button"
                   onClick={onOpenOllamaModal || onOpenGeminiModal}
                   title={isGemini ? "Google Gemini AI (User's Personal Key). Click to change key or model." : 'Ollama Cloud starter model. Click to configure the provider.'}
@@ -169,22 +172,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>{activeModel}</span>
                     <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
                   </span>
-                </button>
+                </Button>
               );
             })()}
 
             {/* Refresh System button */}
-            <button
+            <Button
               onClick={onRefreshSystem}
               title="Refresh System Status"
               className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+            </Button>
 
             {/* User Account / Profile Dropdown */}
             <div className="relative">
-              <button
+              <Button
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 hover:border-zinc-500 text-xs transition-all cursor-pointer"
               >
@@ -195,7 +198,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {user.name}
                 </span>
                 <ChevronDown className="w-3 h-3 text-zinc-400" />
-              </button>
+              </Button>
 
               {userDropdownOpen && (
                 <div
@@ -206,7 +209,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <p className="font-bold text-white truncate">{user.name}</p>
                     <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
                   </div>
-                  <button
+                  <Button
                     onClick={() => {
                       logout();
                       setUserDropdownOpen(false);
@@ -215,29 +218,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Sign Out</span>
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
 
             {/* New Project Button */}
-            <button
+            <Button
               onClick={onNewProject}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs shadow-md shadow-amber-400/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">New Project</span>
-            </button>
+            </Button>
           </>
         ) : (
           /* When NOT logged in: Keep only Login / Register button on top right */
-          <button
+          <Button
             onClick={() => openAuthModal('login')}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-sm shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <User className="w-3.5 h-3.5 text-zinc-950" />
             <span>Login / Register</span>
-          </button>
+          </Button>
         )}
       </div>
 

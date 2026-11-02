@@ -313,3 +313,15 @@ for (const remotionServerFile of remotionServerFiles) {
     console.log(`[patch-remotion] Patched Windows loopback host in ${path.basename(remotionServerFile)}`);
   }
 }
+
+// OffthreadVideo uses a separate media proxy. Match the IPv4 render host there
+// too, otherwise Windows can route localhost to Next's IPv6 port instead.
+if (process.platform === 'win32') {
+  for (const relative of ['dist/cjs/video/offthread-video-source.js', 'dist/esm/index.mjs', 'dist/esm/no-react.mjs']) {
+    const filename = path.resolve('node_modules/remotion', relative);
+    if (!fs.existsSync(filename)) continue;
+    const source = fs.readFileSync(filename, 'utf8');
+    const updated = source.replaceAll('http://localhost:${window.remotion_proxyPort}/proxy', 'http://127.0.0.1:${window.remotion_proxyPort}/proxy');
+    if (updated !== source) fs.writeFileSync(filename, updated, 'utf8');
+  }
+}

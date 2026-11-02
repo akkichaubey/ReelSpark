@@ -1,5 +1,7 @@
 'use client';
 
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   ZoomIn,
@@ -127,7 +129,7 @@ export const InteractiveTimeline: React.FC = () => {
         {/* Name input */}
         <div className="relative flex-1">
           <Scissors className="w-3.5 h-3.5 absolute left-3 top-2.5 text-zinc-500" />
-          <input
+          <Input
             type="text"
             value={clipTitle}
             onChange={(e) => setClipTitle(e.target.value)}
@@ -139,34 +141,34 @@ export const InteractiveTimeline: React.FC = () => {
         {/* Duration Quick Presets */}
         <div className="flex items-center space-x-1 bg-zinc-900/90 border border-white/10 p-1 rounded-xl shrink-0">
           <span className="text-[10px] text-zinc-500 uppercase font-bold px-1.5 hidden md:inline">Presets:</span>
-          <button
+          <Button
             type="button"
             onClick={() => setRangePreset(15)}
             title="Set 15s duration from playhead"
             className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-mono text-[11px] font-bold transition-colors cursor-pointer"
           >
             +15s
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setRangePreset(30)}
             title="Set 30s duration from playhead"
             className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-mono text-[11px] font-bold transition-colors cursor-pointer"
           >
             +30s
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setRangePreset(60)}
             title="Set 60s duration from playhead"
             className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-mono text-[11px] font-bold transition-colors cursor-pointer"
           >
             +60s
-          </button>
+          </Button>
         </div>
 
         {/* Create Clip Button */}
-        <button
+        <Button
           type="submit"
           disabled={inPointMs >= outPointMs}
           className="flex items-center justify-center space-x-2 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 disabled:opacity-40 text-zinc-950 font-black text-xs shadow-md shadow-amber-500/20 transition-all whitespace-nowrap cursor-pointer shrink-0"
@@ -174,7 +176,7 @@ export const InteractiveTimeline: React.FC = () => {
           <Scissors className="w-3.5 h-3.5" />
           <span>Create Clip</span>
           <span className="text-[10px] bg-zinc-950/20 px-1 py-0.2 rounded font-mono">C</span>
-        </button>
+        </Button>
       </form>
 
       {/* 2. Precision Timing & Zoom HUD Bar */}
@@ -210,7 +212,7 @@ export const InteractiveTimeline: React.FC = () => {
               auditionRange.startMs === inPointMs &&
               auditionRange.endMs === outPointMs;
             return (
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   const mediaEl = typeof document !== 'undefined'
@@ -243,7 +245,7 @@ export const InteractiveTimeline: React.FC = () => {
                     <span>Audition</span>
                   </>
                 )}
-              </button>
+              </Button>
             );
           })()}
 
@@ -265,7 +267,7 @@ export const InteractiveTimeline: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-white/10">
-            <button
+            <Button
               type="button"
               onClick={() => setZoomLevel(zoomLevel - 1)}
               disabled={zoomLevel <= 1}
@@ -273,9 +275,9 @@ export const InteractiveTimeline: React.FC = () => {
               className="p-1 rounded hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 transition-colors cursor-pointer"
             >
               <ZoomOut className="w-3.5 h-3.5" />
-            </button>
+            </Button>
             <span className="text-[11px] font-mono px-1.5 text-zinc-400 font-bold">{zoomLevel}x</span>
-            <button
+            <Button
               type="button"
               onClick={() => setZoomLevel(zoomLevel + 1)}
               disabled={zoomLevel >= 5}
@@ -283,7 +285,7 @@ export const InteractiveTimeline: React.FC = () => {
               className="p-1 rounded hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 transition-colors cursor-pointer"
             >
               <ZoomIn className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>

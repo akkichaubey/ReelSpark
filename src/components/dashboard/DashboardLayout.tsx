@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Menu } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
@@ -29,6 +30,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   // Sidebar Collapsed State (persisted in localStorage, hydrated safely after mount)
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+  const closeMobileNavigation = useCallback(() => setMobileOpen(false), []);
 
   // Sync persisted collapse state safely on client after initial hydration
   useEffect(() => {
@@ -96,7 +98,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         isCollapsed={isCollapsed}
         onToggleCollapse={handleToggleCollapse}
         mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        onCloseMobile={closeMobileNavigation}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenHelp={() => setShowHelpModal(true)}
       />
@@ -105,14 +107,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Mobile Header (Only visible on mobile screens to toggle drawer) */}
         <div className="md:hidden h-12 border-b border-zinc-800 bg-zinc-900/90 px-4 flex items-center justify-between shrink-0 z-20 backdrop-blur-md">
-          <button
+          <Button
             type="button"
             onClick={() => setMobileOpen(true)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
             title="Open navigation menu"
           >
             <Menu className="w-5 h-5" />
-          </button>
+          </Button>
           <ReelSparkLogo variant="full" className="h-5 w-auto" />
           <div className="w-7" />
         </div>

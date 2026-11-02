@@ -3,6 +3,7 @@ import { ClippingProjectSchema, type ClippingProject } from '../clipping-studio/
 import { mediaLifecycleEnabled } from './media-lifecycle-state';
 import { mapClippingStorage } from './storage-references';
 import type { Project } from '../types';
+import { validateTimeline } from '../timeline/model';
 import type { CaptionProject } from '../caption-maker/types';
 
 export function projectCloudEnabled(): boolean {
@@ -40,6 +41,7 @@ export function validateReelMakerProject(ownerId: string, input: unknown): Capti
       typeof project.createdAt !== 'string' || typeof project.updatedAt !== 'string') {
     throw new Error('Invalid Reel Maker project');
   }
+  if (project.timeline) { const error = validateTimeline(project.timeline)[0]; if (error) throw new Error(error); }
   return project;
 }
 

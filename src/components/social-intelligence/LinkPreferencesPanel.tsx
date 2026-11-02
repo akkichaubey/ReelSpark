@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect } from 'react';
 import {
   Save,
@@ -165,14 +167,14 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
           </p>
         </div>
 
-        <button
+        <Button
           onClick={handleSave}
           disabled={saving}
           className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-xl font-medium text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           <span>Save Preferences</span>
-        </button>
+        </Button>
       </div>
 
       {successMessage && (
@@ -198,7 +200,7 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
               <h3 className="text-sm font-semibold text-zinc-200 uppercase tracking-wider">
                 Link Section Callout Heading
               </h3>
-              <button
+              <Button
                 type="button"
                 onClick={() =>
                   setPreferences({
@@ -216,13 +218,13 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
                 <span className="font-mono tracking-wider font-bold">•••</span>
                 <span>3 Dots Spacer</span>
                 {preferences.threeDotsSpacer !== false && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
-              </button>
+              </Button>
             </div>
             <p className="text-xs text-zinc-400">
               The heading displayed directly before your social links in generated posts. Leave blank to omit heading.
             </p>
             <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-              <input
+              <Input
                 type="text"
                 value={preferences.customHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '')}
                 onChange={(e) => {
@@ -320,7 +322,7 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
               <label className="text-xs text-zinc-400">Simulate Target Platform:</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {(['youtube', 'instagram', 'threads', 'facebook'] as SocialPlatformKey[]).map((pKey) => (
-                  <button
+                  <Button
                     key={pKey}
                     type="button"
                     onClick={() => setPreviewPlatform(pKey)}
@@ -331,7 +333,7 @@ export const LinkPreferencesPanel: React.FC<LinkPreferencesPanelProps> = ({ onSa
                     }`}
                   >
                     {pKey}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

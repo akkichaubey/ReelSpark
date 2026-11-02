@@ -223,6 +223,10 @@ export function updateCaptionGroupPhrase(
       return g;
     }
 
+    // Spelling-only edits must retain verified word alignment and speech gaps.
+    if (tokens.length === g.words.length && start === g.start && end === g.end) {
+      return buildCaptionGroup(g.words.map((word, index) => ({ ...word, text: tokens[index] })), g.id);
+    }
     const timePerWord = duration / tokens.length;
     const newWords: TranscriptWord[] = tokens.map((token, idx) => {
       const isLast = idx === tokens.length - 1;

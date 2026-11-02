@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef } from 'react';
 import {
   Play,
@@ -141,7 +142,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           {project.candidates.length === 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={onOpenOllamaModal || onOpenGeminiModal}
                 title="Choose Ollama Model for Analysis"
@@ -152,9 +153,9 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                   {project.settings?.aiModel || 'llama3.2'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" />
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={onRunAnalysis}
                 disabled={isAnalyzing || isYouTubeMissingLocal}
                 className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:bg-amber-400/10 disabled:text-amber-200 disabled:border-amber-400/30 disabled:cursor-default border border-transparent text-zinc-950 font-semibold text-sm shadow-lg shadow-white/5 transition-all"
@@ -170,11 +171,11 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                     <span>Run Full AI Analysis</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           ) : (
             <>
-              <button
+              <Button
                 onClick={onRenderAllSelected}
                 disabled={isRendering || selectedCount === 0 || isYouTubeMissingLocal}
                 className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-xs sm:text-sm transition-all shadow-sm"
@@ -183,16 +184,16 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                 <span>
                   {isRendering ? 'Rendering Clips...' : `Render Selected (${selectedCount})`}
                 </span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={onExportZip}
                 disabled={renderedCount === 0}
                 className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 font-medium text-xs sm:text-sm transition-all border border-white/10"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export ZIP ({renderedCount})</span>
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -222,7 +223,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                 if (file) onUploadLocalFileForYouTube(file);
               }}
             />
-            <button
+            <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingLocalFile}
               className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-zinc-950 font-bold text-xs sm:text-sm whitespace-nowrap shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
@@ -239,16 +240,16 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
                     : `Uploading (${localUploadProgress}%)...`
                   : 'Attach Local Video'}
               </span>
-            </button>
+            </Button>
             {isUploadingLocalFile && (
-              <button
+              <Button
                 type="button"
                 onClick={onCancelLocalFileUpload}
                 className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 <X className="h-3 w-3" />
                 Cancel upload
-              </button>
+              </Button>
             )}
           </div>
         </div>

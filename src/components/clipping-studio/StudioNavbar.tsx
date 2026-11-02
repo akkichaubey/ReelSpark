@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { AuthModal } from '../AuthModal';
+import { ThemeToggle } from '../theme-toggle';
 
 export const StudioNavbar: React.FC = () => {
   const { user, checkAuth, logout, openAuthModal } = useAuthStore();
@@ -76,9 +78,10 @@ export const StudioNavbar: React.FC = () => {
 
         {/* Right: User Account / Profile */}
         <div className="flex items-center space-x-2">
+          <ThemeToggle />
           {user ? (
             <div className="relative pl-1">
-              <button
+              <Button
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 hover:border-zinc-500 text-xs transition-all cursor-pointer"
               >
@@ -86,7 +89,7 @@ export const StudioNavbar: React.FC = () => {
                   {user.name.charAt(0).toUpperCase()}
                 </div>
                 <ChevronDown className="w-3 h-3 text-zinc-400" />
-              </button>
+              </Button>
 
               {userDropdownOpen && (
                 <div
@@ -97,7 +100,7 @@ export const StudioNavbar: React.FC = () => {
                     <p className="font-bold text-white truncate">{user.name}</p>
                     <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
                   </div>
-                  <button
+                  <Button
                     onClick={() => {
                       logout();
                       setUserDropdownOpen(false);
@@ -106,18 +109,18 @@ export const StudioNavbar: React.FC = () => {
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Sign Out</span>
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
           ) : (
-            <button
+            <Button
               onClick={() => openAuthModal('login')}
               className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black font-bold text-xs transition-all cursor-pointer"
             >
               <User className="w-3.5 h-3.5 text-black" />
               <span>Sign In</span>
-            </button>
+            </Button>
           )}
         </div>
       </header>

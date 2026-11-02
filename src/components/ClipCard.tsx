@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/components/ui/button';
 import { accountCache } from '@/lib/account-cache';
 
 import React, { useState } from 'react';
@@ -67,6 +68,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
   const [copiedQuote, setCopiedQuote] = useState(false);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
 
   const bData = getBilingualCandidateData(candidate, lang);
 
@@ -208,7 +210,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           <div className="flex items-center space-x-2">
             {/* Delete clip button */}
             {onDeleteClip && (
-              <button
+              <Button
                 type="button"
                 onClick={() => onDeleteClip(candidate.id)}
                 className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -216,12 +218,12 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                 aria-label={`Delete clip ${bData.title}`}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             )}
 
             {/* Hindi / English Language Toggle */}
             <div className="flex items-center p-0.5 rounded-lg bg-zinc-950 border border-white/10 text-[11px] font-semibold flex-shrink-0">
-              <button
+              <Button
                 type="button"
                 onClick={() => setLocalLang('en')}
                 className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
@@ -232,8 +234,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                 title="View in English"
               >
                 EN
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setLocalLang('hi')}
                 className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
@@ -244,11 +246,11 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                 title="हिंदी में देखें"
               >
                 हिंदी
-              </button>
+              </Button>
             </div>
 
             {/* Score Badge in Gold/Amber */}
-            <button
+            <Button
               type="button"
               onClick={() => setShowScoreDetails(!showScoreDetails)}
               className="flex items-center space-x-1.5 px-3 py-1 rounded-full border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold text-xs tracking-tight shadow-sm shadow-amber-500/10 transition-all flex-shrink-0 cursor-pointer"
@@ -256,7 +258,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             >
               <Award className="w-3.5 h-3.5 text-amber-400" />
               <span>Score: {candidate.scores.total}/100</span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -269,7 +271,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             {bData.title}
           </h3>
-          <button
+          <Button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -287,7 +289,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             ) : (
               <Copy className="w-4 h-4" />
             )}
-          </button>
+          </Button>
         </div>
 
         {/* Timestamps & Context Badge */}
@@ -313,7 +315,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         {/* Spoken Words / Quotes block with 3-line clamp, Expand option & Copy Quote button */}
         <div className="relative mt-3.5 p-3.5 rounded-xl bg-zinc-900/80 border border-white/5 space-y-2 text-xs group/quote">
           {/* Top-Right Copy Quote Button */}
-          <button
+          <Button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -331,7 +333,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-          </button>
+          </Button>
 
           <p
             className={`text-zinc-200 italic leading-relaxed transition-all pr-14 ${
@@ -342,14 +344,14 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           </p>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
-            <button
+            <Button
               type="button"
               onClick={() => setIsTextExpanded(!isTextExpanded)}
               className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center space-x-1 cursor-pointer transition-colors"
             >
               <span>{isTextExpanded ? 'Show less' : 'Read full quote...'}</span>
               {isTextExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
+            </Button>
 
             <div className="flex flex-wrap items-center gap-2 text-[10px] text-zinc-500 font-mono">
               <span>In: &quot;{bData.firstWords}&quot;</span>
@@ -408,7 +410,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
       <div className="mt-4 pt-3.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex flex-wrap items-center gap-2">
           {/* Play Clip in Emerald */}
-          <button
+          <Button
             type="button"
             onClick={() => onPlayPreview(candidate)}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 hover:text-emerald-300 font-semibold text-xs border border-emerald-500/50 shadow-sm shadow-emerald-500/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -416,10 +418,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Play Clip</span>
-          </button>
+          </Button>
 
           {/* Edit Clip */}
-          <button
+          <Button
             type="button"
             onClick={() => onEditBoundaries(candidate)}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -427,10 +429,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Scissors className="w-3.5 h-3.5 text-zinc-300" />
             <span>Edit Clip</span>
-          </button>
+          </Button>
 
           {/* Studio */}
-          <button
+          <Button
             type="button"
             onClick={() => onPreviewSubtitles(candidate)}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -438,10 +440,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Sliders className="w-3.5 h-3.5 text-zinc-300" />
             <span>Studio</span>
-          </button>
+          </Button>
 
           {/* AI Social Post */}
-          <button
+          <Button
             type="button"
             onClick={handleSocialPostClick}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -449,10 +451,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Share2 className="w-3.5 h-3.5 text-amber-400" />
             <span>Social Post</span>
-          </button>
+          </Button>
 
           {/* Create Reel in Amber/Gold */}
-          <button
+          <Button
             type="button"
             onClick={handleCreateReelClick}
             disabled={isCreatingReel}
@@ -461,9 +463,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
           >
             <Film className={`w-3.5 h-3.5 text-amber-400 ${isCreatingReel ? 'animate-pulse' : ''}`} />
             <span>{isCreatingReel ? 'Preparing...' : 'Create Reel'}</span>
-          </button>
+          </Button>
 
           {/* Save Reel to Saved Reels Library */}
+          {libraryError && <span role="alert" className="text-xs text-red-300">{libraryError}</span>}
           {candidate.savedReelId ? (
             <Link
               href={`/reel-maker?savedReel=${encodeURIComponent(candidate.savedReelId)}`}
@@ -475,12 +478,15 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             </Link>
           ) : (
             onSaveToLibrary && (
-              <button
+              <Button
                 type="button"
                 onClick={async () => {
                   setIsSavingToLibrary(true);
+                  setLibraryError(null);
                   try {
                     await onSaveToLibrary(candidate, lang);
+                  } catch (error) {
+                    setLibraryError(error instanceof Error ? error.message : 'Could not save reel');
                   } finally {
                     setIsSavingToLibrary(false);
                   }
@@ -495,7 +501,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                   <Bookmark className="w-3.5 h-3.5 fill-black text-black" />
                 )}
                 <span>{isSavingToLibrary ? 'Saving…' : 'Save Reel'}</span>
-              </button>
+              </Button>
             )
           )}
         </div>
@@ -503,7 +509,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         {/* Download Clip dropdown */}
         <div className="relative inline-flex items-center gap-1.5">
           <div className="relative">
-            <button
+            <Button
               type="button"
               onClick={() => setShowDownloadMenu(!showDownloadMenu)}
               className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-semibold text-xs border border-zinc-700/60 transition-all cursor-pointer"
@@ -511,7 +517,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
               <Download className="w-3.5 h-3.5 text-zinc-300" />
               <span>Download Clip</span>
               <ChevronDown className="w-3 h-3 text-zinc-400" />
-            </button>
+            </Button>
 
             {showDownloadMenu && (
               <div className="absolute right-0 bottom-full mb-2 w-48 rounded-xl bg-zinc-900 border border-white/10 shadow-2xl p-1 z-30 space-y-0.5">
@@ -526,7 +532,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                     <span>Download MP4 Video</span>
                   </a>
                 ) : (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setShowDownloadMenu(false);
@@ -537,10 +543,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                   >
                     <Download className="w-3.5 h-3.5 text-amber-400" />
                     <span>{isRenderingThis ? 'Rendering MP4...' : 'Render & Download MP4'}</span>
-                  </button>
+                  </Button>
                 )}
 
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     setShowDownloadMenu(false);
@@ -550,14 +556,14 @@ export const ClipCard: React.FC<ClipCardProps> = ({
                 >
                   <Download className="w-3.5 h-3.5 text-amber-400" />
                   <span>Download SRT Subtitles</span>
-                </button>
+                </Button>
               </div>
             )}
           </div>
 
           {/* Re-render button */}
           {isRendered && (
-            <button
+            <Button
               type="button"
               onClick={() => onRenderClip(candidate.id)}
               disabled={isRenderingThis}
@@ -565,7 +571,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
               className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700/60 transition-colors"
             >
               <RotateCw className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           )}
         </div>
       </div>

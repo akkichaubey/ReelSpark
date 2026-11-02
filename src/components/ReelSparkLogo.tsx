@@ -68,7 +68,7 @@ export const ReelSparkLogo: React.FC<ReelSparkLogoProps> = ({
   }
 
   // Full Horizontal Logo (Icon + Wordmark)
-  const textColor = textWhite ? '#FFFFFF' : '#131313';
+  const textColor = textWhite ? 'var(--brand-wordmark, #FFFFFF)' : '#131313';
 
   return (
     <svg

@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import { MediaErrorHandler } from '@/components/MediaErrorHandler';
 import { AccountWorkspaceBoundary } from '@/components/AccountWorkspaceBoundary';
+import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
+import './theme.css';
 
 export const metadata: Metadata = {
   title: 'ReelMaker — Video to Reels & Shorts Studio',
@@ -31,10 +33,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark h-full antialiased">
+    <html lang="en" className="dark h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
         <MediaErrorHandler />
-        <AccountWorkspaceBoundary>{children}</AccountWorkspaceBoundary>
+        <ThemeProvider><AccountWorkspaceBoundary>{children}</AccountWorkspaceBoundary></ThemeProvider>
       </body>
     </html>
   );

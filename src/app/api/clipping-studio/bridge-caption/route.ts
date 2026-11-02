@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     let resolvedSourcePath = sourcePath;
     if (resolvedSourcePath && typeof resolvedSourcePath === 'string') {
       assertSafePath(resolvedSourcePath);
-      if (!fs.existsSync(resolvedSourcePath)) await restorePrivateMedia(access.user.id, resolvedSourcePath);
+      if (!fs.existsSync(/*turbopackIgnore: true*/ resolvedSourcePath)) await restorePrivateMedia(access.user.id, resolvedSourcePath);
     }
     if (!resolvedSourcePath || !fs.existsSync(/*turbopackIgnore: true*/ resolvedSourcePath)) {
       if (sourceFilename && projectId) {

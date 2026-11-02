@@ -1,6 +1,9 @@
 'use strict';
 'use client';
 
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -20,7 +23,7 @@ import {
   RotateCcw,
   ChevronDown,
 } from 'lucide-react';
-import { SocialPostBundle, ContentTone, SocialPlatform } from '@/app/api/caption-maker/generate-social/route';
+import type { SocialPostBundle, ContentTone, SocialPlatform } from '@/app/api/caption-maker/generate-social/route';
 import { getPlatformDescriptionLimit, PLATFORM_DESCRIPTION_LIMITS } from '@/lib/social-intelligence/platform-rules';
 
 interface SocialPostModalProps {
@@ -129,8 +132,8 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+
+      <DialogSurface onClose={onClose} aria-describedby={undefined} overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" className="relative w-full max-w-3xl bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 bg-zinc-950/80 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -138,24 +141,25 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
               <FileText className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <DialogTitle asChild><h3 className="text-base font-bold text-white flex items-center gap-2">
                 <span>AI Reel Caption & Social Copywriter</span>
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-mono uppercase tracking-wider">
                   Instagram • Shorts • TikTok
                 </span>
-              </h3>
+              </h3></DialogTitle>
               <p className="text-xs text-zinc-400">
                 Generate viral hooks, engaging post captions, CTAs & hashtags from this clip only.
               </p>
             </div>
           </div>
-          <button
+          <Button
             type="button"
+            aria-label="Close social copywriter"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Clear Informative Banner distinguishing Spoken Subtitles vs Social Post Captions */}
@@ -202,7 +206,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                   { id: 'hi', label: 'हिन्दी' },
                   { id: 'hinglish', label: 'Hinglish' },
                 ].map((l) => (
-                  <button
+                  <Button
                     key={l.id}
                     type="button"
                     onClick={() => {
@@ -217,7 +221,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                     }`}
                   >
                     {l.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -246,7 +250,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
           </div>
 
           {/* Regenerate Button */}
-          <button
+          <Button
             type="button"
             onClick={() => handleGenerate()}
             disabled={isLoading}
@@ -254,7 +258,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
           >
             <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
             <span>Regenerate</span>
-          </button>
+          </Button>
         </div>
 
         {/* Modal Scrollable Body */}
@@ -272,13 +276,13 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
           ) : errorMessage ? (
             <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-center space-y-2">
               <p className="text-xs text-rose-300 font-medium">{errorMessage}</p>
-              <button
+              <Button
                 type="button"
                 onClick={() => handleGenerate()}
                 className="px-3 py-1 bg-rose-500/20 text-rose-300 rounded text-xs font-semibold hover:bg-rose-500/30 transition-colors"
               >
                 Try Again
-              </button>
+              </Button>
             </div>
           ) : bundle ? (
             <>
@@ -303,7 +307,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                         className="p-3 bg-zinc-950/80 hover:bg-zinc-800/80 border border-zinc-800 hover:border-amber-500/50 rounded-xl cursor-pointer transition-all flex flex-col justify-between group shadow-sm"
                       >
                         <p className="text-xs text-zinc-200 leading-snug font-medium mb-2">
-                          "{hook}"
+                          &quot;{hook}&quot;
                         </p>
                         <div className="flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-amber-400">
                           <span>Hook #{hIdx + 1}</span>
@@ -396,7 +400,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                       {/* Variation Switcher */}
                       <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
                         {bundle.variations.map((v, vIdx) => (
-                          <button
+                          <Button
                             key={vIdx}
                             type="button"
                             onClick={() => handleSelectVariation(vIdx)}
@@ -407,7 +411,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                             }`}
                           >
                             {v.title}
-                          </button>
+                          </Button>
                         ))}
                       </div>
 
@@ -421,7 +425,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                         {isModified && (
                           <>
                             <span className="text-zinc-600">·</span>
-                            <button
+                            <Button
                               type="button"
                               onClick={() => {
                                 if (bundle?.variations?.[selectedVariationIdx]) {
@@ -433,7 +437,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                             >
                               <RotateCcw className="w-2.5 h-2.5" />
                               <span>Reset</span>
-                            </button>
+                            </Button>
                           </>
                         )}
                       </div>
@@ -455,7 +459,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                         />
                       </div>
 
-                      <textarea
+                      <Textarea
                         rows={8}
                         value={editedText}
                         onChange={(e) => setEditedText(e.target.value)}
@@ -465,7 +469,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
 
                       {/* Floating Copy Action on Textarea */}
                       <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleCopy(editedText, 'full_post')}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
@@ -485,7 +489,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                               <span>Copy Post</span>
                             </>
                           )}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -499,7 +503,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                     <Hash className="w-3.5 h-3.5 text-amber-400" />
                     <span>Target Hashtags ({bundle.hashtags.length})</span>
                   </span>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleCopy(bundle.hashtags.join(' '), 'hashtags_only')}
                     className="flex items-center gap-1 text-[11px] text-amber-300 hover:text-amber-200 font-semibold cursor-pointer"
@@ -515,7 +519,7 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                         <span>Copy All Hashtags</span>
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {bundle.hashtags.map((tag, tIdx) => (
@@ -540,15 +544,15 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
             {duration ? `Clip Duration: ${Math.round(duration)}s` : 'Selected Clip'}
           </span>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-800 transition-colors cursor-pointer"
             >
               Close
-            </button>
+            </Button>
             {bundle && (
-              <button
+              <Button
                 type="button"
                 onClick={() => handleCopy(editedText, 'full_post')}
                 className="flex items-center gap-1.5 px-5 py-2 bg-amber-400 hover:bg-amber-300 text-black font-bold rounded-xl text-xs transition-all shadow-md shadow-amber-400/20 active:scale-95 cursor-pointer"
@@ -564,11 +568,11 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
                     <span>Copy Full Post</span>
                   </>
                 )}
-              </button>
+              </Button>
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
+
   );
 };

@@ -1,6 +1,9 @@
 import { accountCache } from '@/lib/account-cache';
 import { CaptionProject } from './types';
 import { cleanBundledSampleProject } from './clean-sample-project';
+import { createEmptyCaptionProject } from './sample-data';
+import { groupTranscriptWords } from './caption-grouping';
+import { validateTimeline } from '@/lib/timeline/model';
 
 export const LOCAL_STORAGE_PROJECT_KEY = 'reel_caption_project_v2';
 export const LOCAL_STORAGE_SNAPSHOTS_KEY = 'reel_project_snapshots_v1';
@@ -179,22 +182,55 @@ export function importProjectFromJson(jsonString: string): {
   error?: string;
 } {
   try {
-    const parsed = JSON.parse(jsonString);
-    const candidate: CaptionProject = parsed.project || parsed;
-
-    if (!candidate.id || !candidate.outputSettings || !Array.isArray(candidate.transcript)) {
+    const parsed: unknown = JSON.parse(jsonString);
+    const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+    const candidate = record(parsed) && 'project' in parsed ? parsed.project : parsed;
+    if (!record(candidate) || typeof candidate.id !== 'string' || !candidate.id ||
+      !record(candidate.outputSettings) || !Array.isArray(candidate.transcript)) {
       return {
         success: false,
         error: 'Invalid project format. Missing id, outputSettings, or transcript words.',
       };
     }
 
+    const validWord = (word: unknown) => record(word) && typeof word.text === 'string' &&
+      typeof word.start === 'number' && Number.isFinite(word.start) &&
+      typeof word.end === 'number' && Number.isFinite(word.end) && word.end >= word.start;
+    if (!candidate.transcript.every(validWord)) return { success: false, error: 'Invalid transcript word timing or text.' };
+    if (candidate.captionStyle != null && !record(candidate.captionStyle)) return { success: false, error: 'Invalid caption style.' };
+    if (candidate.captionGroups !== undefined && (!Array.isArray(candidate.captionGroups) || !candidate.captionGroups.every(group =>
+      record(group) && typeof group.start === 'number' && Number.isFinite(group.start) &&
+      typeof group.end === 'number' && Number.isFinite(group.end) && group.end >= group.start &&
+      Array.isArray(group.words) && group.words.every(validWord)))) {
+      return { success: false, error: 'Invalid caption groups or word timing.' };
+    }
+    for (const key of ['image', 'audio', 'bgMusic']) {
+      const asset = candidate[key];
+      if (asset != null && (!record(asset) || typeof asset.fileUrl !== 'string')) return { success: false, error: `Invalid ${key} media asset.` };
+    }
+
+    // Older portable projects may omit newer settings. Fill only missing
+    // defaults; keep all supplied metadata, word timing, styles and media URLs.
+    const defaults = createEmptyCaptionProject();
+    const source = candidate as unknown as CaptionProject;
     const importedProject: CaptionProject = {
-      ...candidate,
+      ...defaults,
+      ...source,
+      outputSettings: { ...defaults.outputSettings, ...source.outputSettings },
+      captionStyle: { ...defaults.captionStyle, ...source.captionStyle },
+      captionGroups: source.captionGroups ?? groupTranscriptWords(source.transcript),
       id: `proj_import_${Date.now()}`,
-      title: `${candidate.title || 'Imported Reel'} (Imported)`,
+      title: `${source.title || 'Imported Reel'} (Imported)`,
       updatedAt: new Date().toISOString(),
     };
+    if (![importedProject.outputSettings.width, importedProject.outputSettings.height, importedProject.outputSettings.fps]
+      .every(value => typeof value === 'number' && Number.isFinite(value) && value > 0)) {
+      return { success: false, error: 'Invalid canvas dimensions or frame rate.' };
+    }
+    if (importedProject.timeline) {
+      const error = validateTimeline(importedProject.timeline)[0];
+      if (error) return { success: false, error };
+    }
 
     return {
       success: true,

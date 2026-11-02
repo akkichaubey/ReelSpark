@@ -7,6 +7,7 @@ import { makeCancelSignal } from '@remotion/renderer';
 import { commitStorageFile, createStorageStagingPath, removeStorageFile } from '../storage-files';
 
 export interface RenderRemotionOptions {
+  timelinePlan?: import('../timeline/model').TimelinePlan;
   imagePath?: string;
   imageUrl?: string;
   audioPath?: string;
@@ -86,6 +87,9 @@ export async function getRemotionBundle(): Promise<string> {
 
     const bundleLocation = await bundle({
       entryPoint,
+      // Windows postinstall patches Remotion's loopback URLs. Webpack's
+      // immutable node_modules cache otherwise keeps the unpatched proxy URL.
+      enableCaching: process.platform !== 'win32',
       onProgress: (progress) => {
         if (progress % 25 === 0) {
           console.log(`[Remotion] Bundling progress: ${progress}%`);
@@ -177,6 +181,8 @@ export async function renderRemotionReelVideo(
   }
   if (options.signal?.aborted) throw new Error('Render cancelled.');
 
+  if (options.timelinePlan) duration = options.timelinePlan.durationMs / 1000;
+
   // 2. Resolve image/video source (prefer Data URL if image, file:// if video)
   const isVideo =
     mediaType === 'video' ||
@@ -241,6 +247,7 @@ export async function renderRemotionReelVideo(
 
   // 5. Prepare Remotion Input Props
   const inputProps: RemotionCaptionProps = {
+    timelinePlan: options.timelinePlan,
     imageSrc: resolvedImageSrc,
     audioSrc: resolvedAudioSrc,
     voiceVolume: options.voiceVolume,
@@ -271,7 +278,8 @@ export async function renderRemotionReelVideo(
   // 6. Select Composition
   const { selectComposition, renderMedia } = await import('@remotion/renderer');
   // Use the installed container Chromium rather than downloading a browser at runtime.
-  const browserExecutable = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+  const installedWindowsChrome = process.platform === 'win32' ? path.join(process.env.PROGRAMFILES || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe') : undefined;
+  const browserExecutable = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || (installedWindowsChrome && fs.existsSync(/*turbopackIgnore: true*/ installedWindowsChrome) ? installedWindowsChrome : undefined);
   const composition = await selectComposition({
     browserExecutable,
     serveUrl: bundleLocation,
@@ -301,8 +309,8 @@ export async function renderRemotionReelVideo(
       inputProps: inputProps as unknown as Record<string, unknown>,
       imageFormat: 'jpeg',
       cancelSignal,
-      // Windows uses the project's FFmpeg wrapper; Linux uses Remotion's native package.
-      binariesDirectory: process.platform === 'win32' ? path.resolve(process.cwd(), 'bin') : null,
+      // Use the compositor together with its matching native FFmpeg binaries.
+      binariesDirectory: process.platform === 'win32' ? path.resolve(process.cwd(), 'node_modules/@remotion/compositor-win32-x64-msvc') : null,
       logLevel: 'warn',
       onProgress: ({ progress }) => {
         if (onProgress) onProgress(Math.min(99, Math.round(progress * 100)));

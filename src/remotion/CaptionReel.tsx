@@ -3,6 +3,7 @@ import { AbsoluteFill, Audio, Sequence } from 'remotion';
 import { BackgroundLayer } from './BackgroundLayer';
 import { GsapAnimatedCaptions } from './GsapAnimatedCaptions';
 import { RemotionCaptionProps } from './types';
+import { TimelineScene } from './TimelineScene';
 
 export const CaptionReel: React.FC<RemotionCaptionProps> = ({
   imageSrc,
@@ -30,6 +31,7 @@ export const CaptionReel: React.FC<RemotionCaptionProps> = ({
   mediaType,
   backgroundVideoMuted,
   durationInSeconds,
+  timelinePlan,
 }) => {
   const { width, height, fps = 30 } = outputSettings;
   const totalFrames = Math.max(1, Math.round(durationInSeconds * fps));
@@ -67,6 +69,7 @@ export const CaptionReel: React.FC<RemotionCaptionProps> = ({
     return Math.max(0, Math.min(1.0, vol));
   };
 
+  if (timelinePlan) return <TimelineScene plan={timelinePlan} captionStyle={captionStyle} outputSettings={outputSettings} speaker1Color={speaker1Color} speaker2Color={speaker2Color} sfxCues={sfxCues} />;
   return (
     <AbsoluteFill
       style={{

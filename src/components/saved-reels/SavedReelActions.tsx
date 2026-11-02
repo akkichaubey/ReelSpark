@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -59,30 +60,33 @@ export function SavedReelActions({
       <Link href="/saved-reels" className="text-amber-400">
         Saved Reels
       </Link>
-      <button
+      <Button
         disabled={busy}
         onClick={() => void save(false)}
         className="rounded bg-amber-400 px-3 py-1.5 font-bold text-black disabled:opacity-50"
       >
         {session ? 'Save Changes' : 'Save Reel'}
-      </button>
+      </Button>
       {session && (
         <>
-          <button
+          <Button
             disabled={busy}
-            onClick={() => setReviewing(true)}
+            onClick={() => {
+              if (project.timeline?.enabled) { const title = window.prompt('Reel title', project.title); if (title?.trim()) onUpdateProject({ title: title.trim() }); }
+              else setReviewing(true);
+            }}
             className="rounded border border-zinc-700 px-3 py-1.5"
           >
-            Edit Title / Timing
-          </button>
-          <button
+            {project.timeline?.enabled ? 'Edit Title' : 'Edit Title / Timing'}
+          </Button>
+          <Button
             disabled={busy}
             onClick={() => void save(true)}
             className="rounded border border-zinc-700 px-3 py-1.5"
           >
             Save as New Reel
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={busy}
             onClick={() => {
               if (
@@ -96,7 +100,7 @@ export function SavedReelActions({
             className="px-2 py-1.5"
           >
             Cancel
-          </button>
+          </Button>
         </>
       )}
       <span role="status" className="text-zinc-400">

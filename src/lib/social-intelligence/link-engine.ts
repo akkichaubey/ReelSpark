@@ -324,7 +324,7 @@ export function formatSocialLinksBlock(
 
   const rawHeading = (preferences.customHeading || '').trimEnd();
   // Strip any legacy embedded dots from heading text so heading text remains purely heading
-  let headingText = rawHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
+  const headingText = rawHeading.replace(/^(\s*[.·•]\s*\n)+\s*/, '').trim();
 
   const shouldIncludeDots =
     preferences.threeDotsSpacer !== undefined

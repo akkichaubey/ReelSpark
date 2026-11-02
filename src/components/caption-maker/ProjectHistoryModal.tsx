@@ -1,6 +1,8 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect, useRef } from 'react';
 import { CaptionProject } from '@/lib/caption-maker/types';
 import {
@@ -29,6 +31,7 @@ import {
 } from 'lucide-react';
 import { UploadProgressIndicator } from '@/components/ProgressCircle';
 import { readFileAsTextWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
+import { DialogSurface, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface ProjectHistoryModalProps {
   isOpen: boolean;
@@ -158,8 +161,9 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <DialogSurface onClose={onClose}
+      overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+      className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 bg-zinc-950/80 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -167,31 +171,32 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
               <History className="w-4 h-4 text-amber-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-zinc-100 text-sm">
+              <DialogTitle asChild><h3 className="font-semibold text-zinc-100 text-sm">
                 Project Version History & Snapshots
-              </h3>
-              <p className="text-[11px] text-zinc-400">
+              </h3></DialogTitle>
+              <DialogDescription asChild><p className="text-[11px] text-zinc-400">
                 {currentProject.title || 'Untitled Reel'} • {currentProject.transcript?.length || 0} words
-              </p>
+              </p></DialogDescription>
             </div>
           </div>
-          <button
+          <Button
+            type="button" aria-label="Close project history"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Notices */}
         {statusNotice && (
-          <div className="mx-6 mt-3 p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 animate-in fade-in">
+          <div role="status" className="mx-6 mt-3 p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
             <span>{statusNotice}</span>
           </div>
         )}
         {errorNotice && (
-          <div className="mx-6 mt-3 p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2 animate-in fade-in">
+          <div role="alert" className="mx-6 mt-3 p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2 animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{errorNotice}</span>
           </div>
@@ -201,28 +206,29 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
         <div className="p-4 bg-zinc-950/40 border-b border-zinc-800 space-y-3">
           {/* New Snapshot input */}
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
+              aria-label="Checkpoint label"
               placeholder="Checkpoint label (e.g. Before Style Change)..."
               value={customLabel}
               onChange={(e) => setCustomLabel(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateSnapshot()}
               className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-xl px-3 py-2 focus:border-amber-400 focus:outline-none"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCreateSnapshot}
               className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
             >
               <Camera className="w-3.5 h-3.5" />
               <span>Save Checkpoint</span>
-            </button>
+            </Button>
           </div>
 
           {/* Productivity Tools (Duplicate, Backup Export/Import) */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-800/80 text-xs">
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={handleDuplicate}
                 className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -230,9 +236,9 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
               >
                 <Copy className="w-3.5 h-3.5 text-amber-400" />
                 <span>Duplicate Project</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleExportJson}
                 className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -240,10 +246,10 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
               >
                 <Download className="w-3.5 h-3.5 text-zinc-400" />
                 <span>Export Backup (.reelproj)</span>
-              </button>
+              </Button>
 
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={importProgress !== null}
@@ -264,15 +270,15 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
                   <span>
                     {importComplete ? 'Imported' : importProgress !== null ? `Reading backup (${importProgress}%)` : 'Import Backup'}
                   </span>
-                </button>
+                </Button>
                 {importProgress !== null && !importComplete && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => importAbortController.current?.abort()}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                   >
                     <X className="h-3 w-3" /> Cancel
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -286,13 +292,13 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
             </div>
 
             {snapshots.length > 0 && (
-              <button
+              <Button
                 type="button"
                 onClick={handleClearAll}
                 className="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
               >
                 Clear All History
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -342,7 +348,7 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleRestore(snap)}
                         className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
@@ -350,16 +356,16 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
                       >
                         <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
                         <span>Restore</span>
-                      </button>
+                      </Button>
 
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleDelete(snap.id)}
                         className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors cursor-pointer"
                         title="Delete snapshot"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
@@ -367,7 +373,6 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </DialogSurface>
   );
 };

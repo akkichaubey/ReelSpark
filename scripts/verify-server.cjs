@@ -4,7 +4,7 @@ const { mkdtempSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const suites = [
-  'google_auth.test.ts', 'social_post_platform_rules.test.ts',
+  'google_auth.test.ts', 'auth_request_origin.test.ts', 'social_post_platform_rules.test.ts',
   'server_media_client.test.ts', 'project_access.test.ts', 'media_access.test.ts',
   'clipping_media_security.test.ts', 'export_fallback_routes.test.ts',
   'settings_account_cache.test.ts', 'cloud_project_documents.test.ts',

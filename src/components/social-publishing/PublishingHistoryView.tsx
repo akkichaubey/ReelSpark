@@ -1,5 +1,7 @@
 'use client';
 
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import React, { useState, useEffect } from 'react';
 import {
   ExternalLink,
@@ -81,7 +83,7 @@ export const PublishingHistoryView: React.FC = () => {
           {/* Search */}
           <div className="relative min-w-[200px]">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -124,14 +126,14 @@ export const PublishingHistoryView: React.FC = () => {
         </div>
 
         {/* Refresh button */}
-        <button
+        <Button
           type="button"
           onClick={fetchHistory}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />
           <span>Refresh</span>
-        </button>
+        </Button>
       </div>
 
       {/* History Feed List */}
@@ -246,7 +248,7 @@ export const PublishingHistoryView: React.FC = () => {
                         </a>
                       )}
                       {record.status === 'failed' && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleRetry(record.id)}
                           disabled={retryingId === record.id}
@@ -254,7 +256,7 @@ export const PublishingHistoryView: React.FC = () => {
                         >
                           <RotateCw className={`w-3 h-3 ${retryingId === record.id ? 'animate-spin' : ''}`} />
                           <span>Retry</span>
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>

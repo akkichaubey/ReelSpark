@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
 import {
   CheckCircle2,
@@ -132,7 +133,7 @@ export const PostValidationCard: React.FC<PostValidationCardProps> = ({
         {/* Right side: Status Badge + Accordion Arrow Button */}
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           {getStatusBadge()}
-          <button
+          <Button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -147,7 +148,7 @@ export const PostValidationCard: React.FC<PostValidationCardProps> = ({
                 isExpanded ? 'rotate-180 text-amber-400' : 'rotate-0 text-zinc-400'
               }`}
             />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -326,7 +327,7 @@ export const PostValidationCard: React.FC<PostValidationCardProps> = ({
                   <span>Target Hashtags ({hashtags.length})</span>
                 </span>
                 {onCopyAllHashtags && (
-                  <button
+                  <Button
                     type="button"
                     onClick={onCopyAllHashtags}
                     className="flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer transition-colors"
@@ -342,7 +343,7 @@ export const PostValidationCard: React.FC<PostValidationCardProps> = ({
                         <span>Copy All Hashtags</span>
                       </>
                     )}
-                  </button>
+                  </Button>
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">

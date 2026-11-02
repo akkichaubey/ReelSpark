@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { X, Play, Pause, RotateCcw, Volume2, VolumeX, Download, Scissors, Repeat, Award } from 'lucide-react';
 import { ClipCandidate, Project } from '@/lib/types';
@@ -274,7 +275,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-4xl glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col max-h-[92vh]">
         {/* Pinned Top-Right Close Button */}
-        <button
+        <Button
           type="button"
           onClick={handleClose}
           className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-white/10 transition-all z-30 shadow-lg flex items-center justify-center cursor-pointer group"
@@ -282,7 +283,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           aria-label="Close Player"
         >
           <X className="w-5 h-5 transition-transform group-hover:scale-110" />
-        </button>
+        </Button>
 
         {/* Header with Title and Quick Actions */}
         <div className="p-4 pr-16 sm:pr-20 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -298,7 +299,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
               {/* Bilingual Toggle */}
               <div className="flex items-center p-0.5 rounded-lg bg-zinc-950 border border-white/10 text-[10px] font-semibold">
-                <button
+                <Button
                   type="button"
                   onClick={() => setPlayerLang('en')}
                   className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
@@ -308,8 +309,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   }`}
                 >
                   EN
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setPlayerLang('hi')}
                   className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
@@ -319,7 +320,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   }`}
                 >
                   हिंदी
-                </button>
+                </Button>
               </div>
 
               {candidate.contextVerification.flaggedForReview ? (
@@ -341,7 +342,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           <div className="flex items-center space-x-2 flex-shrink-0">
             {/* Edit Clip Button */}
             {onEdit && (
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   handleClose();
@@ -352,7 +353,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               >
                 <Scissors className="w-3.5 h-3.5 text-zinc-300" />
                 <span>Edit Clip</span>
-              </button>
+              </Button>
             )}
 
             {/* Download MP4 Button */}
@@ -367,7 +368,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                 <span>Download MP4</span>
               </a>
             ) : onRenderClip ? (
-              <button
+              <Button
                 type="button"
                 onClick={() => onRenderClip(candidate.id)}
                 disabled={isRendering}
@@ -376,12 +377,12 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>{isRendering ? 'Rendering...' : 'Download MP4'}</span>
-              </button>
+              </Button>
             ) : null}
 
             {/* Download SRT Button */}
             {onDownloadSrt && (
-              <button
+              <Button
                 type="button"
                 onClick={() => onDownloadSrt(candidate)}
                 className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 hover:text-amber-200 border border-amber-500/20 font-medium text-xs transition-colors"
@@ -389,13 +390,13 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>SRT</span>
-              </button>
+              </Button>
             )}
           </div>
         </div>
 
         {/* Video Canvas & Subtitles Overlay */}
-        <div className="relative flex-1 bg-black flex items-center justify-center min-h-[360px] max-h-[550px] overflow-hidden">
+        <div data-theme-media="true" className="relative flex-1 bg-black flex items-center justify-center min-h-[360px] max-h-[550px] overflow-hidden">
           {videoSrc ? (
             <video
               ref={videoRef}
@@ -441,34 +442,34 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-2">
               {/* Play / Pause */}
-              <button
+              <Button
                 onClick={togglePlay}
                 className="p-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 transition-all shadow-md active:scale-95"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
-              </button>
+              </Button>
 
               {/* Restart */}
-              <button
+              <Button
                 onClick={restartClip}
                 className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
                 title="Restart Clip"
               >
                 <RotateCcw className="w-4 h-4" />
-              </button>
+              </Button>
 
               {/* Mute / Unmute */}
-              <button
+              <Button
                 onClick={() => setIsMuted(!isMuted)}
                 className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
                 title={isMuted ? 'Unmute' : 'Mute'}
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </button>
+              </Button>
 
               {/* Loop Toggle */}
-              <button
+              <Button
                 onClick={() => setLoopClip(!loopClip)}
                 className={`p-2 rounded-xl border transition-colors ${
                   loopClip
@@ -478,16 +479,16 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                 title={loopClip ? 'Looping Enabled' : 'Looping Disabled'}
               >
                 <Repeat className="w-4 h-4" />
-              </button>
+              </Button>
 
               {/* Speed Toggle */}
-              <button
+              <Button
                 onClick={changeSpeed}
                 className="px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-semibold transition-colors"
                 title="Change playback speed"
               >
                 {playbackRate}x
-              </button>
+              </Button>
             </div>
 
             <div className="flex items-center space-x-3 text-xs text-zinc-400">

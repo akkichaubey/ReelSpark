@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       req.headers.get('accept')?.includes('text/event-stream');
 
     const body = await req.json();
+    if (body.timeline?.enabled || body.timelineProject?.timeline?.enabled) return NextResponse.json({ error: 'Use the timeline render endpoint for multi-track exports.' }, { status: 400 });
     const validationError = validateCaptionRenderRequest(body);
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const {

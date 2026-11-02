@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ThumbnailSettings,
@@ -229,7 +232,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
-            <button
+            <Button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
@@ -241,7 +244,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-zinc-400'}`} />
               <span className="truncate">{tab.label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -263,30 +266,30 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
-                <button
+                <Button
                   type="button"
                   onClick={() => setActiveTab('layout')}
                   className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-500/30 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
                 >
                   <Layout className="w-3 h-3 text-amber-400" />
                   <span>Position</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setActiveTab('badge')}
                   className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
                 >
                   <Square className="w-3 h-3 text-amber-400" />
                   <span>Badge</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setActiveTab('content')}
                   className="px-2 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-200 border border-zinc-700 font-semibold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
                 >
                   <Type className="w-3 h-3 text-amber-400" />
                   <span>Text</span>
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -303,7 +306,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               {THUMBNAIL_PRESETS.map((preset) => {
                 const isSelected = settings.preset === preset.id;
                 return (
-                  <button
+                  <Button
                     key={preset.id}
                     type="button"
                     onClick={() => applyPreset(preset.id)}
@@ -338,7 +341,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                         <Check className="w-3 h-3 stroke-[3]" />
                       </div>
                     )}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -359,7 +362,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   {settings.title.length} chars
                 </span>
               </div>
-              <textarea
+              <Textarea
                 rows={3}
                 value={settings.title}
                 onChange={(e) => update({ title: e.target.value })}
@@ -371,7 +374,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                 <span className="text-[10px] text-zinc-500">Quick Ideas:</span>
                 {suggestedTitles.map((phrase, i) => (
-                  <button
+                  <Button
                     key={i}
                     type="button"
                     onClick={() => update({ title: phrase })}
@@ -379,7 +382,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     title={phrase}
                   >
                     {phrase}
-                  </button>
+                  </Button>
                 ))}
               </div>
 
@@ -400,7 +403,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   <p key={tip} className="text-[10px] leading-snug text-zinc-400">{tip}</p>
                 ))}
                 {hookQuality.focusWords.length > 0 && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => update({
                       highlightWords: Array.from(new Set([
@@ -411,7 +414,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     className="text-[10px] font-semibold text-sky-200 hover:text-white transition-colors"
                   >
                     Highlight key words: {hookQuality.focusWords.join(' · ')}
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -433,7 +436,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     const clean = normalizeHookWord(word);
                     const isHl = (settings.highlightWords || []).includes(clean);
                     return (
-                      <button
+                      <Button
                         key={idx}
                         type="button"
                         onClick={() => toggleHighlightWord(word)}
@@ -444,7 +447,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                         }`}
                       >
                         {word}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -456,7 +459,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               <label className="font-semibold text-zinc-200 mb-1.5 block">
                 Subtitle / Supporting Hook (Optional)
               </label>
-              <input
+              <Input
                 type="text"
                 value={settings.subtitle || ''}
                 onChange={(e) => update({ subtitle: e.target.value })}
@@ -470,7 +473,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               <label className="font-semibold text-zinc-200 mb-1.5 block">
                 Creator Handle / Branding Watermark
               </label>
-              <input
+              <Input
                 type="text"
                 value={settings.brandingText || ''}
                 onChange={(e) => update({ brandingText: e.target.value })}
@@ -515,7 +518,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 </div>
               </div>
 
-              <button
+              <Button
                 type="button"
                 role="switch"
                 aria-checked={settings.badgeEnabled !== false}
@@ -535,7 +538,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     settings.badgeEnabled !== false ? 'translate-x-5' : 'translate-x-0 bg-zinc-300'
                   }`}
                 />
-              </button>
+              </Button>
             </div>
 
             {/* When Disabled State Notice */}
@@ -546,14 +549,14 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 <p className="text-[11px] text-zinc-500 max-w-xs mx-auto">
                   The hook badge and its spacing are hidden from the thumbnail cover. Enable it above to customize and display.
                 </p>
-                <button
+                <Button
                   type="button"
                   onClick={() => update({ badgeEnabled: true, badgeText: settings.badgeText || "DON'T MISS" })}
                   className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5 mt-1 cursor-pointer"
                 >
                   <Tag className="w-3.5 h-3.5" />
                   <span>Enable Badge Element</span>
-                </button>
+                </Button>
               </div>
             )}
 
@@ -588,7 +591,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       { label: 'Relaxed', val: 44 },
                       { label: 'Wide', val: 68 },
                     ].map((p) => (
-                      <button
+                      <Button
                         key={p.val}
                         type="button"
                         onClick={() => update({ badgeSpacing: p.val })}
@@ -599,7 +602,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                         }`}
                       >
                         {p.label} ({p.val}px)
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -612,17 +615,17 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       Badge Text / Hook
                     </label>
                     {settings.badgeText && (
-                      <button
+                      <Button
                         type="button"
                         onClick={() => update({ badgeText: '' })}
                         className="text-[10px] text-red-400 hover:underline cursor-pointer"
                       >
                         Clear text
-                      </button>
+                      </Button>
                     )}
                   </div>
 
-                  <input
+                  <Input
                     type="text"
                     value={settings.badgeText || ''}
                     onChange={(e) => update({ badgeText: e.target.value })}
@@ -635,7 +638,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     <span className="text-[10px] text-zinc-500 mb-1.5 block">Popular Hook Badges:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {QUICK_BADGES.map((badge) => (
-                        <button
+                        <Button
                           key={badge}
                           type="button"
                           onClick={() => update({ badgeText: badge })}
@@ -646,7 +649,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                           }`}
                         >
                           {badge}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -762,7 +765,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                         <label className="text-[10px] text-zinc-400 block">
                           Text Color
                         </label>
-                        <button
+                        <Button
                           type="button"
                           onClick={() => update({ badgeAutoTextColor: !settings.badgeAutoTextColor })}
                           className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
@@ -772,7 +775,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                           }`}
                         >
                           {settings.badgeAutoTextColor !== false ? 'Auto (Contrast)' : 'Custom'}
-                        </button>
+                        </Button>
                       </div>
 
                       {settings.badgeAutoTextColor !== false ? (
@@ -808,7 +811,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       '#FFFFFF',
                       '#18181B',
                     ].map((c) => (
-                      <button
+                      <Button
                         key={c}
                         type="button"
                         onClick={() => update({ badgeColor: c })}
@@ -863,7 +866,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     <span className="font-bold text-xs text-zinc-200 block">
                       Typography & Padding
                     </span>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => update({
                         badgeFontSize: 26,
@@ -876,7 +879,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       title="Reset Typography & Padding to defaults (26px font, 18px horizontal, 9px vertical)"
                     >
                       Reset to Default
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -978,7 +981,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 Google Font Family
               </label>
               <div className="relative">
-                <button
+                <Button
                   type="button"
                   onClick={() => setIsFontPickerOpen(!isFontPickerOpen)}
                   className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-xl px-3 py-2 text-left flex items-center justify-between text-zinc-200"
@@ -992,11 +995,11 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   <span className="text-[10px] bg-zinc-850 px-2 py-0.5 rounded text-zinc-400 font-mono">
                     Change Font
                   </span>
-                </button>
+                </Button>
 
                 {isFontPickerOpen && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-2 z-30 max-h-56 overflow-y-auto space-y-1">
-                    <input
+                    <Input
                       type="text"
                       value={fontSearchQuery}
                       onChange={(e) => setFontSearchQuery(e.target.value)}
@@ -1004,7 +1007,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none mb-1.5"
                     />
                     {filteredFonts.map((font) => (
-                      <button
+                      <Button
                         key={font.name}
                         type="button"
                         onClick={() => {
@@ -1023,7 +1026,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                         <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-400 font-mono">
                           {font.badge}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 )}
@@ -1199,7 +1202,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     { id: 'custom', icon: SlidersHorizontal, label: 'Custom' },
                   ] as const
                 ).map(({ id, icon: Icon, label }) => (
-                  <button
+                  <Button
                     key={id}
                     type="button"
                     onClick={() => update({ textAlign: id })}
@@ -1211,7 +1214,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span className="text-[11px]">{label}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
 
@@ -1251,7 +1254,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     { id: 'custom', label: 'Custom' },
                   ] as const
                 ).map((pos) => (
-                  <button
+                  <Button
                     key={pos.id}
                     type="button"
                     onClick={() => update({ position: pos.id })}
@@ -1262,7 +1265,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     }`}
                   >
                     <span className="text-[11px]">{pos.label}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
 
@@ -1383,7 +1386,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               </label>
 
               <div className="grid grid-cols-2 gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => update({ backgroundType: 'project' })}
                   className={`p-2.5 rounded-xl border text-left transition-all ${
@@ -1394,9 +1397,9 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 >
                   <span className="font-bold block text-xs">Project Media</span>
                   <span className="text-[10px] opacity-75">Current video frame</span>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => update({ backgroundType: 'gradient' })}
                   className={`p-2.5 rounded-xl border text-left transition-all ${
@@ -1407,7 +1410,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 >
                   <span className="font-bold block text-xs">Studio Gradients</span>
                   <span className="text-[10px] opacity-75">Clean colored backdrop</span>
-                </button>
+                </Button>
               </div>
 
               {settings.backgroundType !== 'gradient' && (
@@ -1427,7 +1430,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
               {settings.backgroundType === 'gradient' && (
                 <div className="grid grid-cols-3 gap-2 pt-1">
                   {THUMBNAIL_GRADIENTS.map((grad) => (
-                    <button
+                    <Button
                       key={grad.id}
                       type="button"
                       onClick={() => update({ gradientPreset: grad.id })}
@@ -1441,7 +1444,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                       <span className="text-[10px] font-bold text-white drop-shadow block">
                         {grad.name}
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -1466,13 +1469,13 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                     />
                   </label>
                   {customBgProgress !== null && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => customBgReadController.current?.abort()}
                       className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                     >
                       <X className="h-3 w-3" /> Cancel
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {customBgError && <p role="alert" className="text-[10px] text-red-300">{customBgError}</p>}
@@ -1487,7 +1490,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
       {/* Action Footer Buttons in Right Panel */}
       <div className="p-3 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5">
-          <button
+          <Button
             type="button"
             onClick={() => onDownload?.('png')}
             className="flex items-center gap-1 px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-black font-bold rounded-lg text-xs shadow-md shadow-amber-400/20 active:scale-95 transition-all"
@@ -1495,20 +1498,20 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
           >
             <Download className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>Download PNG</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={() => onDownload?.('jpeg')}
             className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-lg text-xs border border-zinc-700 transition-colors"
             title="Download JPEG"
           >
             JPEG
-          </button>
+          </Button>
         </div>
 
         {onApplyAsReelImage && (
-          <button
+          <Button
             type="button"
             onClick={handleApplyCover}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
@@ -1529,7 +1532,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 <span className="hidden sm:inline">Set as Reel Image</span>
               </>
             )}
-          </button>
+          </Button>
         )}
       </div>
     </div>

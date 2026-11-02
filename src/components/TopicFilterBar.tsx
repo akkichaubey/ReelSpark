@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React from 'react';
 import { ArrowUpDown, CheckSquare, Square, Filter, Languages, ChevronDown } from 'lucide-react';
 import { SortField } from '@/lib/ranking';
@@ -57,7 +58,7 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
 
           const isSelected = selectedTopic === t;
           return (
-            <button
+            <Button
               key={t}
               onClick={() => onSelectTopic(t)}
               className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
@@ -70,7 +71,7 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-zinc-200 text-zinc-950 font-bold' : 'bg-zinc-800 text-zinc-400'}`}>
                 {count}
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -99,7 +100,7 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
           <Languages className="w-3.5 h-3.5 text-zinc-400" />
           <span className="text-zinc-400 text-xs">Language:</span>
           <div className="flex items-center p-0.5 rounded-lg bg-zinc-900 border border-white/10 text-xs font-semibold">
-            <button
+            <Button
               type="button"
               onClick={() => onLanguageChange && onLanguageChange('en')}
               className={`min-h-9 px-3 rounded-md transition-all cursor-pointer ${
@@ -109,8 +110,8 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
               }`}
             >
               English
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => onLanguageChange && onLanguageChange('hi')}
               className={`min-h-9 px-3 rounded-md transition-all cursor-pointer ${
@@ -120,13 +121,13 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
               }`}
             >
               हिंदी
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Batch Select Controls */}
         <div className="flex items-center space-x-2">
-          <button
+          <Button
             disabled={totalCandidates === 0} onClick={allSelected ? onDeselectAll : onSelectAll}
             className="flex items-center space-x-2 min-h-10 px-3.5 py-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
           >
@@ -141,7 +142,7 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
                 <span>Select All</span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

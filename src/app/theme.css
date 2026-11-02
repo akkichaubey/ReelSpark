@@ -1,0 +1,106 @@
+/* Opt-in light chrome. Default Tailwind colors and the approved dark UI are
+   unchanged. Color tokens also cover opacity/hover/focus utility variants. */
+html.light {
+  --background: #fafafa;
+  --foreground: #18181b;
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --card-border: rgba(24, 24, 27, 0.12);
+  --primary: #18181b;
+  --primary-glow: rgba(24, 24, 27, 0.08);
+  --accent: #3f3f46;
+  --brand-wordmark: #18181b;
+  --color-white: #18181b;
+  --color-zinc-50: #09090b;
+  --color-zinc-100: #18181b;
+  --color-zinc-200: #27272a;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-400: #52525b;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-950: #fafafa;
+}
+
+/* Amber buttons deliberately use dark ink in either mode. White primary
+   buttons become dark with light ink through the neutral palette above. */
+html.light :is([class~="bg-amber-300"], [class~="bg-amber-400"], [class~="bg-amber-500"], [class~="from-amber-400"], [class~="bg-yellow-400"], [class~="bg-yellow-500"]).text-zinc-950,
+html.light :is([class~="bg-amber-300"], [class~="bg-amber-400"], [class~="bg-amber-500"], [class~="from-amber-400"], [class~="bg-yellow-400"], [class~="bg-yellow-500"]) .text-zinc-950 {
+  color: #09090b;
+}
+
+html.light body {
+  background-image: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.025), transparent 50%);
+}
+html.light .glass-panel {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+html.light .glass-panel-hover:hover {
+  border-color: rgba(24, 24, 27, 0.22);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.12);
+}
+
+/* Accent ink must remain readable on pale surfaces. Do not recolor media. */
+html.light :is(.text-amber-200, .text-amber-300, .text-amber-400, .text-amber-500):not([data-theme-media] *) { color: #92400e; }
+html.light :is(.text-yellow-300, .text-yellow-400, .text-yellow-500):not([data-theme-media] *) { color: #854d0e; }
+html.light :is(.text-emerald-300, .text-emerald-400, .text-emerald-500, .text-green-400):not([data-theme-media] *) { color: #047857; }
+html.light :is(.text-sky-300, .text-sky-400, .text-sky-500, .text-cyan-400):not([data-theme-media] *) { color: #0369a1; }
+html.light :is(.text-purple-300, .text-purple-400, .text-violet-400):not([data-theme-media] *) { color: #7e22ce; }
+html.light :is(.text-red-300, .text-red-400, .text-rose-300, .text-rose-400):not([data-theme-media] *) { color: #be123c; }
+html.light .bg-clip-text.from-amber-400.via-amber-200.to-white { background-image: linear-gradient(to right, #b45309, #92400e, #18181b); }
+html.light :is([class~="bg-purple-600"], [class~="bg-red-600/80"]).text-white { color: #fff; }
+html.light [class~="bg-[#141416]"] { background-color: #fff; }
+html.light ::-webkit-scrollbar-track { background: rgba(228, 228, 231, 0.6); }
+html.light ::-webkit-scrollbar-thumb { background: rgba(63, 63, 70, 0.3); }
+html.light ::-webkit-scrollbar-thumb:hover { background: rgba(63, 63, 70, 0.5); }
+
+/* Editor chrome follows the selected theme, including the timeline. Clip
+   thumbnails retain their original pixels; only their UI labels are themed. */
+html.light [data-editor-timeline="true"] {
+  color-scheme: light;
+  background-color: #fafafa;
+  --timeline-grid: #18181b14;
+}
+html.light [data-editor-timeline] [class~="bg-[#191b1f]"] { background-color: #e4e4e7; }
+html.light [data-editor-timeline] [class~="bg-[#131518]"] { background-color: #f4f4f5; }
+html.light [data-editor-timeline] [data-timeline-clip] { --tw-ring-offset-color: #fafafa; }
+html.light [data-editor-timeline] .bg-sky-950 { background-color: #e0f2fe; }
+html.light [data-editor-timeline] .bg-violet-950 { background-color: #ede9fe; }
+html.light [data-editor-timeline] .bg-cyan-950 { background-color: #cffafe; }
+html.light [data-editor-timeline] .bg-emerald-950 { background-color: #d1fae5; }
+html.light [data-editor-timeline] .bg-teal-950 { background-color: #ccfbf1; }
+html.light [data-editor-timeline] .bg-orange-950 { background-color: #ffedd5; }
+html.light [data-editor-timeline] .bg-amber-950 { background-color: #fef3c7; }
+html.light [data-timeline-clip-label] { background-color: #ffffffed; color: #18181b; }
+html.light [data-timeline-clip-duration] {
+  background-color: #ffffffe6;
+  color: #3f3f46;
+  border-radius: 3px;
+  padding-inline: 2px;
+}
+
+/* Rendered media is color-critical, not a page surface.
+   Reset inherited tokens so captions, thumbnails and player chrome stay
+   identical to the export, including nested opacity utilities. */
+html.light [data-theme-media="true"] {
+  color-scheme: dark;
+  --brand-wordmark: #fff;
+  --color-white: #fff;
+  --color-zinc-50: oklch(98.5% 0 none);
+  --color-zinc-100: oklch(96.7% 0.001 286.375);
+  --color-zinc-200: oklch(92% 0.004 286.32);
+  --color-zinc-300: oklch(87.1% 0.006 286.286);
+  --color-zinc-400: oklch(70.5% 0.015 286.067);
+  --color-zinc-500: oklch(55.2% 0.016 285.938);
+  --color-zinc-600: oklch(44.2% 0.017 285.786);
+  --color-zinc-700: oklch(37% 0.013 285.805);
+  --color-zinc-800: oklch(27.4% 0.006 286.033);
+  --color-zinc-900: oklch(21% 0.006 285.885);
+  --color-zinc-950: oklch(14.1% 0.005 285.823);
+}
+
+.theme-dark-icon { display: none; }
+html.light .theme-light-icon { display: none; }
+html.light .theme-dark-icon { display: block; }

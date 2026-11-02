@@ -1,6 +1,8 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React from 'react';
 import {
   OutputSettings,
@@ -281,7 +283,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
               const Icon = preset.icon;
               const isSelected = settings.preset === preset.key;
               return (
-                <button
+                <Button
                   key={preset.key}
                   type="button"
                   onClick={() => handleSelectPreset(preset.key)}
@@ -315,7 +317,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
                       {preset.sub}
                     </span>
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -345,7 +347,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
               const isSelected = currentTier === item.tier;
               const dims = getDimensionsForAspectAndTier(settings.aspectRatio, item.tier);
               return (
-                <button
+                <Button
                   key={item.tier}
                   type="button"
                   onClick={() => handleSelectTier(item.tier)}
@@ -359,7 +361,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
                   <div className="text-[9px] text-zinc-500 font-mono mt-0.5">
                     {dims.width}×{dims.height}
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -381,7 +383,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
             {SUPPORTED_FRAME_RATES.map((rate) => {
               const isSelected = settings.fps === rate.fps;
               return (
-                <button
+                <Button
                   key={rate.fps}
                   type="button"
                   onClick={() => handleSelectFps(rate.fps)}
@@ -406,7 +408,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
                       ? 'Default'
                       : 'Smooth'}
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -435,7 +437,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
             ).map((q) => {
               const isSelected = settings.quality === q.id;
               return (
-                <button
+                <Button
                   key={q.id}
                   type="button"
                   onClick={() => handleSelectQuality(q.id)}
@@ -463,7 +465,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
                   <div className="text-[9px] text-zinc-500 font-mono">
                     ~{q.targetBitrate} v-bitrate • {q.audioBitrate} aac
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -488,7 +490,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
               <label className="block text-[11px] text-zinc-400 mb-1">
                 Width (px)
               </label>
-              <input
+              <Input
                 type="number"
                 min="360"
                 max="3840"
@@ -504,7 +506,7 @@ export const OutputSettingsPanel: React.FC<OutputSettingsPanelProps> = ({
               <label className="block text-[11px] text-zinc-400 mb-1">
                 Height (px)
               </label>
-              <input
+              <Input
                 type="number"
                 min="360"
                 max="3840"

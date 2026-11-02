@@ -6,6 +6,24 @@
 
 ## ⚡ Highlights
 
+- **Video Thumbnail Timeline**: Zoom-responsive, viewport-bounded frame strips,
+  source-frame hover previews, preserved clip labels/durations, and loading/retry
+  states. [Sampling behavior and verification](docs/timeline-thumbnails.md).
+
+- **Clip Keyframe Animation**: Transform/opacity/effect curves, Bezier easing,
+  animation-speed ramps, copy/paste and motion presets. [Controls, speed scope
+  and verification](docs/timeline-motion.md).
+
+- **Advanced Caption Timeline**: Edit words inline, drag word boundaries, verify
+  speech sync and open existing caption effects directly from the timeline.
+  [Controls, shared-source behavior and QA status](docs/timeline-caption-editing.md).
+
+- **Advanced Reel Maker Timeline**: Cross-track edits, ripple/roll/slip/slide,
+  snapping, grouping and gap removal. See [editing controls](docs/advanced-timeline-editing.md).
+- **Audio Waveform Editing**: Real PCM waveforms on audio/video clips, volume and
+  independent audio fade handles, source-time gain keyframes, track solo, music
+  ducking, linked audio detachment and resync. See [audio controls and QA status](docs/timeline-audio-editing.md).
+
 ### 1. Professional AI Reel Studio (`/reel-maker`)
 - **Word-by-Word Kinetic & Highlight Captions**: Exact verbatim speech synchronization in English, Hindi, and Hinglish with active-word pop and color highlights (`#FCD905`).
 - **Social Media Reel Safe-Zone Measurement Engine**: Verified boundary calculation and guides for **Instagram Reels** (14% top / 22% bottom / 15% rail / 35% warning), **Facebook Reels** (14% top / 26% bottom / 14% rail), **YouTube Shorts** (10% top / 23% bottom / 14% rail / 1.2% scrubber), and **Threads Video** (9% top / 20% bottom / no rail).

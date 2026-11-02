@@ -1,5 +1,7 @@
 'use client';
 
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
 import {
   BookOpen,
@@ -78,7 +80,7 @@ export const PlatformGuidelinesViewer: React.FC = () => {
           <label htmlFor="guidelines-search" className="sr-only">
             Search platform guidelines
           </label>
-          <input
+          <Input
             id="guidelines-search"
             type="search"
             value={searchQuery}
@@ -96,7 +98,7 @@ export const PlatformGuidelinesViewer: React.FC = () => {
           const isSelected = selectedPlatform === pKey;
           const pConfig = PLATFORM_CONFIGS[pKey];
           return (
-            <button
+            <Button
               key={pKey}
               type="button"
               onClick={() => setSelectedPlatform(pKey)}
@@ -116,7 +118,7 @@ export const PlatformGuidelinesViewer: React.FC = () => {
                   {pConfig.officialDomain || 'Custom publishing rules'}
                 </div>
               </div>
-            </button>
+            </Button>
           );
         })}
       </div>

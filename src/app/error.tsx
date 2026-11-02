@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { useEffect } from 'react';
 
 export default function AppError({
@@ -20,13 +21,13 @@ export default function AppError({
         <p className="mt-2 text-sm text-zinc-400">
           ReelMaker could not load this screen. Your saved local work has not been removed.
         </p>
-        <button
+        <Button
           type="button"
           onClick={reset}
           className="mt-5 rounded-xl bg-amber-400 px-4 py-2 text-sm font-bold text-zinc-950 transition-colors hover:bg-amber-300"
         >
           Try again
-        </button>
+        </Button>
       </section>
     </main>
   );

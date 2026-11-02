@@ -133,7 +133,7 @@ export async function listSavedReelsPage(owner: string, options: { page: number;
     if (options.filter === 'rendered') conditions.push("json_extract(payload,'$.project.renderedVideoUrl') IS NOT NULL");
     if (options.filter === 'editable') conditions.push("json_extract(payload,'$.project.renderedVideoUrl') IS NULL");
     if (options.filter === 'captions') conditions.push("json_array_length(json_extract(payload,'$.project.captionGroups')) > 0");
-    const order = options.sort === 'name' ? "json_extract(payload,'$.title') COLLATE NOCASE ASC" : options.sort === 'created' ? "json_extract(payload,'$.createdAt') DESC" : options.sort === 'duration' ? "COALESCE(json_extract(payload,'$.project.trimRange.end') - json_extract(payload,'$.project.trimRange.start'),json_extract(payload,'$.project.audio.duration'),json_extract(payload,'$.project.image.duration'),0) DESC" : 'updated_at DESC';
+    const order = options.sort === 'name' ? "json_extract(payload,'$.title') COLLATE NOCASE ASC" : options.sort === 'created' ? "json_extract(payload,'$.createdAt') DESC" : options.sort === 'duration' ? "CASE WHEN json_extract(payload,'$.project.timeline.enabled') = 1 THEN COALESCE((SELECT MAX(json_extract(value,'$.startMs') + json_extract(value,'$.durationMs')) / 1000.0 FROM json_each(json_extract(payload,'$.project.timeline.clips'))),0) ELSE COALESCE(json_extract(payload,'$.project.trimRange.end') - json_extract(payload,'$.project.trimRange.start'),json_extract(payload,'$.project.audio.duration'),json_extract(payload,'$.project.image.duration'),0) END DESC" : 'updated_at DESC';
     const result = await d1Query<{ payload: string }>(`SELECT payload FROM project_documents WHERE ${conditions.join(' AND ')} ORDER BY ${order},id ASC LIMIT ? OFFSET ?`, [...parameters, pageSize + 1, options.page * pageSize]);
     if (!result.success) throw new Error('Saved Reels catalog unavailable');
     rows = result.results.map(row => JSON.parse(row.payload) as SavedReel);
@@ -210,7 +210,7 @@ export async function retainReelProject(
   media: SavedMediaServices = mediaServices
 ): Promise<CaptionProject> {
   const project = structuredClone(validateReelMakerProject(owner, input));
-  if (!project.audio && !project.image)
+  if (!project.audio && !project.image && !project.timeline?.clips.length)
     throw new Error('Upload media before saving a reel');
   if (
     (project.audio && !project.audio.fileUrl) ||

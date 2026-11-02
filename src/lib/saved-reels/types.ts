@@ -1,3 +1,4 @@
+import { timelineEnd } from '../timeline/model';
 import type { CaptionProject } from '../caption-maker/types';
 
 export interface SavedReel {
@@ -12,6 +13,7 @@ export interface SavedReel {
 }
 
 export function reelDuration(project: CaptionProject): number {
+  if (project.timeline?.enabled) return timelineEnd(project.timeline) / 1000;
   return project.trimRange
     ? Math.max(0, project.trimRange.end - project.trimRange.start)
     : project.audio?.duration || project.image?.duration || 0;
@@ -31,8 +33,8 @@ export function reelPlayback(project: CaptionProject): {
         ? project.image.fileUrl
         : project.audio?.fileUrl),
     rendered,
-    start: rendered ? 0 : project.trimRange?.start || 0,
-    end: rendered
+    start: rendered || project.timeline?.enabled ? 0 : project.trimRange?.start || 0,
+    end: rendered || project.timeline?.enabled
       ? reelDuration(project)
       : project.trimRange?.end ||
         project.audio?.duration ||

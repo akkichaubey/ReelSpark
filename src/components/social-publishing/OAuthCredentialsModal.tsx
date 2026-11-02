@@ -1,5 +1,8 @@
 'use client';
 
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -117,8 +120,8 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    
+      <DialogSurface onClose={onClose} aria-describedby={undefined} overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/60">
           <div className="flex items-center gap-2.5">
@@ -126,20 +129,21 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
               <Key className="w-5 h-5 text-zinc-950" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">
+              <DialogTitle asChild><h2 className="text-base font-bold text-white tracking-tight">
                 Configure Official Developer API Keys
-              </h2>
+              </h2></DialogTitle>
               <p className="text-xs text-zinc-400">
                 Connect your real account using your own Meta or Google Developer App credentials
               </p>
             </div>
           </div>
-          <button
+          <Button
+            aria-label="Close developer API settings"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
@@ -171,7 +175,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                 const isConfigured = status?.isConfigured;
 
                 return (
-                  <button
+                  <Button
                     key={p}
                     type="button"
                     onClick={() => {
@@ -197,7 +201,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                     >
                       {isConfigured ? '● Configured' : '○ Needs Keys'}
                     </span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -210,7 +214,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                 <Info className="w-3.5 h-3.5 text-amber-400" />
                 <span>OAuth Redirect URI (Paste in Developer Console):</span>
               </span>
-              <button
+              <Button
                 type="button"
                 onClick={() => handleCopy(currentRedirectUri, 'uri')}
                 className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
@@ -226,7 +230,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                     <span>Copy URI</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
             <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 font-mono text-[11px] text-zinc-300 break-all select-all">
               {currentRedirectUri}
@@ -247,7 +251,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
               <label className="text-xs font-semibold text-zinc-300 block mb-1">
                 {platform === 'youtube' ? 'Google Client ID' : 'Meta / Threads App ID'}:
               </label>
-              <input disabled={!canConfigure || saving}
+              <Input disabled={!canConfigure || saving}
                 type="text"
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
@@ -261,7 +265,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
               <label className="text-xs font-semibold text-zinc-300 block mb-1">
                 {platform === 'youtube' ? 'Google Client Secret' : 'Meta / Threads App Secret'}:
               </label>
-              <input disabled={!canConfigure || saving}
+              <Input disabled={!canConfigure || saving}
                 type="password"
                 value={clientSecret}
                 onChange={(e) => setClientSecret(e.target.value)}
@@ -286,7 +290,7 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
 
-              <button
+              <Button
                 type="submit"
                 disabled={saving || !canConfigure}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold text-xs shadow-md shadow-amber-400/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
@@ -302,11 +306,11 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
                     <span>Save Credentials</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
+    
   );
 };

@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -258,7 +260,7 @@ export const ExportStudio: React.FC = () => {
               </label>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => applyPreset('reel')}
                   className="p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/10 text-left transition-colors cursor-pointer group"
@@ -270,9 +272,9 @@ export const ExportStudio: React.FC = () => {
                   <p className="text-[10px] text-zinc-500 mt-0.5 group-hover:text-zinc-400">
                     1080p MP4 + Audio Norm
                   </p>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => applyPreset('youtube')}
                   className="p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/10 text-left transition-colors cursor-pointer group"
@@ -284,9 +286,9 @@ export const ExportStudio: React.FC = () => {
                   <p className="text-[10px] text-zinc-500 mt-0.5 group-hover:text-zinc-400">
                     1080p Master High CRF
                   </p>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => applyPreset('podcast')}
                   className="p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/10 text-left transition-colors cursor-pointer group"
@@ -298,9 +300,9 @@ export const ExportStudio: React.FC = () => {
                   <p className="text-[10px] text-zinc-500 mt-0.5 group-hover:text-zinc-400">
                     320kbps Audio Only
                   </p>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => applyPreset('lossless')}
                   className="p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/10 text-left transition-colors cursor-pointer group"
@@ -312,7 +314,7 @@ export const ExportStudio: React.FC = () => {
                   <p className="text-[10px] text-zinc-500 mt-0.5 group-hover:text-zinc-400">
                     0-Transcode Lossless
                   </p>
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -323,7 +325,7 @@ export const ExportStudio: React.FC = () => {
               </label>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => setExportScope('single_clip')}
                   className={`p-3 rounded-xl border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
@@ -334,9 +336,9 @@ export const ExportStudio: React.FC = () => {
                 >
                   <Scissors className="w-4 h-4" />
                   <span className="text-xs font-bold">Single Clip</span>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => setExportScope('selected_clips')}
                   className={`p-3 rounded-xl border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
@@ -347,9 +349,9 @@ export const ExportStudio: React.FC = () => {
                 >
                   <Film className="w-4 h-4" />
                   <span className="text-xs font-bold">Selected Clips</span>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => setExportScope('all_clips')}
                   className={`p-3 rounded-xl border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
@@ -360,9 +362,9 @@ export const ExportStudio: React.FC = () => {
                 >
                   <Copy className="w-4 h-4" />
                   <span className="text-xs font-bold">All Clips ({clips.length})</span>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => setExportScope('recipe')}
                   className={`p-3 rounded-xl border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
@@ -373,7 +375,7 @@ export const ExportStudio: React.FC = () => {
                 >
                   <Layers className="w-4 h-4" />
                   <span className="text-xs font-bold">Merge Recipe</span>
-                </button>
+                </Button>
               </div>
 
               {/* Target Picker Sub-views */}
@@ -398,8 +400,8 @@ export const ExportStudio: React.FC = () => {
                   <div className="flex items-center justify-between text-xs text-zinc-400">
                     <span>{selectedBatchClipIds.length} of {clips.length} clips selected</span>
                     <div className="space-x-3">
-                      <button type="button" onClick={selectAllClips} className="text-amber-400 hover:underline cursor-pointer">Select All</button>
-                      <button type="button" onClick={deselectAllClips} className="text-zinc-400 hover:underline cursor-pointer">Clear</button>
+                      <Button type="button" onClick={selectAllClips} className="text-amber-400 hover:underline cursor-pointer">Select All</Button>
+                      <Button type="button" onClick={deselectAllClips} className="text-zinc-400 hover:underline cursor-pointer">Clear</Button>
                     </div>
                   </div>
 
@@ -517,7 +519,7 @@ export const ExportStudio: React.FC = () => {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-zinc-300">Filename Pattern</label>
-                <input
+                <Input
                   type="text"
                   value={filenameTemplate}
                   onChange={(e) => setFilenameTemplate(e.target.value)}
@@ -531,7 +533,7 @@ export const ExportStudio: React.FC = () => {
             </div>
 
             {/* Trigger Button */}
-            <button
+            <Button
               type="button"
               disabled={isSubmitting || clips.length === 0}
               onClick={handleStartExport}
@@ -548,7 +550,7 @@ export const ExportStudio: React.FC = () => {
                 {exportScope === 'all_clips' && `Queue All ${clips.length} Clips`}
                 {exportScope === 'recipe' && 'Queue Merged Sequence Export'}
               </span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -574,14 +576,14 @@ export const ExportStudio: React.FC = () => {
                   <option value="failed">Failed</option>
                 </select>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => syncExportJobs()}
                   className="flex items-center space-x-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
                   title="Refresh jobs from local engine"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -678,9 +680,9 @@ export const ExportStudio: React.FC = () => {
                               <span>Download</span>
                             </a>
                           )}
-                          {job.status === 'completed' && /\.(mp4|mov|webm)$/i.test(job.outputPath || '') && getExportDownloadUrl(job.outputPath) && (savedReelJobs[job.id] ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(savedReelJobs[job.id])}`} onClick={event => event.stopPropagation()} className="text-emerald-400">Saved · Edit Reel</Link> : <button disabled={Boolean(savingReelJob)} onClick={event => { event.stopPropagation(); void saveCompletedReel(job); }} className="font-semibold text-amber-400 disabled:opacity-40">{savingReelJob === job.id ? 'Saving…' : 'Save Reel'}</button>)}
+                          {job.status === 'completed' && /\.(mp4|mov|webm)$/i.test(job.outputPath || '') && getExportDownloadUrl(job.outputPath) && (savedReelJobs[job.id] ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(savedReelJobs[job.id])}`} onClick={event => event.stopPropagation()} className="text-emerald-400">Saved · Edit Reel</Link> : <Button disabled={Boolean(savingReelJob)} onClick={event => { event.stopPropagation(); void saveCompletedReel(job); }} className="font-semibold text-amber-400 disabled:opacity-40">{savingReelJob === job.id ? 'Saving…' : 'Save Reel'}</Button>)}
                           {job.outputPath && (
-                            <button
+                            <Button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -691,11 +693,11 @@ export const ExportStudio: React.FC = () => {
                             >
                               <Copy className="w-3 h-3" />
                               <span>{copiedPath === job.outputPath ? 'Copied' : 'Copy'}</span>
-                            </button>
+                            </Button>
                           )}
 
                           {job.status === 'running' && (
-                            <button
+                            <Button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -705,11 +707,11 @@ export const ExportStudio: React.FC = () => {
                             >
                               <XCircle className="w-3 h-3" />
                               <span>Cancel</span>
-                            </button>
+                            </Button>
                           )}
 
                           {(job.status === 'failed' || job.status === 'cancelled') && (
-                            <button
+                            <Button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -719,10 +721,10 @@ export const ExportStudio: React.FC = () => {
                             >
                               <RotateCw className="w-3 h-3" />
                               <span>Retry</span>
-                            </button>
+                            </Button>
                           )}
 
-                          <button
+                          <Button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -732,7 +734,7 @@ export const ExportStudio: React.FC = () => {
                             title="Remove job from list"
                           >
                             <Trash2 className="w-3 h-3" />
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </div>

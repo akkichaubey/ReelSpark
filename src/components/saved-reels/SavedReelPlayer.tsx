@@ -1,5 +1,7 @@
 'use client';
+import { Button } from '@/components/ui/button';
 import { useEffect, useRef, useState } from 'react';
+import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
 import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import type { CaptionProject } from '@/lib/caption-maker/types';
 import { reelPlayback } from '@/lib/saved-reels/types';
@@ -9,6 +11,7 @@ export function SavedReelPlayer({ project }: { project: CaptionProject }) {
   const voice = useRef<HTMLAudioElement>(null);
   const bgm = useRef<HTMLAudioElement>(null);
   const [time, setTime] = useState(playback.start);
+  const [seekVersion,setSeekVersion] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -19,6 +22,7 @@ export function SavedReelPlayer({ project }: { project: CaptionProject }) {
     if (playing) void bgm.current.play().catch(() => undefined);
     else bgm.current.pause();
   }, [playing, project.bgMusic]);
+  if (project.timeline?.enabled && !playback.rendered) return <div className="space-y-3"><div className="h-[55vh]"><TimelinePreview seekVersion={seekVersion} project={project} currentTime={time} playing={playing} onTime={setTime} onPlaying={setPlaying}/></div><Button className="rounded bg-amber-400 px-4 py-2 text-black" onClick={()=>setPlaying(!playing)}>{playing?'Pause':'Play'}</Button><input aria-label="Reel preview timeline" type="range" min="0" max={playback.end} step={1/project.outputSettings.fps} value={time} onChange={e=>{setTime(Number(e.target.value));setSeekVersion(value=>value+1);}}/></div>;
   if (!playback.url)
     return <p>No playable media. Open the reel to add media.</p>;
   if (playback.rendered)
@@ -61,7 +65,7 @@ export function SavedReelPlayer({ project }: { project: CaptionProject }) {
   };
   return (
     <div className="space-y-3">
-      <div className="h-[min(55vh,540px)] flex justify-center overflow-hidden bg-black">
+      <div data-theme-media="true" className="h-[min(55vh,540px)] flex justify-center overflow-hidden bg-black">
         <CaptionPreview
           image={project.image}
           audioUrl={project.audio?.fileUrl}
@@ -107,12 +111,12 @@ export function SavedReelPlayer({ project }: { project: CaptionProject }) {
         <audio ref={bgm} src={project.bgMusic.fileUrl} loop />
       )}
       <div className="flex items-center gap-3">
-        <button
+        <Button
           onClick={toggle}
           className="rounded bg-amber-400 px-4 py-2 font-bold text-black"
         >
           {playing ? 'Pause' : 'Play'}
-        </button>
+        </Button>
         <input
           aria-label="Reel preview timeline"
           type="range"

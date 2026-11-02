@@ -30,8 +30,8 @@ export function nudgeWordTiming(
     return {
       ...group,
       words: updatedWords,
-      start: updatedWords[0]?.start ?? group.start,
-      end: updatedWords[updatedWords.length - 1]?.end ?? group.end,
+      start: Math.min(...updatedWords.map(word => word.start)),
+      end: Math.max(...updatedWords.map(word => word.end)),
       text: updatedWords.map((w) => w.text).join(' '),
     };
   });
@@ -63,8 +63,8 @@ export function shiftWordTiming(
     return {
       ...group,
       words: updatedWords,
-      start: updatedWords[0]?.start ?? group.start,
-      end: updatedWords[updatedWords.length - 1]?.end ?? group.end,
+      start: Math.min(...updatedWords.map(word => word.start)),
+      end: Math.max(...updatedWords.map(word => word.end)),
       text: updatedWords.map((w) => w.text).join(' '),
     };
   });
@@ -96,8 +96,8 @@ export function snapWordToTime(
     return {
       ...group,
       words: updatedWords,
-      start: updatedWords[0]?.start ?? group.start,
-      end: updatedWords[updatedWords.length - 1]?.end ?? group.end,
+      start: Math.min(...updatedWords.map(word => word.start)),
+      end: Math.max(...updatedWords.map(word => word.end)),
       text: updatedWords.map((w) => w.text).join(' '),
     };
   });
@@ -161,8 +161,8 @@ export function autoExpandWordToGap(
       return {
         ...group,
         words: updatedWords,
-        start: updatedWords[0]?.start ?? group.start,
-        end: updatedWords[updatedWords.length - 1]?.end ?? group.end,
+        start: Math.min(...updatedWords.map(word => word.start)),
+        end: Math.max(...updatedWords.map(word => word.end)),
         text: updatedWords.map((w) => w.text).join(' '),
       };
     }

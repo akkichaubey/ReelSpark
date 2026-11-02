@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -224,8 +226,8 @@ export const ClipsLibrary: React.FC = () => {
 
   const renderSaveActions = (clip: Clip) => <>
     <input type="checkbox" aria-label={`Select ${clip.name} to save`} disabled={Boolean(clip.savedReelId) || Boolean(bridgingClipId)} checked={selectedToSave.includes(clip.id)} onChange={e => setSelectedToSave(previous => e.target.checked ? [...previous, clip.id] : previous.filter(id => id !== clip.id))} />
-    <button disabled={Boolean(bridgingClipId)} onClick={() => setReviewClip(clip)} className="rounded border border-zinc-700 px-2 py-1 text-xs text-amber-300">Edit Timing</button>
-    {clip.savedReelId ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(clip.savedReelId)}`} className="text-xs text-emerald-300">Saved · Edit Reel</Link> : <button disabled={Boolean(bridgingClipId)} onClick={() => void handleSendToCaptionMaker(clip, true)} className="rounded bg-amber-400 px-2 py-1 text-xs font-bold text-black disabled:opacity-50">{bridgingClipId === clip.id ? 'Saving…' : 'Save Reel'}</button>}
+    <Button disabled={Boolean(bridgingClipId)} onClick={() => setReviewClip(clip)} className="rounded border border-zinc-700 px-2 py-1 text-xs text-amber-300">Edit Timing</Button>
+    {clip.savedReelId ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(clip.savedReelId)}`} className="text-xs text-emerald-300">Saved · Edit Reel</Link> : <Button disabled={Boolean(bridgingClipId)} onClick={() => void handleSendToCaptionMaker(clip, true)} className="rounded bg-amber-400 px-2 py-1 text-xs font-bold text-black disabled:opacity-50">{bridgingClipId === clip.id ? 'Saving…' : 'Save Reel'}</Button>}
   </>;
 
   const getDurationBadgeColor = (durationMs: number) => {
@@ -241,7 +243,7 @@ export const ClipsLibrary: React.FC = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Link href="/saved-reels" className="text-amber-400">Open Saved Reels</Link>
-        <button disabled={savingSelected || Boolean(bridgingClipId) || !selectedToSave.length} className="rounded bg-amber-400 px-3 py-2 font-bold text-black disabled:opacity-40" onClick={async () => { setSavingSelected(true); const targets = clips.filter(item => selectedToSave.includes(item.id) && !item.savedReelId); const failed: string[] = []; try { for (const clip of targets) if (!(await handleSendToCaptionMaker(clip, true))) failed.push(clip.id); setSelectedToSave(failed); setSaveMessage(`Saved ${targets.length - failed.length} of ${targets.length} clips.${failed.length ? ' Failed clips remain selected for retry.' : ''}`); } finally { setSavingSelected(false); } }}>Save selected clips ({selectedToSave.length})</button>
+        <Button disabled={savingSelected || Boolean(bridgingClipId) || !selectedToSave.length} className="rounded bg-amber-400 px-3 py-2 font-bold text-black disabled:opacity-40" onClick={async () => { setSavingSelected(true); const targets = clips.filter(item => selectedToSave.includes(item.id) && !item.savedReelId); const failed: string[] = []; try { for (const clip of targets) if (!(await handleSendToCaptionMaker(clip, true))) failed.push(clip.id); setSelectedToSave(failed); setSaveMessage(`Saved ${targets.length - failed.length} of ${targets.length} clips.${failed.length ? ' Failed clips remain selected for retry.' : ''}`); } finally { setSavingSelected(false); } }}>Save selected clips ({selectedToSave.length})</Button>
         <span role="status" className="text-zinc-400">{saveMessage}</span>
       </div>
       {reviewClip && activeProject?.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId) && (
@@ -251,8 +253,7 @@ export const ClipsLibrary: React.FC = () => {
           asset={activeProject.mediaAssets.find(asset => asset.id === reviewClip.mediaAssetId)!}
           onSave={updates => updateClip(reviewClip.id, updates)}
           onSaveToLibrary={async (updates) => {
-            updateClip(reviewClip.id, updates);
-            await handleSendToCaptionMaker({ ...reviewClip, ...updates }, true);
+            return handleSendToCaptionMaker({ ...reviewClip, ...updates }, true);
           }}
           onClose={() => setReviewClip(null)}
         />
@@ -282,7 +283,7 @@ export const ClipsLibrary: React.FC = () => {
             {/* Search */}
             <div className="relative flex-1 sm:w-56">
               <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" />
-              <input
+              <Input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -304,7 +305,7 @@ export const ClipsLibrary: React.FC = () => {
 
             {/* Grid vs List View Toggle */}
             <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5">
-              <button
+              <Button
                 type="button"
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 rounded text-xs transition-colors cursor-pointer ${
@@ -313,8 +314,8 @@ export const ClipsLibrary: React.FC = () => {
                 title="Grid Cards View"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setViewMode('list')}
                 className={`p-1.5 rounded text-xs transition-colors cursor-pointer ${
@@ -323,7 +324,7 @@ export const ClipsLibrary: React.FC = () => {
                 title="Compact List View"
               >
                 <List className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -340,7 +341,7 @@ export const ClipsLibrary: React.FC = () => {
         </div>
       ) : filteredClips.length === 0 ? (
         <div className="text-center py-8 text-xs text-zinc-400">
-          No clips match your search "{searchQuery}".
+          No clips match your search &quot;{searchQuery}&quot;.
         </div>
       ) : viewMode === 'list' ? (
         /* Compact DAW List View */
@@ -413,7 +414,7 @@ export const ClipsLibrary: React.FC = () => {
                     <td className="py-2 px-3 text-right">
                       <div className="flex items-center justify-end space-x-1" onClick={(e) => e.stopPropagation()}>
                         {renderSaveActions(clip)}
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleAudition(clip)}
                           className={`p-1.5 rounded transition-all cursor-pointer ${
@@ -424,16 +425,16 @@ export const ClipsLibrary: React.FC = () => {
                           title={isThisClipPlaying ? 'Pause Clip' : 'Audition in Player'}
                         >
                           {isThisClipPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           onClick={() => duplicateClip(clip.id)}
                           className="p-1 rounded text-zinc-400 hover:text-white"
                           title="Duplicate Clip"
                         >
                           <Copy className="w-3 h-3" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           disabled={bridgingClipId === clip.id}
                           onClick={() => handleSendToCaptionMaker(clip)}
@@ -445,15 +446,15 @@ export const ClipsLibrary: React.FC = () => {
                           ) : (
                             <Film className="w-3 h-3" />
                           )}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           onClick={() => deleteClip(clip.id)}
                           className="p-1 rounded text-zinc-500 hover:text-rose-400"
                           title="Delete Clip"
                         >
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -488,14 +489,14 @@ export const ClipsLibrary: React.FC = () => {
                 <div className="space-y-1">
                   {isEditing ? (
                     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <input
+                      <Input
                         type="text"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         className="w-full px-2 py-1 text-xs bg-zinc-950 border border-amber-400 rounded text-white"
                         autoFocus
                       />
-                      <input
+                      <Input
                         type="text"
                         value={editNotes}
                         onChange={(e) => setEditNotes(e.target.value)}
@@ -503,20 +504,20 @@ export const ClipsLibrary: React.FC = () => {
                         className="w-full px-2 py-1 text-xs bg-zinc-950 border border-white/10 rounded text-zinc-300"
                       />
                       <div className="flex items-center space-x-1.5 pt-1">
-                        <button
+                        <Button
                           type="button"
                           onClick={() => handleSaveEdit(clip.id)}
                           className="px-2.5 py-0.5 text-[11px] bg-white text-zinc-950 font-bold rounded cursor-pointer"
                         >
                           Save
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           onClick={() => setEditingClipId(null)}
                           className="px-2 py-0.5 text-[11px] bg-zinc-800 text-zinc-400 rounded cursor-pointer"
                         >
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -568,7 +569,7 @@ export const ClipsLibrary: React.FC = () => {
                 <div className="flex items-center justify-between pt-2 border-t border-white/5" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center space-x-1">
                     {/* Audition */}
-                    <button
+                    <Button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -582,10 +583,10 @@ export const ClipsLibrary: React.FC = () => {
                       }`}
                     >
                       {isThisClipPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                    </button>
+                    </Button>
 
                     {/* Edit */}
-                    <button
+                    <Button
                       type="button"
                       onClick={() => {
                         setEditingClipId(clip.id);
@@ -596,31 +597,31 @@ export const ClipsLibrary: React.FC = () => {
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
 
                     {/* Duplicate */}
-                    <button
+                    <Button
                       type="button"
                       onClick={() => duplicateClip(clip.id)}
                       title="Duplicate Clip"
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors cursor-pointer"
                     >
                       <Copy className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
 
                     {/* Delete */}
-                    <button
+                    <Button
                       type="button"
                       onClick={() => deleteClip(clip.id)}
                       title="Delete Clip"
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
 
                   {/* Send to AI Reel Maker */}
-                  <button
+                  <Button
                     type="button"
                     disabled={bridgingClipId === clip.id}
                     onClick={() => handleSendToCaptionMaker(clip)}
@@ -638,7 +639,7 @@ export const ClipsLibrary: React.FC = () => {
                         <span className="hidden sm:inline">Caption Reel</span>
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

@@ -1,5 +1,7 @@
 'use client';
 
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
 import { Search, TextSearch } from 'lucide-react';
 import { SearchMatch } from '@/lib/types';
@@ -72,7 +74,7 @@ export const SemanticSearchBox: React.FC<SemanticSearchBoxProps> = ({
         className="flex items-center gap-2"
       >
         <div className="relative flex-1">
-          <input
+          <Input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -81,20 +83,20 @@ export const SemanticSearchBox: React.FC<SemanticSearchBoxProps> = ({
           />
           <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-3.5" />
         </div>
-        <button
+        <Button
           type="submit"
           disabled={isSearching || !query.trim()}
           className="px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-semibold text-sm transition-all shadow-sm"
         >
           {isSearching ? 'Searching...' : 'Search'}
-        </button>
+        </Button>
       </form>
 
       {/* Preset Pills */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-zinc-500">Suggestions:</span>
         {sampleQueries.map((q, i) => (
-          <button
+          <Button
             key={i}
             type="button"
             onClick={() => {
@@ -104,7 +106,7 @@ export const SemanticSearchBox: React.FC<SemanticSearchBoxProps> = ({
             className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/5 transition-colors"
           >
             {q}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -133,22 +135,22 @@ export const SemanticSearchBox: React.FC<SemanticSearchBoxProps> = ({
                 </div>
                 <div className="flex items-center space-x-1.5 flex-shrink-0">
                   {onJumpToTimestamp && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => onJumpToTimestamp(r.start, r.end)}
                       className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
                     >
                       Jump to Time
-                    </button>
+                    </Button>
                   )}
                   {onCreateClipFromSearch && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => onCreateClipFromSearch(r.start, r.end, r.snippet)}
                       className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 font-semibold transition-colors"
                     >
                       Add Clip
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>

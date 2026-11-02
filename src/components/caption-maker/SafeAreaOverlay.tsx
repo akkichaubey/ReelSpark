@@ -1,6 +1,7 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState } from 'react';
 import { PlatformPreset } from '@/lib/caption-maker/types';
 import {
@@ -105,7 +106,7 @@ export const SafeAreaOverlay: React.FC<SafeAreaOverlayProps> = ({
               ).map((p) => {
                 const isSelected = activePresetKey === p.id;
                 return (
-                  <button
+                  <Button
                     key={p.id}
                     type="button"
                     onClick={() => handleSwitchPlatform(p.id)}
@@ -117,7 +118,7 @@ export const SafeAreaOverlay: React.FC<SafeAreaOverlayProps> = ({
                     title={`Preview with ${p.label} safe-zone overlay`}
                   >
                     {p.label}
-                  </button>
+                  </Button>
                 );
               })}
             </div>

@@ -1,5 +1,45 @@
 # Test Guide: AI Reel Studio & Clip Finder
 
+## Timeline audio and advanced edits — 2026-10-31
+
+Thumbnail follow-up: `npm run test:timeline-thumbnails` checks zoom density,
+source offsets/loops/clamping, adaptive timestamp samples, bounded tiles beyond
+index 100, and lazy-loading markup. It passes with the real-media timeline suite
+and scrubbing regressions. The main suite passed 63/63 tests. Browser hover/decode, retries and touch QA are pending;
+see [thumbnail verification](docs/timeline-thumbnails.md).
+
+Motion follow-up: `npm run test:timeline-motion` covers transform/effect curves,
+Bezier easing, integrated animation velocity, presets, split/trim/roll/slide
+continuity, keyframe copy isolation and JSON persistence. It passed with
+typecheck, advanced/audio/caption suites, caption preview combinations and the
+63-test main suite. Browser and new rendered-motion movie checks remain pending.
+This does not test media playback-speed ramps, which are not implemented here.
+
+Caption follow-up: `npm run test:timeline-captions` covers word edits, timing
+bounds, locks, archive isolation, compiled time mapping, import roundtrip and
+active-word markup. `tsx tests/caption_preview_render.test.tsx` covers existing
+motion/highlight combinations. These passed; new browser interactions, actual
+provider synchronization and a fresh caption movie remain pending. See
+[caption timeline verification](docs/timeline-caption-editing.md).
+
+Run `npm run typecheck`, `npm run test:timeline-audio`,
+`npm run test:timeline-advanced` and `npm run test:timeline`. These passed after
+the audio changes. The last suite includes actual FFmpeg sine/silence waveform
+and thumbnail generation, ownership/cache checks and Saved Reels retention.
+
+Also run `tsx tests/timeline_scrubbing.test.tsx` and
+`tsx tests/timeline_qa_regressions.test.tsx` for existing editor controls.
+The audio suite verifies keyframe interpolation and source alignment after
+trim/split/slip/loop, fades, solo/mute, detach/resync, locks and immutable data.
+Split/copy tests check detached audio references follow the correct video copy.
+The main suite passed 63/63 tests during this update; project import and timeline
+QA regression suites passed as well. Shared audio controls/modules are lint-clean.
+
+Pending: browser listening, handle pointer/touch/keyboard QA, undo/reopen with
+automation, and a freshly rendered export measuring keyframes and solo. Earlier
+render/browser proofs below do not establish these new paths. Do not restart the
+user's existing app server or deploy to run these checks.
+
 This document describes the automated test matrix, verification procedures, and regression test suites for **ReelSpark** (`/` Clip Finder and `/caption-maker` AI Reel Studio).
 
 ---

@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import React, { useState, useEffect } from 'react';
 import {
   CaptionStyle,
@@ -163,7 +165,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
-            <button
+            <Button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
@@ -175,7 +177,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
             >
               <Icon className="w-3 h-3 shrink-0" />
               <span>{tab.label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -198,14 +200,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     <p className="text-[10px] text-zinc-400">Reuse the complete visual recipe: type, motion, badges, anchor and safe zone.</p>
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={() => setIsSavingPreset(!isSavingPreset)}
                   className="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shadow-amber-400/20"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[3]" />
                   <span>{isSavingPreset ? 'Close' : 'Save Style'}</span>
-                </button>
+                </Button>
               </div>
 
               {saveSuccessMsg && (
@@ -221,7 +223,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     <label className="block text-[10px] font-semibold text-zinc-300 mb-1">
                       Preset Name <span className="text-amber-400">*</span>
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={presetNameInput}
                       onChange={(e) => setPresetNameInput(e.target.value)}
@@ -235,7 +237,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
                       Description / Tags (Optional)
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={presetDescInput}
                       onChange={(e) => setPresetDescInput(e.target.value)}
@@ -244,21 +246,21 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     />
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setIsSavingPreset(false)}
                       className="px-2.5 py-1 text-zinc-400 hover:text-zinc-200 text-[11px] cursor-pointer"
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="submit"
                       disabled={!presetNameInput.trim()}
                       className="px-3 py-1.5 bg-amber-400 disabled:opacity-50 hover:bg-amber-300 text-black font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <BookmarkCheck className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>Save Preset</span>
-                    </button>
+                    </Button>
                   </div>
                 </form>
               )}
@@ -306,14 +308,14 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                             <span className="text-[9px] font-mono px-1 py-0.2 rounded font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                               {preset.badge || 'BRAND'}
                             </span>
-                            <button
+                            <Button
                               type="button"
                               onClick={(e) => handleDeletePreset(e, preset.id)}
                               title="Delete preset"
                               className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                             >
                               <Trash2 className="w-3 h-3" />
-                            </button>
+                            </Button>
                           </div>
                         </div>
 
@@ -364,7 +366,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                         style.textEffect === preset.style.textEffect)));
 
                   return (
-                    <button
+                    <Button
                       key={preset.id}
                       type="button"
                       onClick={() => applyPreset(preset.style, preset.id)}
@@ -403,7 +405,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       <span className="text-[10px] text-zinc-500 mt-1.5 line-clamp-1 leading-tight">
                         {preset.description}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -422,7 +424,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     </span>
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     const activePreset = REEL_STYLE_PRESETS.find((p) => p.id === style.presetId);
@@ -441,7 +443,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 >
                   <RotateCcw className="w-3 h-3 text-amber-400" />
                   <span>Reset to Default</span>
-                </button>
+                </Button>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -482,7 +484,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     </div>
                     <div className="relative flex min-w-0 flex-1 items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-1.5 h-7 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
                       <span className="text-zinc-500 font-mono text-[10px] select-none mr-0.5 font-bold">#</span>
-                      <input
+                      <Input
                         type="text"
                         value={style.importantColor ? style.importantColor.replace(/^#/, '') : 'FCD905'}
                         onChange={(e) => {
@@ -516,7 +518,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     ].map((s) => {
                       const isSelected = style.importantColor?.toUpperCase() === s.col.toUpperCase();
                       return (
-                        <button
+                        <Button
                           key={s.col}
                           type="button"
                           onClick={() => {
@@ -571,7 +573,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     </div>
                     <div className="relative flex min-w-0 flex-1 items-center bg-zinc-950 border border-zinc-700/80 rounded-lg px-1.5 h-7 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/20 transition-all">
                       <span className="text-zinc-500 font-mono text-[10px] select-none mr-0.5 font-bold">#</span>
-                      <input
+                      <Input
                         type="text"
                         value={style.textColor ? style.textColor.replace(/^#/, '') : 'FFFFFF'}
                         onChange={(e) => {
@@ -600,7 +602,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     ].map((s) => {
                       const isSelected = style.textColor?.toUpperCase() === s.col.toUpperCase();
                       return (
-                        <button
+                        <Button
                           key={s.col}
                           type="button"
                           onClick={() => update({ textColor: s.col })}
@@ -635,7 +637,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     { id: 'kinetic', label: 'Kinetic', desc: 'Floating dynamic bounce' },
                   ] as const
                 ).map((mode) => (
-                  <button
+                  <Button
                     key={mode.id}
                     type="button"
                     onClick={() => update({ captionMode: mode.id as CaptionMode })}
@@ -647,7 +649,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   >
                     <span className="font-semibold text-[11px] block">{mode.label}</span>
                     <span className="text-[9px] text-zinc-500 mt-1 line-clamp-1">{mode.desc}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -674,7 +676,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
               {/* Current Font Trigger & Weight Grid */}
               <div className="grid grid-cols-2 gap-2.5">
                 {/* Google Font Picker Trigger Button */}
-                <button
+                <Button
                   type="button"
                   onClick={() => setIsFontPickerOpen(!isFontPickerOpen)}
                   className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-400/80 text-left flex items-center justify-between transition-all cursor-pointer group min-w-0"
@@ -697,7 +699,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       <ChevronDown className="w-3.5 h-3.5" />
                     )}
                   </div>
-                </button>
+                </Button>
 
                 {/* Font Weight Dropdown */}
                 <select
@@ -721,7 +723,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   {/* Search Input */}
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" />
-                    <input
+                    <Input
                       type="text"
                       value={fontSearchQuery}
                       onChange={(e) => setFontSearchQuery(e.target.value)}
@@ -733,7 +735,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
 
                   {/* Custom Font Quick-Apply Card (allows ANY Google font on Earth!) */}
                   {fontSearchQuery.trim().length > 0 && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => selectFont(fontSearchQuery.trim())}
                       className="w-full p-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/50 rounded-lg text-amber-300 font-bold text-xs flex items-center justify-between transition-colors cursor-pointer"
@@ -745,7 +747,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       <span className="text-[10px] bg-amber-400 text-black px-1.5 py-0.5 rounded font-bold shrink-0">
                         Apply
                       </span>
-                    </button>
+                    </Button>
                   )}
 
                   {/* Category Filter Pills */}
@@ -758,7 +760,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       { id: 'serif', label: 'Cinema Serif' },
                       { id: 'devanagari', label: 'Devanagari (Hindi)' },
                     ].map((cat) => (
-                      <button
+                      <Button
                         key={cat.id}
                         type="button"
                         onClick={() => setFontCategoryFilter(cat.id as any)}
@@ -769,7 +771,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                         }`}
                       >
                         {cat.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
 
@@ -786,7 +788,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       const isSelected =
                         currentFontName.toLowerCase() === f.name.toLowerCase();
                       return (
-                        <button
+                        <Button
                           key={f.name}
                           type="button"
                           onClick={() => selectFont(f.name)}
@@ -815,7 +817,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                           {isSelected && (
                             <Check className="w-4 h-4 text-amber-400 shrink-0 stroke-[3]" />
                           )}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -823,13 +825,13 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   {/* Close / Done footer */}
                   <div className="flex items-center justify-between pt-1 border-t border-zinc-800 text-[10px] text-zinc-500">
                     <span>Loads automatically from Google Fonts CDN</span>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setIsFontPickerOpen(false)}
                       className="text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
                     >
                       Done
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -902,7 +904,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
                     title="Choose normal text color"
                   />
-                  <input
+                  <Input
                     type="text"
                     value={style.textColor}
                     onChange={(e) => update({ textColor: e.target.value })}
@@ -920,7 +922,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     { col: '#93C5FD', title: 'Ice Blue' },
                     { col: '#FCD905', title: 'Yellow (#FCD905)' },
                   ].map((s) => (
-                    <button
+                    <Button
                       key={s.col}
                       type="button"
                       onClick={() => update({ textColor: s.col })}
@@ -942,7 +944,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   <label className="block text-amber-400 font-medium text-[11px]">
                     Active / Spoken Color
                   </label>
-                  <button
+                  <Button
                     type="button"
                     onClick={() =>
                       update({
@@ -955,7 +957,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     title="Click to reset active color to default #FCD905"
                   >
                     Default: #FCD905
-                  </button>
+                  </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -972,7 +974,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     className="w-7 h-7 rounded border-0 cursor-pointer bg-transparent shrink-0"
                     title="Choose active spoken word color"
                   />
-                  <input
+                  <Input
                     type="text"
                     value={style.importantColor}
                     onChange={(e) => {
@@ -997,7 +999,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     { col: '#FF007A', title: 'Hot Pink' },
                     { col: '#FF6B00', title: 'Flame Orange' },
                   ].map((s) => (
-                    <button
+                    <Button
                       key={s.col}
                       type="button"
                       onClick={() =>
@@ -1051,7 +1053,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   { val: 0.65, label: '65% Dim' },
                   { val: 1.0, label: '100% Solid (Default)' },
                 ].map((item) => (
-                  <button
+                  <Button
                     key={item.label}
                     type="button"
                     onClick={() => update({ textOpacity: item.val })}
@@ -1062,7 +1064,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     }`}
                   >
                     {item.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1118,7 +1120,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   const currentMode = style.textTransform || (style.uppercase ? 'uppercase' : 'none');
                   const isSelected = currentMode === item.id;
                   return (
-                    <button
+                    <Button
                       key={item.id}
                       type="button"
                       onClick={() =>
@@ -1141,13 +1143,13 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       <span className="text-[9px] font-mono text-amber-300/80 bg-zinc-950/60 px-1 py-0.5 rounded mt-1 truncate">
                         {item.preview}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
 
               {/* Original / As-Spoken Option */}
-              <button
+              <Button
                 type="button"
                 onClick={() =>
                   update({
@@ -1168,7 +1170,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 {(style.textTransform === 'none' || (!style.textTransform && !style.uppercase)) && (
                   <span className="text-amber-400 font-bold text-xs">✓</span>
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1330,7 +1332,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     { id: 'soft-ambient', label: 'Ambient Soft' },
                   ] as const
                 ).map((eff) => (
-                  <button
+                  <Button
                     key={eff.id}
                     type="button"
                     onClick={() => update({ textEffect: eff.id as TextEffectType })}
@@ -1341,7 +1343,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     }`}
                   >
                     {eff.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1422,7 +1424,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     { id: 'outline-pill', label: 'Outline Box' },
                   ] as const
                 ).map((b) => (
-                  <button
+                  <Button
                     key={b.id}
                     type="button"
                     onClick={() => update({ backgroundStyle: b.id as BackgroundStyle })}
@@ -1433,7 +1435,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     }`}
                   >
                     {b.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1567,7 +1569,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   const currentNine = resolveNinePosition(style.position, style.textAlign);
                   const isCurrent = currentNine === cell.id && style.position !== 'custom';
                   return (
-                    <button
+                    <Button
                       key={cell.id}
                       type="button"
                       onClick={() =>
@@ -1586,7 +1588,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     >
                       <span className="text-[10px] font-mono font-bold leading-none">{cell.shortcut}</span>
                       <span className="text-[8px] opacity-75 mt-0.5 leading-none">{cell.label.split(' ')[0]}</span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -1605,7 +1607,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       { id: 'right', icon: AlignRight, label: 'R' },
                     ] as const
                   ).map(({ id, icon: Icon, label }) => (
-                    <button
+                    <Button
                       key={id}
                       type="button"
                       onClick={() => update({ textAlign: id as TextAlignment })}
@@ -1618,7 +1620,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span className="text-[10px]">{label}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -1634,7 +1636,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       { id: 'bottom', label: 'Bot' },
                     ] as const
                   ).map((pos) => (
-                    <button
+                    <Button
                       key={pos.id}
                       type="button"
                       onClick={() => update({ position: pos.id as CaptionPosition })}
@@ -1645,7 +1647,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                       }`}
                     >
                       {pos.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -1662,7 +1664,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                     Fine-tune exact percentage placement on canvas
                   </span>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={() =>
                     update({
@@ -1679,7 +1681,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                   }`}
                 >
                   {style.position === 'custom' ? 'Active' : 'Enable Freeform'}
-                </button>
+                </Button>
               </div>
 
               {/* Horizontal Slider (X%) */}

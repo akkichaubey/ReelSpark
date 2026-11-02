@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Play,
@@ -255,6 +256,7 @@ export const MediaPlayerPreview: React.FC = () => {
       {/* Player Display (Click to Play/Pause) */}
       <div
         onClick={togglePlayPause}
+        data-theme-media="true"
         title={isPlaying ? 'Click to Pause [Space]' : 'Click to Play [Space]'}
         className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden cursor-pointer group select-none"
       >
@@ -347,7 +349,7 @@ export const MediaPlayerPreview: React.FC = () => {
         {/* Playback Controls */}
         <div className="flex items-center space-x-1.5">
           {/* Jump to In */}
-          <button
+          <Button
             type="button"
             onClick={() => {
               if (mediaRef.current) mediaRef.current.currentTime = inPointMs / 1000;
@@ -357,60 +359,60 @@ export const MediaPlayerPreview: React.FC = () => {
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
           >
             <SkipBack className="w-3.5 h-3.5" />
-          </button>
+          </Button>
 
           {/* -5s Shuttle */}
-          <button
+          <Button
             type="button"
             onClick={() => stepSeconds(-5)}
             title="Step back 5s"
             className="px-1.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white font-mono text-[10px]"
           >
             -5s
-          </button>
+          </Button>
 
           {/* -1 Frame */}
-          <button
+          <Button
             type="button"
             onClick={() => stepFrame(-1)}
             title="Step back 1 frame [←]"
             className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-[11px]"
           >
             -1f
-          </button>
+          </Button>
 
           {/* Play/Pause Button */}
-          <button
+          <Button
             type="button"
             onClick={togglePlayPause}
             title="Play / Pause [Space]"
             className="p-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold shadow-md shadow-white/5 transition-all"
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-          </button>
+          </Button>
 
           {/* +1 Frame */}
-          <button
+          <Button
             type="button"
             onClick={() => stepFrame(1)}
             title="Step forward 1 frame [→]"
             className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-[11px]"
           >
             +1f
-          </button>
+          </Button>
 
           {/* +5s Shuttle */}
-          <button
+          <Button
             type="button"
             onClick={() => stepSeconds(5)}
             title="Step forward 5s"
             className="px-1.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white font-mono text-[10px]"
           >
             +5s
-          </button>
+          </Button>
 
           {/* Jump to Out */}
-          <button
+          <Button
             type="button"
             onClick={() => {
               if (mediaRef.current) mediaRef.current.currentTime = outPointMs / 1000;
@@ -420,39 +422,39 @@ export const MediaPlayerPreview: React.FC = () => {
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
           >
             <SkipForward className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
 
         {/* In / Out Markers Setting */}
         <div className="flex items-center space-x-1.5">
-          <button
+          <Button
             type="button"
             onClick={() => setInPoint()}
             title="Set In Point at playhead [ I ]"
             className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-xs transition-colors flex items-center space-x-1"
           >
             <span>Set [ In ]</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={() => setOutPoint()}
             title="Set Out Point at playhead [ O ]"
             className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs transition-colors flex items-center space-x-1"
           >
             <span>Set [ Out ]</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={playSelection}
             title="Audition In-to-Out selection"
             className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-xs transition-colors"
           >
             Audition Range
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={() => setIsLoopingSelection(!isLoopingSelection)}
             title="Toggle Selection Loop"
@@ -463,7 +465,7 @@ export const MediaPlayerPreview: React.FC = () => {
             }`}
           >
             <Repeat className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
 
         {/* Speed & Volume */}
@@ -486,7 +488,7 @@ export const MediaPlayerPreview: React.FC = () => {
           </select>
 
           {/* Mute Toggle */}
-          <button
+          <Button
             type="button"
             onClick={() => {
               if (!mediaRef.current) return;
@@ -498,17 +500,17 @@ export const MediaPlayerPreview: React.FC = () => {
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-          </button>
+          </Button>
 
           {/* Fullscreen Toggle */}
-          <button
+          <Button
             type="button"
             onClick={toggleFullscreen}
             title="Toggle Fullscreen"
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
           >
             <Maximize2 className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

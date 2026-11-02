@@ -355,6 +355,7 @@ export interface TrimRange {
 }
 
 export interface CaptionProject {
+  timeline?: import('../timeline/model').ReelTimeline;
   id: string;
   title: string;
   image?: ImageAsset;

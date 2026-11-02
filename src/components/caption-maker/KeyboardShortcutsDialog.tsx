@@ -1,8 +1,10 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React from 'react';
 import { X, Keyboard } from 'lucide-react';
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
 
 interface KeyboardShortcutsDialogProps {
   isOpen: boolean;
@@ -25,21 +27,23 @@ export const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = (
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+    <DialogSurface onClose={onClose} aria-describedby={undefined}
+      overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+      className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
         <div className="p-4 bg-zinc-950/80 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Keyboard className="w-5 h-5 text-amber-400" />
-            <h3 className="font-semibold text-zinc-100 text-sm">
+            <DialogTitle asChild><h3 className="font-semibold text-zinc-100 text-sm">
               Keyboard Shortcuts
-            </h3>
+            </h3></DialogTitle>
           </div>
-          <button
+          <Button
+            type="button" aria-label="Close keyboard shortcuts"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="p-5 space-y-3">
@@ -57,14 +61,13 @@ export const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = (
         </div>
 
         <div className="p-3 bg-zinc-950/70 border-t border-zinc-800 flex justify-end">
-          <button
+          <Button
+            variant="secondary" size="sm" type="button"
             onClick={onClose}
-            className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
           >
             Close
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </DialogSurface>
   );
 };

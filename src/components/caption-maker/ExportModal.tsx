@@ -1,6 +1,7 @@
 'use strict';
 'use client';
 
+import { Button } from '@/components/ui/button';
 import React, { useState, useMemo } from 'react';
 import { CaptionProject, OutputSettings, ResolutionTier, VideoFps, VideoQuality } from '@/lib/caption-maker/types';
 import { validateAndHealReelProject } from '@/lib/caption-maker/pre-flight-validator';
@@ -28,7 +29,9 @@ import {
   Combine,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
+import { compileTimeline, timelineEnd } from '@/lib/timeline/model';
 import { getAssRenderCompatibility } from '@/lib/caption-maker/render-compatibility';
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -79,7 +82,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   >('intro_and_poster');
   const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(0.000001);
 
-  const preFlight = useMemo(() => validateAndHealReelProject(project), [project]);
+  const advanced = Boolean(project.timeline?.enabled);
+  const selectedEngine = advanced ? 'remotion' : engine;
+  const exportGroups = useMemo(() => advanced ? compileTimeline(project).captionGroups : project.captionGroups, [project, advanced]);
+  const preFlight = useMemo(() => {
+    if (!advanced) return validateAndHealReelProject(project);
+    const plan = compileTimeline(project);
+    return { ready: plan.durationMs > 0, needsServerAudioSync: false, autoFixedCount: 0, healedProject: project, checks: [{ id: 'media_assets' as const, label: 'Timeline composition', status: 'passed' as const, detail: `${plan.timeline.clips.length} clips · ${(plan.durationMs / 1000).toFixed(2)} seconds · source media checked again on export` }] };
+  }, [project, advanced]);
   const assCompatibility = useMemo(
     () => getAssRenderCompatibility(project.captionStyle),
     [project.captionStyle]
@@ -90,7 +100,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     detectResolutionTier(project.outputSettings.width, project.outputSettings.height);
 
   const estimatedSize = estimateExportFileSize(
-    project.audio?.duration || 15,
+    advanced && project.timeline ? timelineEnd(project.timeline)/1000 : project.audio?.duration || 15,
     project.outputSettings.quality,
     currentTier,
     project.outputSettings.fps
@@ -136,8 +146,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         subtitleFormat,
         subtitleGranularity,
         {
-          words: project.transcript || [],
-          groups: project.captionGroups || [],
+          words: advanced ? exportGroups.flatMap(group => group.words) : project.transcript || [],
+          groups: exportGroups || [],
         },
         project.title || 'caption_reel'
       );
@@ -165,23 +175,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <DialogSurface onClose={() => { if (!isRendering) onClose(); }} aria-describedby={undefined}
+      onEscapeKeyDown={event => { if (isRendering) event.preventDefault(); }}
+      overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+      className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="p-4 bg-zinc-950/80 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Film className="w-5 h-5 text-amber-400" />
-            <h3 className="font-semibold text-zinc-100 text-base">
+            <DialogTitle asChild><h3 className="font-semibold text-zinc-100 text-base">
               Export & Render Reel Video
-            </h3>
+            </h3></DialogTitle>
           </div>
-          <button
+          <Button
+            aria-label="Close export dialog"
             onClick={onClose}
             disabled={isRendering}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Modal Body */}
@@ -208,7 +221,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
 
               <p className="text-zinc-500 text-xs">
-                {engine === 'remotion'
+                {selectedEngine === 'remotion'
                   ? 'Remotion headless browser is rendering frame-accurate GSAP typography and encoding high-definition MP4.'
                   : 'FFmpeg is compositing image, audio, and animated ASS captions. This may take a few moments.'}
               </p>
@@ -226,12 +239,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {renderResult.error}
               </p>
               <div className="pt-2 flex justify-end gap-2">
-                <button
-                  onClick={() => onStartRender(engine)}
+                <Button
+                  onClick={() => onStartRender(selectedEngine)}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg text-xs transition-colors"
                 >
                   Retry Render
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -266,13 +279,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
               {/* Action Buttons */}
               <div className="space-y-3 pt-2">
-                <button
+                <Button
                   onClick={handleDownloadVideo}
                   className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   <Download className="w-4 h-4 stroke-[2.5]" />
                   Download Final MP4 Video
-                </button>
+                </Button>
 
                 {/* Subtitle / Transcript Multi-Format Export Card */}
                 <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">
@@ -290,7 +303,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     {/* Format Selector: .SRT | .VTT | .TXT */}
                     <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs w-full sm:w-auto">
                       {(['srt', 'vtt', 'txt'] as const).map((fmt) => (
-                        <button
+                        <Button
                           key={fmt}
                           type="button"
                           onClick={() => setSubtitleFormat(fmt)}
@@ -301,7 +314,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           }`}
                         >
                           .{fmt}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -316,20 +329,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     </select>
 
                     {/* Download Button */}
-                    <button
+                    <Button
                       type="button"
                       onClick={handleDownloadSubtitles}
                       className="flex-1 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold rounded-lg text-xs border border-zinc-700 transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5 text-amber-400" />
                       <span>Download .{subtitleFormat.toUpperCase()}</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
 
               {onOpenSocialPost && (
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     onClose();
@@ -339,11 +352,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 >
                   <Share2 className="w-4 h-4 text-amber-400" />
                   <span>Generate Social Media Post & Hashtags</span>
-                </button>
+                </Button>
               )}
 
               {onOpenThumbnailCreator && (
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     onClose();
@@ -353,7 +366,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 >
                   <ImagePlus className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Create Reel Cover Thumbnail</span>
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -366,14 +379,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
                     <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span>AI Pre-Render Verification & Sync Check</span>
+                    <span>{advanced ? 'Multi-track Export Check' : 'AI Pre-Render Verification & Sync Check'}</span>
                   </div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                     {preFlight.needsServerAudioSync
                       ? 'Auto-Sync on Start'
                       : preFlight.autoFixedCount > 0
                       ? `Auto-Healed (${preFlight.autoFixedCount})`
-                      : '100% Verified'}
+                      : advanced ? 'Timeline validated' : '100% Verified'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 gap-1.5 text-[11px]">
@@ -409,12 +422,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Remotion + GSAP Engine */}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setEngine('remotion')}
-                    aria-pressed={engine === 'remotion'}
+                    aria-pressed={selectedEngine === 'remotion'}
                     className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                      engine === 'remotion'
+                      selectedEngine === 'remotion'
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10'
                         : 'bg-zinc-950/50 border-zinc-800 hover:border-zinc-700'
                     }`}
@@ -433,15 +446,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         Frame-accurate GSAP typography, exact preview parity & dynamic pop animations.
                       </p>
                     </div>
-                  </button>
+                  </Button>
 
                   {/* Native FFmpeg Engine */}
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => setEngine('ffmpeg')}
-                    aria-pressed={engine === 'ffmpeg'}
+                    disabled={advanced} onClick={() => setEngine('ffmpeg')}
+                    aria-pressed={selectedEngine === 'ffmpeg'}
                     className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                      engine === 'ffmpeg'
+                      selectedEngine === 'ffmpeg'
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10'
                         : 'bg-zinc-950/50 border-zinc-800 hover:border-zinc-700'
                     }`}
@@ -460,9 +473,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         Direct server-side ASS burn-in filter via libass. High render throughput.
                       </p>
                     </div>
-                  </button>
+                  </Button>
                 </div>
-                {engine === 'ffmpeg' && !assCompatibility.previewParity && (
+                {selectedEngine === 'ffmpeg' && !assCompatibility.previewParity && (
                   <div
                     role="status"
                     className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
@@ -476,13 +489,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         <li key={limitation}>{limitation}</li>
                       ))}
                     </ul>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setEngine('remotion')}
                       className="text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2"
                     >
                       Switch to Remotion for the closest preview match
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -513,7 +526,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     {(['720p', '1080p', '1440p', '4k'] as const).map((tier) => {
                       const isSelected = currentTier === tier;
                       return (
-                        <button
+                        <Button
                           key={tier}
                           type="button"
                           onClick={() => handleQuickResolution(tier)}
@@ -524,7 +537,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           }`}
                         >
                           {tier === '1440p' ? '2K QHD' : tier.toUpperCase()}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -539,7 +552,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       {([24, 25, 30, 60] as const).map((fps) => {
                         const isSelected = project.outputSettings.fps === fps;
                         return (
-                          <button
+                          <Button
                             key={fps}
                             type="button"
                             onClick={() => handleQuickFps(fps)}
@@ -550,7 +563,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                             }`}
                           >
                             {fps}
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>
@@ -563,7 +576,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       {(['draft', 'standard', 'high', 'pro'] as const).map((q) => {
                         const isSelected = project.outputSettings.quality === q;
                         return (
-                          <button
+                          <Button
                             key={q}
                             type="button"
                             onClick={() => handleQuickQuality(q)}
@@ -574,7 +587,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                             }`}
                           >
                             {q === 'draft' ? 'Draft' : q === 'standard' ? 'Std' : q === 'high' ? 'High' : 'Pro'}
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>
@@ -583,7 +596,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
                 {/* Audio Duration & Format Metadata */}
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
-                  <span>Clip Duration: {project.audio ? `${project.audio.duration.toFixed(2)}s` : 'N/A'}</span>
+                  <span>Clip Duration: {advanced && project.timeline ? `${(timelineEnd(project.timeline)/1000).toFixed(2)}s` : project.audio ? `${project.audio.duration.toFixed(2)}s` : 'N/A'}</span>
                   <span className="capitalize">Format: MP4 (H.264 + AAC)</span>
                 </div>
               </div>
@@ -639,7 +652,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
+                        <Button
                           type="button"
                           onClick={() => setThumbnailIntroDuration(0.000001)}
                           className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap cursor-pointer ${
@@ -649,7 +662,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           }`}
                         >
                           Instant (0.000001s)
-                        </button>
+                        </Button>
                         <input
                           type="range"
                           min={0.000001}
@@ -672,14 +685,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
               )}
 
-              {!project.audio && (
+              {!project.audio && !advanced && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
                   ⚠️ Audio file missing. Please upload an audio track before rendering.
                 </div>
               )}
 
+              {advanced && <p className="text-xs text-amber-300">Multi-track export uses the same Remotion composition as preview, including layers, gaps, transitions and audio.</p>}
               {/* Quick Subtitle / Transcript Exporter before rendering */}
-              {project.captionGroups && project.captionGroups.length > 0 && (
+              {exportGroups && exportGroups.length > 0 && (
                 <div className="p-3 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 text-zinc-300 font-semibold">
@@ -687,7 +701,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       <span>Export Subtitles Only (No Render Needed)</span>
                     </div>
                     <span className="text-[10px] text-zinc-500 font-mono">
-                      {project.captionGroups.length} lines
+                      {exportGroups.length} lines
                     </span>
                   </div>
 
@@ -695,7 +709,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     {/* Format Selector: .SRT | .VTT | .TXT */}
                     <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs w-full sm:w-auto">
                       {(['srt', 'vtt', 'txt'] as const).map((fmt) => (
-                        <button
+                        <Button
                           key={fmt}
                           type="button"
                           onClick={() => setSubtitleFormat(fmt)}
@@ -706,7 +720,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           }`}
                         >
                           .{fmt}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -719,39 +733,39 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       <option value="word">Word-by-Word</option>
                     </select>
 
-                    <button
+                    <Button
                       type="button"
                       onClick={handleDownloadSubtitles}
                       className="flex-1 w-full flex items-center justify-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-lg text-xs border border-zinc-700 transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5 text-amber-400" />
                       <span>Download .{subtitleFormat.toUpperCase()}</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
 
               <div className="flex justify-end gap-3 pt-3">
-                <button
+                <Button
                   type="button"
                   onClick={onClose}
                   className="px-4 py-2.5 rounded-xl border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 text-xs font-medium transition-colors"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() =>
-                    onStartRender(engine, {
+                    onStartRender(selectedEngine, {
                       mergeThumbnail,
                       thumbnailMergeMode,
                       thumbnailIntroDuration,
                     })
                   }
-                  disabled={!project.audio}
+                  disabled={advanced ? !project.timeline || timelineEnd(project.timeline) <= 0 : !project.audio}
                   className="flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20 disabled:opacity-40"
                 >
-                  {engine === 'remotion' ? (
+                  {selectedEngine === 'remotion' ? (
                     <>
                       <Film className="w-3.5 h-3.5" />
                       Render Remotion + GSAP
@@ -762,12 +776,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       Start FFmpeg Render
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </DialogSurface>
   );
 };

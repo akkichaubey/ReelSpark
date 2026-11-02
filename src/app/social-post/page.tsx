@@ -1,4 +1,9 @@
 'use client';
+
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { publishingProgress } from '@/lib/social-intelligence/publishing-progress';
 import { accountCache } from '@/lib/account-cache';
 
@@ -33,7 +38,7 @@ import {
   Layers,
   ExternalLink,
 } from 'lucide-react';
-import {
+import type {
   SocialPostBundle,
   ContentTone,
   CaptionStyle,
@@ -555,12 +560,12 @@ function SocialPostPageContent() {
               </span>
             </div>
           </Link>
-          <button
+          <div className="flex items-center gap-2"><ThemeToggle /><Button
             onClick={() => openAuthModal('login')}
             className="px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs cursor-pointer shadow-sm transition-all"
           >
             Sign In / Register
-          </button>
+          </Button></div>
         </header>
 
         <main className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
@@ -573,12 +578,12 @@ function SocialPostPageContent() {
               Generate platform-aware social copy with deterministic link insertion, platform guidelines, and real-time quality scoring.
             </p>
             <div className="pt-2">
-              <button
+              <Button
                 onClick={() => openAuthModal('login')}
                 className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-lg shadow-white/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
               >
                 Sign In to Continue
-              </button>
+              </Button>
             </div>
           </div>
         </main>
@@ -603,7 +608,7 @@ function SocialPostPageContent() {
       ]}
       headerActions={
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
             onClick={() => {
               const targetP = platform === 'all' ? undefined : (platform as PublishingPlatformKey);
@@ -627,7 +632,7 @@ function SocialPostPageContent() {
                       : 'Facebook'
                   }`}
             </span>
-          </button>
+          </Button>
           <Link
             href="/reel-maker"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
@@ -692,14 +697,14 @@ function SocialPostPageContent() {
             </Link>
           </div>
 
-          <button
+          <Button
             type="button"
             onClick={() => setIsPublishModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5 text-amber-400" />
             <span>Multi-Platform Studio</span>
-          </button>
+          </Button>
         </div>
         {/* Tab 1: AI Generator */}
         {activeTab === 'generator' && (
@@ -745,7 +750,7 @@ function SocialPostPageContent() {
                 </div>
 
                 {/* Toggle Source Transcript Drawer */}
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowSourceTranscript(!showSourceTranscript)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer"
@@ -757,7 +762,7 @@ function SocialPostPageContent() {
                   ) : (
                     <ChevronDown className="w-3.5 h-3.5" />
                   )}
-                </button>
+                </Button>
               </div>
 
               {/* Collapsible Source Transcript Accordion */}
@@ -771,7 +776,7 @@ function SocialPostPageContent() {
                       {transcript.trim() ? `${transcript.trim().split(/\s+/).length} words` : '0 words'}
                     </span>
                   </div>
-                  <textarea
+                  <Textarea
                     rows={3}
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
@@ -805,7 +810,7 @@ function SocialPostPageContent() {
                   ].map((p) => {
                     const isSelected = platform === p.id;
                     return (
-                      <button
+                      <Button
                         key={p.id}
                         type="button"
                         onClick={() => {
@@ -823,7 +828,7 @@ function SocialPostPageContent() {
                           <SocialPlatformIcon platform={p.id as SocialPlatformKey} size="sm" />
                         )}
                         <span>{p.label}</span>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -887,7 +892,7 @@ function SocialPostPageContent() {
                         { id: 'hi', label: 'हिन्दी' },
                         { id: 'hinglish', label: 'Hinglish' },
                       ].map((l) => (
-                        <button
+                        <Button
                           key={l.id}
                           type="button"
                           onClick={() => {
@@ -902,7 +907,7 @@ function SocialPostPageContent() {
                           }`}
                         >
                           {l.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -956,7 +961,7 @@ function SocialPostPageContent() {
                 </div>
 
                 {/* Regenerate Button */}
-                <button
+                <Button
                   type="button"
                   onClick={() => handleGenerate()}
                   disabled={isLoading || !transcript.trim()}
@@ -964,7 +969,7 @@ function SocialPostPageContent() {
                 >
                   <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                   <span>Regenerate Copy</span>
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -983,13 +988,13 @@ function SocialPostPageContent() {
               ) : errorMessage ? (
                 <div className="p-6 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-center space-y-3">
                   <p className="text-xs sm:text-sm text-rose-300 font-medium">{errorMessage}</p>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleGenerate()}
                     className="px-4 py-2 bg-rose-500/20 text-rose-300 rounded-xl text-xs font-semibold hover:bg-rose-500/30 transition-colors shadow-sm"
                   >
                     Try Again
-                  </button>
+                  </Button>
                 </div>
               ) : bundle ? (
                 <>
@@ -1005,7 +1010,7 @@ function SocialPostPageContent() {
                       </span>
                     </div>
                     <div className="flex gap-2">
-                      <input
+                      <Input
                         id="platform-post-title"
                         value={editedTitle}
                         onChange={(e) => setEditedTitle(e.target.value)}
@@ -1013,14 +1018,14 @@ function SocialPostPageContent() {
                         className="min-w-0 flex-1 bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-2 text-xs sm:text-sm text-zinc-100 focus:outline-none focus:border-amber-400"
                         placeholder="AI-generated platform title"
                       />
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleCopy(editedTitle, 'post_title')}
                         className="shrink-0 px-3 py-2 rounded-lg bg-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors"
                         aria-label="Copy post title"
                       >
                         {copiedKey === 'post_title' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      </button>
+                      </Button>
                     </div>
                     <p className="text-[11px] text-zinc-500">
                       Generated for {platform === 'all' ? 'Instagram-style universal social copy' : platform}; you can edit it before copying.
@@ -1153,7 +1158,7 @@ function SocialPostPageContent() {
                           {/* Variation Switcher Tabs */}
                           <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800 text-xs">
                             {bundle.variations.map((v, vIdx) => (
-                              <button
+                              <Button
                                 key={vIdx}
                                 type="button"
                                 onClick={() => handleSelectVariation(vIdx)}
@@ -1164,7 +1169,7 @@ function SocialPostPageContent() {
                                 }`}
                               >
                                 {v.title}
-                              </button>
+                              </Button>
                             ))}
                           </div>
 
@@ -1181,7 +1186,7 @@ function SocialPostPageContent() {
                             {isModified && (
                               <>
                                 <span className="text-zinc-600">·</span>
-                                <button
+                                <Button
                                   type="button"
                                   onClick={() => {
                                     if (bundle?.variations?.[selectedVariationIdx]) {
@@ -1193,7 +1198,7 @@ function SocialPostPageContent() {
                                 >
                                   <RotateCcw className="w-3 h-3" />
                                   <span>Reset Copy</span>
-                                </button>
+                                </Button>
                               </>
                             )}
                           </div>
@@ -1216,7 +1221,7 @@ function SocialPostPageContent() {
                           </div>
 
                           {/* Textarea */}
-                          <textarea
+                          <Textarea
                             rows={11}
                             value={editedText}
                             onChange={(e) => setEditedText(e.target.value)}
@@ -1226,7 +1231,7 @@ function SocialPostPageContent() {
 
                           {/* Floating Copy & Individual Post Actions on Textarea */}
                           <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
-                            <button
+                            <Button
                               type="button"
                               onClick={() => handleCopy(editedText, 'full_post')}
                               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-md ${
@@ -1246,9 +1251,9 @@ function SocialPostPageContent() {
                                   <span>Copy Post</span>
                                 </>
                               )}
-                            </button>
+                            </Button>
 
-                            <button
+                            <Button
                               type="button"
                               onClick={handleDirectPublish}
                               disabled={isDirectPublishing}
@@ -1273,7 +1278,7 @@ function SocialPostPageContent() {
                                   ? 'Publish on Facebook'
                                   : 'Publish on All Platforms'}
                               </span>
-                            </button>
+                            </Button>
                           </div>
                         </div>
 
@@ -1355,31 +1360,31 @@ function SocialPostPageContent() {
                                       <ExternalLink className="w-3.5 h-3.5" />
                                     </a>
                                   )}
-                                  <button
+                                  <Button
                                     type="button"
                                     onClick={() => setPublishStatus({ status: 'idle' })}
                                     className="text-[11px] text-zinc-400 hover:text-white px-2 py-1 cursor-pointer transition-colors"
                                   >
                                     Publish Again
-                                  </button>
+                                  </Button>
                                 </div>
                               ) : (
                                 <>
                                   {/* If account is not connected, offer 1-click connect */}
                                   {platform !== 'all' &&
                                   connections[platform as PublishingPlatformKey]?.status !== 'connected' ? (
-                                    <button
+                                    <Button
                                       type="button"
                                       onClick={() => handleConnectPlatform(platform as PublishingPlatformKey)}
                                       className="flex items-center gap-1.5 px-4 py-2 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-sm active:scale-95"
                                     >
                                       <SocialPlatformIcon platform={platform} size="sm" />
                                       <span>Connect {getPlatformTitle(platform)}</span>
-                                    </button>
+                                    </Button>
                                   ) : null}
 
                                   {/* Main Direct Publish Button */}
-                                  <button
+                                  <Button
                                     type="button"
                                     onClick={handleDirectPublish}
                                     disabled={
@@ -1402,7 +1407,7 @@ function SocialPostPageContent() {
                                         ? 'Publish on Facebook'
                                         : 'Publish on All Platforms'}
                                     </span>
-                                  </button>
+                                  </Button>
                                 </>
                               )}
                             </div>
@@ -1415,13 +1420,13 @@ function SocialPostPageContent() {
                                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
                                 <span>{publishStatus.message || 'Publishing failed'}</span>
                               </div>
-                              <button
+                              <Button
                                 type="button"
                                 onClick={handleDirectPublish}
                                 className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
                               >
                                 Retry
-                              </button>
+                              </Button>
                             </div>
                           )}
                         </div>
@@ -1468,7 +1473,7 @@ function SocialPostPageContent() {
                 {bundle && (
                   <>
                     {/* Copy Full Post Action */}
-                    <button
+                    <Button
                       type="button"
                       onClick={() => handleCopy(editedText, 'full_post')}
                       className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold rounded-xl text-xs transition-all border border-zinc-700 active:scale-95 cursor-pointer shadow-sm"
@@ -1484,7 +1489,7 @@ function SocialPostPageContent() {
                           <span>Copy Post</span>
                         </>
                       )}
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
