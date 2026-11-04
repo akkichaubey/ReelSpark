@@ -1,5 +1,20 @@
 # ReelSpark shared UI
 
+The dedicated [thumbnail cover section](thumbnail-cover.md) precedes timeline
+content. Add track and export choices use shared Select; edit/replace/remove,
+poster playback and separate downloads use shared Button. Specialized file
+decoding/canvas generation remains local to cover handling.
+
+Add track displays capitalized labels (Video, Intro, Overlay, Audio, Music,
+Text, Captions); stored track-kind values remain lowercase for compatibility.
+
+QA follow-up (2026-11-02): timeline inspector/settings forms use DialogSurface
+with asChild to preserve markup while supplying focus trapping/restoration.
+Closed Select triggers and dialog content allow Escape to reach Radix; other
+editor shortcuts stay contained. Native Chromium media shadow controls can
+consume Escape without a DOM event; Tab to Cancel in that case. See the
+[QA/QC report](qa-qc-2026-11-01.md) for executed checks and limitations.
+
 Timeline frame tiles use native lazy images for small authenticated cached JPEGs,
 with bounded viewport mounting and load/error placeholders. A single portalled,
 pointer-transparent, muted video supplies hover decoding. Retry uses shared

@@ -1,5 +1,17 @@
 # Reel Maker multi-track timeline
 
+Thumbnail cover follow-up: [cover behavior and tests](thumbnail-cover.md).
+This optional pre-playback poster is independent of source clip timing and
+does not become a draggable clip or ripple-edit target.
+
+Current audit (2026-11-02): [QA/QC evidence](qa-qc-2026-11-01.md) supersedes
+historical pending notes below for the explicitly executed cases. Browser
+checks cover real muted hover decoding, clip controls, caption editing,
+keyframes, cross-track moves, dialog focus, retry and drag cancellation.
+Responsive component fixtures passed at 375–1440px in both themes. Actual
+advanced MP4 pixels/audio were measured. Authenticated cloud/provider flows
+remain blocked; do not interpret fixtures as live save/export E2E coverage.
+
 Thumbnail follow-up (2026-10-31): video strips are viewport-bounded and zoom
 responsive; cached samples adapt from 4 to 24 with explicit timestamps. A muted
 hover player decodes requested source positions. Loading/failure/retry states

@@ -13,7 +13,7 @@ export interface MergeThumbnailOptions {
   thumbnailPath: string;
   outputPath?: string;
   mergeMode?: ThumbnailMergeMode;
-  introDuration?: number; // in seconds, default 1.0
+  introDuration?: number; // seconds requested; 0.01 defaults to one encoded frame
   width?: number; // target video width
   height?: number; // target video height
   signal?: AbortSignal;
@@ -38,7 +38,7 @@ export async function saveBase64Image(dataUrl: string, outputPath: string): Prom
  * Merges a thumbnail cover image into an MP4 video using FFmpeg.
  *
  * Supported merge modes:
- * - 'intro_and_poster': Displays thumbnail as the opening hook (first 0.8s - 1.5s) AND attaches as MP4 container cover art (attached_pic).
+ * - 'intro_and_poster': Covers frame zero by default AND attaches MP4 cover art.
  * - 'intro_hook': Overlays thumbnail as opening hook for specified duration without modifying MP4 metadata tracks.
  * - 'poster_only': Attaches thumbnail as MP4 cover art (attached_pic) via stream copy without altering video stream or duration.
  */
@@ -50,7 +50,7 @@ export async function mergeThumbnailIntoVideo(
     thumbnailPath,
     outputPath: customOutputPath,
     mergeMode = 'intro_and_poster',
-    introDuration = 0.000001,
+    introDuration = 0.01,
     width = 1080,
     height = 1920,
     signal,
@@ -107,7 +107,7 @@ export async function mergeThumbnailIntoVideo(
       tempOutput,
     ];
   } else {
-    // Default: 'intro_and_poster' (Frame 0 instant cover for 0.000001s + MP4 container attached_pic)
+    // Default: cover frame zero plus attached artwork. Never prepend media or shift audio.
     const duration = Math.max(0.000001, Math.min(5.0, introDuration));
     const overlayEnable =
       duration <= 0.05

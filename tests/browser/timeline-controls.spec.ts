@@ -5,7 +5,7 @@ test.beforeAll(compileTimelineFixture);
 test.beforeEach(async ({ page, request }) => mountTimeline(page, request));
 test('cross-track pointer drop and locked destination preserve validation and undo', async ({ page }) => {
   const initial = await projectState(page), clip = initial.timeline!.clips.find(c => c.name === 'Later video')!;
-  await page.getByRole('combobox', { name: 'Add track', exact: true }).click(); await page.getByRole('option', { name: 'overlay', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Add track', exact: true }).click(); await page.getByRole('option', { name: 'Overlay', exact: true }).click();
   const overlay = (await projectState(page)).timeline!.tracks.find(t => t.kind === 'overlay')!;
   const drag = async () => {
     const source = await clipLocator(page, clip.id).boundingBox(), target = await page.locator(`[data-track-id="${overlay.id}"]`).boundingBox();

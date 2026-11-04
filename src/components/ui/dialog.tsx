@@ -29,7 +29,12 @@ export function DialogSurface({ children, onClose, overlayClassName, dismissOnOu
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className={overlayClassName}>
           <DialogPrimitive.Content {...props}
-            onKeyDown={event => { onKeyDown?.(event); event.stopPropagation(); }}
+            onKeyDown={event => {
+              onKeyDown?.(event);
+              // Radix dismissable layers handle Escape at the document. Keep
+              // other editor shortcuts inside the dialog without swallowing it.
+              if (event.key !== 'Escape') event.stopPropagation();
+            }}
             onInteractOutside={event => {
               onInteractOutside?.(event);
               if (!dismissOnOutside) event.preventDefault();

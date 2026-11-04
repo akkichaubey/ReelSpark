@@ -8,6 +8,9 @@ test('clip inspector moves focus inside, traps Tab and restores the launcher on 
   const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible();
   await expect.poll(async () => dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
   for (let i = 0; i < 30; i++) { await page.keyboard.press('Tab'); expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true); }
+  // Chromium's native video shadow controls consume Escape without dispatching
+  // a DOM key event. Tab back to a form control to test the dialog's handler.
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).focus();
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(launcher).toBeFocused();
 });
 test('track settings owns focus and cancels without changing data', async ({ page }) => {

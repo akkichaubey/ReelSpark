@@ -1,6 +1,7 @@
 "use client";
 
 import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { ThumbnailCoverControls } from './ThumbnailCover';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -121,6 +122,10 @@ export function ProfessionalTimeline({
   onAutoSyncCaptions,
   isSyncingCaptions = false,
   onCaptionEffects,
+  thumbnailCoverUrl,
+  thumbnailCoverError,
+  onThumbnailCoverChange,
+  onEditThumbnail,
 }: {
   project: CaptionProject;
   currentTime: number;
@@ -140,6 +145,10 @@ export function ProfessionalTimeline({
   onAutoSyncCaptions?: () => void;
   isSyncingCaptions?: boolean;
   onCaptionEffects?: () => void;
+  thumbnailCoverUrl?: string;
+  thumbnailCoverError?: string;
+  onThumbnailCoverChange?: (cover: NonNullable<CaptionProject['thumbnailCover']>) => void;
+  onEditThumbnail?: () => void;
 }) {
   const base = useMemo(() => timelineFromProject(project), [project]);
   const [draft, setDraft] = useState<ReelTimeline | null>(null);
@@ -741,6 +750,7 @@ export function ProfessionalTimeline({
         <Select
           value=""
           onValueChange={(value) => {
+            if (value === 'thumbnail') { if (onEditThumbnail) onEditThumbnail(); else onThumbnailCoverChange?.({ enabled: true }); return; }
             const kind = value as TrackKind;
             run(() => ({
               ...timeline,
@@ -750,6 +760,7 @@ export function ProfessionalTimeline({
         >
           <SelectTrigger aria-label="Add track"><SelectValue placeholder="+ Add track" /></SelectTrigger>
           <SelectContent>
+          {onThumbnailCoverChange && <SelectItem value="thumbnail">Thumbnail</SelectItem>}
           {(
             [
               "video",
@@ -762,7 +773,7 @@ export function ProfessionalTimeline({
             ] as TrackKind[]
           ).map((kind) => (
             <SelectItem key={kind} value={kind}>
-              {kind}
+              {kind.charAt(0).toUpperCase() + kind.slice(1)}
             </SelectItem>
           ))}
           </SelectContent>
@@ -810,6 +821,8 @@ export function ProfessionalTimeline({
         </div>
       </div>
       {thumbnailHover && <HoverFramePreview key={thumbnailHover.fileUrl} frame={thumbnailHover} />}
+      {onThumbnailCoverChange && <ThumbnailCoverControls enabled={project.thumbnailCover?.enabled === true}
+        url={thumbnailCoverUrl} error={thumbnailCoverError} onChange={onThumbnailCoverChange} onEdit={() => onEditThumbnail?.()} />}
       {error && (
         <div
           role="alert"
@@ -1122,7 +1135,7 @@ export function ProfessionalTimeline({
                           role="group"
                           aria-roledescription="timeline clip"
                           aria-label={`Clip: ${clip.name}`}
-                          aria-description={selectedClip ? 'Selected' : 'Not selected'}
+                          aria-describedby={`clip-selection-${clip.id}`}
                           title={`${clip.name}\n${clock(clip.startMs)} → ${clock(clip.startMs + clip.durationMs)}\nDouble click to edit · S to split`}
                           onDoubleClick={() => {
                             setInspector(structuredClone(clip));
@@ -1144,12 +1157,13 @@ export function ProfessionalTimeline({
                           }}
                           data-timeline-clip="true"
                           data-clip-id={clip.id}
-                          className={`absolute bottom-1 top-1 cursor-grab touch-none overflow-hidden rounded-md border ${colors[track.kind]} ${selectedClip ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-black z-10" : ""} ${track.locked ? "cursor-not-allowed" : ""}`}
+                          className={`absolute bottom-1 top-1 cursor-grab touch-none select-none overflow-hidden rounded-md border ${colors[track.kind]} ${selectedClip ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-black z-10" : ""} ${track.locked ? "cursor-not-allowed" : ""}`}
                           style={{
                             left: clip.startMs * px,
                             width: Math.max(3, clip.durationMs * px),
                           }}
                         >
+                          <span id={`clip-selection-${clip.id}`} className="sr-only">{selectedClip ? 'Selected' : 'Not selected'}</span>
                           {asset?.mediaType === "image" ? (
                             <div
                               aria-hidden="true"

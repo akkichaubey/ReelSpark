@@ -58,7 +58,8 @@
     "test:timeline-captions": "tsx tests/timeline_caption_editing.test.ts",
     "test:timeline-motion": "tsx tests/timeline_motion.test.ts",
     "test:timeline-thumbnails": "tsx tests/timeline_thumbnails.test.ts",
-    "test:timeline-render": "tsx tests/professional_timeline.test.ts --render"
+    "test:timeline-render": "tsx tests/professional_timeline.test.ts --render",
+    "test:thumbnail-cover": "tsx tests/thumbnail_cover_render.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1156.0",

@@ -368,6 +368,8 @@ export interface CaptionProject {
   outputSettings: OutputSettings;
   thumbnailSettings?: ThumbnailSettings;
   thumbnailUrl?: string;
+  /** Pre-playback cover, independent of every source clip and its timestamps. */
+  thumbnailCover?: { enabled: boolean; customBgUrl?: string };
   renderedVideoPath?: string;
   renderedVideoUrl?: string;
   renderedSrtPath?: string;

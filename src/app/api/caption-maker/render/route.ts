@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       thumbnailPath: rawThumbnailPath,
       mergeThumbnail = true,
       thumbnailMergeMode = 'intro_and_poster',
-      thumbnailIntroDuration = 0.000001,
+      thumbnailIntroDuration = 0.01,
     }: {
       projectId?: string;
       imagePath?: string;
@@ -305,7 +305,7 @@ export async function POST(req: NextRequest) {
             videoPath: outputMp4Path,
             thumbnailPath: resolvedThumbnailPath,
             mergeMode: thumbnailMergeMode,
-            introDuration: thumbnailIntroDuration ?? 0.000001,
+            introDuration: thumbnailIntroDuration ?? 0.01,
             width: outputSettings.width,
             height: outputSettings.height,
             signal: renderAbort.signal,

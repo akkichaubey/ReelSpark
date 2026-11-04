@@ -8,6 +8,7 @@ import {
 import { CaptionReel } from "@/remotion/CaptionReel";
 import { compileTimeline } from "@/lib/timeline/model";
 import type { CaptionProject } from "@/lib/caption-maker/types";
+import { ThumbnailPoster } from './ThumbnailCover';
 
 export function TimelinePreview({
   project,
@@ -16,6 +17,7 @@ export function TimelinePreview({
   onTime,
   onPlaying,
   seekVersion = 0,
+  thumbnailCoverUrl,
 }: {
   project: CaptionProject;
   currentTime: number;
@@ -23,6 +25,7 @@ export function TimelinePreview({
   onTime: (time: number) => void;
   onPlaying: (playing: boolean) => void;
   seekVersion?: number;
+  thumbnailCoverUrl?: string;
 }) {
   const player = useRef<PlayerRef>(null);
   const reportedTime = useRef<number | null>(null);
@@ -119,7 +122,7 @@ export function TimelinePreview({
     );
   const plan = result.plan;
   return (
-    <div data-theme-media="true" className="flex h-full w-full min-h-0 items-center justify-center overflow-hidden">
+    <div data-theme-media="true" className="relative flex h-full w-full min-h-0 items-center justify-center overflow-hidden">
       <Player
         ref={player}
         component={CaptionReel}
@@ -155,6 +158,7 @@ export function TimelinePreview({
           </div>
         )}
       />
+      {!playing && currentTime <= 0 && <ThumbnailPoster url={thumbnailCoverUrl} onPlay={() => onPlaying(true)} />}
     </div>
   );
 }

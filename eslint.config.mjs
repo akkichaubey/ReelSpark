@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // Runtime media/cache and bundled QA artifacts are generated, not source.
+    "storage/**",
     "next-env.d.ts",
     "scripts/**",
     "tests/**",

@@ -36,6 +36,8 @@ import { CaptionPreview } from '@/components/caption-maker/CaptionPreview';
 import { TranscriptEditor } from '@/components/caption-maker/TranscriptEditor';
 import { ProfessionalTimeline } from '@/components/caption-maker/ProfessionalTimeline';
 import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
+import { ThumbnailPoster, useThumbnailCover } from '@/components/caption-maker/ThumbnailCover';
+import { createThumbnailCoverDataUrl, THUMBNAIL_COVER_SECONDS } from '@/lib/caption-maker/thumbnail-cover';
 import { commitTimeline, projectTimelineAssets, synchronizeTimelineSources, timelineEnd } from '@/lib/timeline/model';
 import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
 import type { SavedReel } from '@/lib/saved-reels/types';
@@ -1060,25 +1062,19 @@ function CaptionMakerPageContent() {
     });
   };
 
+  const thumbnailCover = useThumbnailCover(project, currentThumbSettings);
+  const handleEditThumbnailCover = () => {
+    updateProjectWithHistory(previous => ({ ...previous, thumbnailCover: { enabled: true },
+      thumbnailSettings: { ...(previous.thumbnailSettings || currentThumbSettings),
+        ...(previous.thumbnailCover?.customBgUrl ? { customBgUrl: previous.thumbnailCover.customBgUrl } : {}) },
+      updatedAt: new Date().toISOString() }));
+    setCompactPanel('style'); setRightTab('thumbnail'); setCenterViewMode('thumbnail');
+  };
+
   const handleDownloadThumbnail = async (format: 'png' | 'jpeg') => {
     try {
-      const canvas = document.createElement('canvas');
-      let bgImg: HTMLImageElement | null = null;
-      const sourceUrl = currentThumbSettings.customBgUrl || project.image?.fileUrl;
-      if (sourceUrl) {
-        bgImg = await new Promise<HTMLImageElement | null>((res) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => res(img);
-          img.onerror = () => res(null);
-          img.src = sourceUrl;
-        });
-      }
-
-      await renderThumbnailToCanvas(canvas, currentThumbSettings, bgImg, project.image);
-      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
       const ext = format === 'jpeg' ? 'jpg' : 'png';
-      const dataUrl = canvas.toDataURL(mime, 0.95);
+      const dataUrl = await createThumbnailCoverDataUrl(project, currentThumbSettings, format);
 
       const a = document.createElement('a');
       a.href = dataUrl;
@@ -1663,7 +1659,16 @@ function CaptionMakerPageContent() {
 
     // Auto-generate or resolve thumbnail data URL if mergeThumbnail is enabled
     let thumbnailDataUrl = activeProj.thumbnailUrl?.startsWith('data:image/') ? activeProj.thumbnailUrl : undefined;
-    const shouldMerge = options?.mergeThumbnail !== false;
+    const shouldMerge = options?.mergeThumbnail ?? project.thumbnailCover?.enabled ?? true;
+
+    if (shouldMerge && activeProj.thumbnailCover) {
+      try { thumbnailDataUrl = await createThumbnailCoverDataUrl(activeProj, currentThumbSettings); }
+      catch (error) {
+        setIsRendering(false);
+        setRenderResult({ error: error instanceof Error ? error.message : 'Thumbnail generation failed.' });
+        return;
+      }
+    }
 
     if (shouldMerge && !thumbnailDataUrl && typeof window !== 'undefined') {
       try {
@@ -1730,7 +1735,7 @@ function CaptionMakerPageContent() {
       thumbnailDataUrl,
       mergeThumbnail: shouldMerge,
       thumbnailMergeMode: options?.thumbnailMergeMode || 'intro_and_poster',
-      thumbnailIntroDuration: options?.thumbnailIntroDuration ?? 0.000001,
+      thumbnailIntroDuration: options?.thumbnailIntroDuration ?? THUMBNAIL_COVER_SECONDS,
     };
 
     try {
@@ -2492,8 +2497,9 @@ function CaptionMakerPageContent() {
                 }}
               />
             ) : project.timeline?.enabled ? (
-              <TimelinePreview seekVersion={timelineSeekVersion} project={project} currentTime={currentTime} playing={isPlaying} onTime={setCurrentTime} onPlaying={setIsPlaying} />
+              <TimelinePreview thumbnailCoverUrl={thumbnailCover.url} seekVersion={timelineSeekVersion} project={project} currentTime={currentTime} playing={isPlaying} onTime={setCurrentTime} onPlaying={setIsPlaying} />
             ) : (
+              <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
               <CaptionPreview
                 image={project.image}
                 audioUrl={project.audio?.fileUrl}
@@ -2514,6 +2520,8 @@ function CaptionMakerPageContent() {
                   handleChangeStyle({ ...project.captionStyle, ...updates })
                 }
               />
+              {!isPlaying && currentTime <= 0 && <ThumbnailPoster url={thumbnailCover.url} onPlay={togglePlay} />}
+              </div>
             )}
           </div>
         </main>
@@ -2602,6 +2610,8 @@ function CaptionMakerPageContent() {
       {savedReelLoadError ? <div role="alert" className="bg-red-950 px-4 py-3 text-sm text-red-200">{savedReelLoadError} · <a href="/saved-reels">Return to Saved Reels</a></div> : (!savedReelId || savedReelSession) && <SavedReelActions project={project} session={savedReelSession} onUpdateProject={updates => updateProjectWithHistory(previous => ({ ...previous, ...updates, updatedAt: new Date().toISOString() }))} onSaved={(reel) => { setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); if (!savedReelId) router.push(`/reel-maker?savedReel=${encodeURIComponent(reel.id)}`); }} />}
       <footer className="shrink-0">
         <ProfessionalTimeline project={project} currentTime={currentTime} isPlaying={isPlaying} onSeek={handleSeek} onTogglePlay={togglePlay} onUndo={undo} onRedo={redo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1} onTrimChange={handleTrimChange} onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
+          thumbnailCoverUrl={thumbnailCover.url} thumbnailCoverError={thumbnailCover.error} onEditThumbnail={handleEditThumbnailCover}
+          onThumbnailCoverChange={cover => updateProjectWithHistory(previous => ({ ...previous, thumbnailCover: cover, updatedAt: new Date().toISOString() }))}
           onAutoSyncCaptions={handleTranscribe} isSyncingCaptions={isTranscribing}
           onCaptionEffects={() => { setCompactPanel('style'); setRightTab('style'); }}
           onCaptionSourceChange={(assetId, groups) => updateProjectWithHistory(previous => updateCaptionSource(previous, assetId, groups))}
@@ -2642,6 +2652,7 @@ function CaptionMakerPageContent() {
         project={project}
         onStartRender={handleStartRender}
         onUpdateOutputSettings={handleChangeOutput}
+        onDownloadThumbnail={handleDownloadThumbnail}
         isRendering={isRendering}
         renderProgress={renderProgress}
         renderStatusText={renderStatusText}

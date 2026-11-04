@@ -46,8 +46,10 @@ test('Dialog traps focus, contains Select Escape, retains outside-click policy a
   await expect(page.getByLabel('Dialog field')).toBeFocused();
   await page.getByRole('combobox', { name: 'Dialog options' }).click(); await page.keyboard.press('Escape');
   await expect(page.getByRole('listbox')).toHaveCount(0); await expect(dialog).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Dialog options' })).toBeFocused();
   await page.mouse.click(5, 5); await expect(dialog).toBeVisible();
   for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true); }
+  await page.getByRole('combobox', { name: 'Dialog options' }).focus();
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(launcher).toBeFocused();
 });
 test('shared components expose no serious or critical axe violations in dark and light', async ({ page }) => {

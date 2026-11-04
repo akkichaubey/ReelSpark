@@ -147,6 +147,7 @@ async function main() {
     const project: CaptionProject = {
       ...createEmptyCaptionProject(),
       title: 'Saved favorite',
+      thumbnailCover: { enabled: true, customBgUrl: 'data:image/png;base64,iVBORw0KGgo=' },
       image: first.video,
       audio: first.audio,
       transcript: [
@@ -176,6 +177,8 @@ async function main() {
     assert.deepEqual(saved.project.captionGroups, project.captionGroups);
     assert.deepEqual(saved.project.captionStyle, project.captionStyle);
     assert.deepEqual(saved.project.outputSettings, project.outputSettings);
+    assert.deepEqual(saved.project.thumbnailCover, project.thumbnailCover);
+    assert.deepEqual((await getSavedReel('usr_admin', saved.id))?.project.thumbnailCover, project.thumbnailCover);
     assert.deepEqual(saved.project.trimRange, project.trimRange);
     assert.equal(reelDuration(saved.project), 1.8499999999999999);
     assert.equal((await listSavedReels('bob')).length, 0);

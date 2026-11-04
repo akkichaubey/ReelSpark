@@ -18,7 +18,7 @@ test('selected clip controls have no critical/serious semantic accessibility def
 });
 test('add-track Select repeats actions and track changes undo/redo', async ({ page }) => {
   const initial = await projectState(page);
-  for (let i = 0; i < 2; i++) { await page.getByRole('combobox', { name: 'Add track', exact: true }).click(); await page.getByRole('option', { name: 'intro', exact: true }).click(); }
+  for (let i = 0; i < 2; i++) { await page.getByRole('combobox', { name: 'Add track', exact: true }).click(); await page.getByRole('option', { name: 'Intro', exact: true }).click(); }
   expect((await projectState(page)).timeline!.tracks.length).toBe(initial.timeline!.tracks.length + 2);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); expect((await projectState(page)).timeline!.tracks.length).toBe(initial.timeline!.tracks.length + 1);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); expect((await projectState(page)).timeline!.tracks.length).toBe(initial.timeline!.tracks.length + 2);

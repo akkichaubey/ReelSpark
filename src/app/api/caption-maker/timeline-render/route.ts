@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
               ].includes(body.thumbnailMergeMode)
                 ? body.thumbnailMergeMode
                 : "intro_and_poster",
-              introDuration: Number(body.thumbnailIntroDuration) || 0.000001,
+              introDuration: Number(body.thumbnailIntroDuration) || 0.01,
               width: project.outputSettings.width,
               height: project.outputSettings.height,
               signal: abort.signal,

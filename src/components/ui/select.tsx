@@ -12,7 +12,7 @@ export const SelectGroup = SelectPrimitive.Group;
 
 export function SelectTrigger({ className, children, onKeyDown, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) {
   return <SelectPrimitive.Trigger data-slot="select-trigger" className={cn('flex items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-900 p-1.5 text-zinc-200 outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50', className)} {...props}
-    onKeyDown={event => { onKeyDown?.(event); event.stopPropagation(); }}>
+    onKeyDown={event => { onKeyDown?.(event); if (event.key !== 'Escape') event.stopPropagation(); }}>
     {children}<SelectPrimitive.Icon asChild><ChevronDown className="size-3.5 shrink-0 opacity-70" /></SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>;
 }

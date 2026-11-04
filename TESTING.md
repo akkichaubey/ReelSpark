@@ -1,5 +1,21 @@
 # Test Guide: AI Reel Studio & Clip Finder
 
+## Current QA evidence — 2026-11-02
+
+Thumbnail cover checks: `npm run test:thumbnail-cover` verifies actual encoded
+first/next frames, unchanged audio hashes, frame counts and duration at 25/60
+FPS. `tests/browser/thumbnail-cover.spec.ts` checks cover editing/removal,
+playback, persistence, export choices and actual JPG/PNG downloads. See
+[the cover guide](docs/thumbnail-cover.md) for the one-frame duration constraint.
+
+See [the ordered QA/QC report](docs/qa-qc-2026-11-01.md) for current results,
+bug fixes and blocked workflows. Earlier dated pending notes below describe
+historical coverage. Playwright uses the existing localhost:3000 server and
+never starts one: `node node_modules/@playwright/test/cli.js test`.
+Browser fixtures isolate project data and mock media-preview responses; actual
+anonymous routes are tested separately. They do not prove authenticated cloud
+save, AI providers or publishing. The main suite passed 63/63 on this audit.
+
 ## Timeline audio and advanced edits — 2026-10-31
 
 Thumbnail follow-up: `npm run test:timeline-thumbnails` checks zoom density,

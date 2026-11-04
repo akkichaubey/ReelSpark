@@ -32,6 +32,8 @@ import { ProgressCircle } from '@/components/ProgressCircle';
 import { compileTimeline, timelineEnd } from '@/lib/timeline/model';
 import { getAssRenderCompatibility } from '@/lib/caption-maker/render-compatibility';
 import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { THUMBNAIL_COVER_SECONDS, thumbnailCoverFrameSeconds } from '@/lib/caption-maker/thumbnail-cover';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -58,6 +60,7 @@ interface ExportModalProps {
   } | null;
   onOpenThumbnailCreator?: () => void;
   onOpenSocialPost?: () => void;
+  onDownloadThumbnail?: (format: 'png' | 'jpeg') => void | Promise<void>;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -72,15 +75,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   renderResult,
   onOpenThumbnailCreator,
   onOpenSocialPost,
+  onDownloadThumbnail,
 }) => {
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'vtt' | 'txt'>('srt');
   const [subtitleGranularity, setSubtitleGranularity] = useState<'phrase' | 'word'>('phrase');
   const [engine, setEngine] = useState<'remotion' | 'ffmpeg'>('remotion');
-  const [mergeThumbnail, setMergeThumbnail] = useState<boolean>(true);
+  const coverKey = `${project.id}:${project.thumbnailCover?.enabled ?? 'legacy'}`;
+  const [thumbnailExport, setThumbnailExport] = useState<{ key: string; include: boolean } | null>(null);
+  const mergeThumbnail = thumbnailExport?.key === coverKey ? thumbnailExport.include : project.thumbnailCover?.enabled ?? true;
   const [thumbnailMergeMode, setThumbnailMergeMode] = useState<
     'intro_and_poster' | 'intro_hook' | 'poster_only'
   >('intro_and_poster');
-  const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(0.000001);
+  const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(THUMBNAIL_COVER_SECONDS);
 
   const advanced = Boolean(project.timeline?.enabled);
   const selectedEngine = advanced ? 'remotion' : engine;
@@ -604,38 +610,51 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               {/* Auto-merge Thumbnail / Cover Option */}
               <div className="p-3.5 bg-zinc-950/80 rounded-xl border border-zinc-800 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={mergeThumbnail}
-                      onChange={(e) => setMergeThumbnail(e.target.checked)}
-                      className="accent-amber-400 rounded w-4 h-4 cursor-pointer"
-                    />
+                  <div className="flex items-center gap-2">
                     <span className="font-semibold text-xs text-zinc-100 flex items-center gap-1.5">
                       <Combine className="w-3.5 h-3.5 text-amber-400" />
-                      Auto-merge Thumbnail / Cover into Video
+                      Video Thumbnail
                     </span>
-                  </label>
+                  </div>
                   <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                     Recommended
                   </span>
                 </div>
+                <Select value={mergeThumbnail ? 'with' : 'without'} onValueChange={value => setThumbnailExport({ key: coverKey, include: value === 'with' })}>
+                  <SelectTrigger aria-label="Video thumbnail export"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="with">Export with Thumbnail</SelectItem>
+                    <SelectItem value="without">Export without Thumbnail</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-zinc-400">{mergeThumbnail
+                  ? thumbnailMergeMode === 'poster_only' ? 'Attach MP4 artwork without changing any video frame or audio timing.'
+                  : thumbnailIntroDuration <= 0.05 ? `0.01s cover request: one frame at ${project.outputSettings.fps} FPS (${thumbnailCoverFrameSeconds(project.outputSettings.fps).toFixed(3)}s). No added segment or shift to audio, captions or effects.`
+                  : `Opening cover overlay: ${thumbnailIntroDuration}s. Video duration and all track timestamps stay unchanged.`
+                  : 'Video exports unchanged. Download a separate cover for YouTube or another platform.'}</p>
+                {onDownloadThumbnail && <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onDownloadThumbnail('jpeg')}>Download Thumbnail JPG</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onDownloadThumbnail('png')}>Download Thumbnail PNG</Button>
+                </div>}
 
                 {mergeThumbnail && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-zinc-800/80 text-[11px]">
+                  <details className="pt-2 border-t border-zinc-800/80 text-[11px]"><summary className="cursor-pointer text-zinc-300">Advanced cover settings</summary>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
                     <div>
                       <label className="text-[10px] text-zinc-400 block mb-1">
                         Merge Strategy
                       </label>
-                      <select
+                      <Select
                         value={thumbnailMergeMode}
-                        onChange={(e) => setThumbnailMergeMode(e.target.value as any)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-zinc-200 text-xs focus:outline-none"
+                        onValueChange={value => setThumbnailMergeMode(value as typeof thumbnailMergeMode)}
                       >
-                        <option value="intro_and_poster">Instant Poster Frame (0.000001s) + MP4 Cover Art</option>
-                        <option value="intro_hook">Instant Poster Frame Only</option>
-                        <option value="poster_only">MP4 File Cover Art Only</option>
-                      </select>
+                        <SelectTrigger aria-label="Thumbnail merge strategy"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="intro_and_poster">Opening Frame + MP4 Cover Art</SelectItem>
+                          <SelectItem value="intro_hook">Opening Frame Only</SelectItem>
+                          <SelectItem value="poster_only">MP4 File Cover Art Only</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div>
@@ -647,25 +666,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           {thumbnailMergeMode === 'poster_only'
                             ? 'N/A'
                             : thumbnailIntroDuration <= 0.05
-                            ? '0.000001s (Instant Frame 0)'
+                            ? '0.01s (one encoded frame)'
                             : `${thumbnailIntroDuration}s`}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
-                          onClick={() => setThumbnailIntroDuration(0.000001)}
+                          onClick={() => setThumbnailIntroDuration(THUMBNAIL_COVER_SECONDS)}
                           className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap cursor-pointer ${
                             thumbnailIntroDuration <= 0.05
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
                           }`}
                         >
-                          Instant (0.000001s)
+                          Instant (0.01s)
                         </Button>
                         <input
                           type="range"
-                          min={0.000001}
+                          aria-label="Opening cover duration"
+                          min={0.01}
                           max={2.0}
                           step={0.1}
                           value={thumbnailIntroDuration}
@@ -676,6 +696,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       </div>
                     </div>
                   </div>
+                  </details>
                 )}
               </div>
 

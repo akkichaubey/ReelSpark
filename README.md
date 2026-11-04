@@ -1,10 +1,16 @@
 # ReelSpark — Professional AI Reel Studio & Local-First Clip Finder
 
+Current verification: [2026-11 QA/QC report](docs/qa-qc-2026-11-01.md) records
+tested features, confirmed fixes, command evidence and remaining release risks.
+
 > Transform long-form podcasts, speeches, and video recordings into high-impact, virally styled vertical reels (9:16) with synchronized karaoke captions, custom typography, sound design, and AI smart editing.
 
 ---
 
 ## ⚡ Highlights
+
+- **Thumbnail Cover**: editable pre-playback poster, with/without cover video
+  export, and separate JPG/PNG downloads. [Behavior and verification](docs/thumbnail-cover.md).
 
 - **Video Thumbnail Timeline**: Zoom-responsive, viewport-bounded frame strips,
   source-frame hover previews, preserved clip labels/durations, and loading/retry
