@@ -5,49 +5,78 @@ import { validateTimeline } from '../timeline/model';
 import type { AutoCutClipCandidate } from './types';
 import { autoCutClipsToTimelineClips } from './optimizer';
 
-/** Reuse the editor's timeline document and original media; no rendered intermediate. */
-export function createAutoCutReel(asset: MediaAsset, candidates: AutoCutClipCandidate[], title: string) {
-  const selected = candidates.filter(c => c.selected);
+/** Reuse the editor timeline while preserving each clip's source-local trim. */
+export function createAutoCutReel(asset: MediaAsset | MediaAsset[], candidates: AutoCutClipCandidate[], title: string) {
+  const available = Array.isArray(asset) ? asset : [asset];
+  const selected = candidates.filter(clip => clip.selected);
   if (!selected.length) throw new Error('Select at least one clip.');
-  if (selected.some(c => !Number.isSafeInteger(c.startMs) || !Number.isSafeInteger(c.endMs) || c.startMs < 0 || c.endMs > asset.metadata.durationMs || c.endMs <= c.startMs || c.durationMs !== c.endMs - c.startMs)) {
-    throw new Error('Clip timing exceeds the source media. Regenerate the edit.');
+  const byId = new Map(available.map(source => [source.id, source]));
+  const getSource = (clip: AutoCutClipCandidate) => {
+    const source = clip.sourceVideoId ? byId.get(clip.sourceVideoId) : available.length === 1 ? available[0] : undefined;
+    if (!source) throw new Error('Selected clip source is unavailable.');
+    return source;
+  };
+  const sources = [...new Set(selected.map(getSource))];
+  for (const clip of selected) {
+    if (!Number.isSafeInteger(clip.startMs) || !Number.isSafeInteger(clip.endMs) ||
+      clip.startMs < 0 || clip.endMs > getSource(clip).metadata.durationMs ||
+      clip.endMs <= clip.startMs || clip.durationMs !== clip.endMs - clip.startMs) {
+      throw new Error('Clip timing exceeds the source media. Regenerate the edit.');
+    }
   }
   const project = createEmptyCaptionProject(`autocut_${crypto.randomUUID()}`);
   project.title = title;
-  const url = getMediaAssetWebUrl(asset);
-  const duration = asset.metadata.durationMs / 1000;
-  const sourceId = `source_${asset.id}`;
-  const clips = autoCutClipsToTimelineClips(selected, asset.metadata.hasVideo ? 'video' : 'audio', sourceId);
-  project.timeline = { version: 1, enabled: true, fps: Math.min(60, Math.max(12, asset.metadata.fps || 30)),
-    tracks: [], assets: [{ id: sourceId, fileUrl: url, fileName: asset.filename,
-      mediaType: asset.metadata.hasVideo ? 'video' : 'audio', durationMs: asset.metadata.durationMs,
-      width: asset.metadata.width, height: asset.metadata.height, hasAudio: asset.metadata.hasAudio }],
-    clips: [], captionSources: {}, markers: [] };
-  if (asset.metadata.hasVideo) {
-    project.timeline.tracks.push({ id: 'video', name: 'Auto Cut video', kind: 'video', locked: false, hidden: false, muted: false, height: 64 });
-    project.timeline.clips.push(...clips.map(c => ({ ...c, muted: true, linkId: `link_${c.id}` })));
-    project.image = { id: sourceId, fileUrl: url, storagePath: asset.localPath, fileName: asset.filename,
-      fileSize: asset.fileSizeBytes, width: asset.metadata.width || 1080, height: asset.metadata.height || 1920,
-      format: asset.metadata.formatName, fitMode: 'cover', position: 'center', scale: 100,
-      mediaType: 'video', duration, muteSourceAudio: true };
+  const firstVideo = sources.find(source => source.metadata.hasVideo);
+  const firstAudio = sources.find(source => source.metadata.hasAudio);
+  const timeline = project.timeline = {
+    version: 1, enabled: true, fps: Math.min(60, Math.max(12, sources[0].metadata.fps || 30)),
+    tracks: [], assets: sources.map(source => ({
+      id: `source_${source.id}`, fileUrl: getMediaAssetWebUrl(source), fileName: source.filename,
+      mediaType: source.metadata.hasVideo ? 'video' as const : 'audio' as const,
+      durationMs: source.metadata.durationMs, width: source.metadata.width, height: source.metadata.height,
+      hasAudio: source.metadata.hasAudio,
+    })),
+    clips: [], captionSources: {}, markers: [],
+  } satisfies NonNullable<typeof project.timeline>;
+  const addTrack = (id: 'video' | 'audio' | 'captions', name: string, height: number) => {
+    project.timeline!.tracks.push({ id, name, kind: id, locked: false, hidden: false, muted: false, height });
+  };
+  if (firstVideo) {
+    addTrack('video', 'Auto Cut video', 64);
+    project.image = { id: `source_${firstVideo.id}`, fileUrl: getMediaAssetWebUrl(firstVideo), storagePath: firstVideo.localPath,
+      fileName: firstVideo.filename, fileSize: firstVideo.fileSizeBytes, width: firstVideo.metadata.width || 1080,
+      height: firstVideo.metadata.height || 1920, format: firstVideo.metadata.formatName, fitMode: 'cover',
+      position: 'center', scale: 100, mediaType: 'video', duration: firstVideo.metadata.durationMs / 1000, muteSourceAudio: true };
   }
-  if (asset.metadata.hasAudio) {
-    project.audio = { id: sourceId, fileUrl: url, storagePath: asset.localPath, fileName: asset.filename,
-      fileSize: asset.fileSizeBytes, duration, format: asset.metadata.formatName, sourceType: asset.metadata.hasVideo ? 'video' : 'audio' };
-    project.timeline.tracks.push({ id: 'audio', name: 'Original audio', kind: 'audio', locked: false, hidden: false, muted: false, height: 56 });
-    project.timeline.clips.push(...clips.map(c => ({ ...c, id: `audio_${c.id}`, trackId: 'audio', linkId: `link_${c.id}` })));
-    project.timeline.tracks.push({ id: 'captions', name: 'Captions', kind: 'captions', locked: false, hidden: false, muted: false, height: 48 });
-    project.timeline.clips.push(...clips.map(c => ({ ...c, id: 'captions_' + c.id, trackId: 'captions', linkId: 'link_' + c.id })));
-    project.timeline.captionSources[sourceId] = { transcript: [], captionGroups: [] };
+  if (firstAudio) {
+    addTrack('audio', 'Original audio', 56);
+    addTrack('captions', 'Captions', 48);
+    project.audio = { id: `source_${firstAudio.id}`, fileUrl: getMediaAssetWebUrl(firstAudio), storagePath: firstAudio.localPath,
+      fileName: firstAudio.filename, fileSize: firstAudio.fileSizeBytes, duration: firstAudio.metadata.durationMs / 1000,
+      format: firstAudio.metadata.formatName, sourceType: firstAudio.metadata.hasVideo ? 'video' : 'audio' };
   }
-  if (asset.metadata.hasAudio) {
-    const words = candidates.flatMap(c => c.transcriptWords || []);
-    const unique = new Map(words.map(w => [w.startMs + ':' + w.endMs + ':' + w.text, w]));
-    project.transcript = [...unique.values()].sort((a,b)=>a.startMs-b.startMs).map((w,index)=>({ id: 'word_' + index, text: w.text, start: w.startMs / 1000, end: w.endMs / 1000 }));
-    project.isAudioSynced = project.transcript.length > 0;
-    project.timeline.captionSources[sourceId] = { transcript: project.transcript, captionGroups: [] };
+  const clips = autoCutClipsToTimelineClips(selected, firstVideo ? 'video' : 'audio');
+  clips.forEach((clip, index) => {
+    const source = getSource(selected[index]);
+    const linked = { ...clip, assetId: `source_${source.id}`, linkId: `link_${clip.id}` };
+    if (source.metadata.hasVideo) project.timeline!.clips.push({ ...linked, muted: true });
+    if (source.metadata.hasAudio) {
+      project.timeline!.clips.push({ ...linked, id: `audio_${clip.id}`, trackId: 'audio' });
+      project.timeline!.clips.push({ ...linked, id: `captions_${clip.id}`, trackId: 'captions' });
+    }
+  });
+  for (const source of sources.filter(item => item.metadata.hasAudio)) {
+    const words = candidates.filter(clip => (clip.sourceVideoId ?? available[0]?.id) === source.id)
+      .flatMap(clip => clip.transcriptWords ?? []);
+    const unique = new Map(words.map(word => [`${word.startMs}:${word.endMs}:${word.text}`, word]));
+    const transcript = [...unique.values()].sort((a, b) => a.startMs - b.startMs).map((word, index) => ({
+      id: `word_${source.id}_${index}`, text: word.text, start: word.startMs / 1000, end: word.endMs / 1000,
+    }));
+    project.timeline!.captionSources[`source_${source.id}`] = { transcript, captionGroups: [] };
+    if (source === firstAudio) project.transcript = transcript;
   }
-  const errors = validateTimeline(project.timeline);
+  project.isAudioSynced = Object.values(project.timeline.captionSources).some(source => source.transcript.length > 0);
+  const errors = validateTimeline(timeline);
   if (errors.length) throw new Error(errors.join(' '));
   return project;
 }

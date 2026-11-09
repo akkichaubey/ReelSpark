@@ -10,13 +10,34 @@ import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access'
 import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath } from '@/lib/storage';
 import { AutoCutSettingsSchema, AutoCutClipCandidateSchema } from '@/lib/auto-cut/types';
+import { buildAutoCutScenes } from '@/lib/auto-cut/scenes';
 import {
   analyzeMediaForAutoCut,
+  detectVisualIntervals,
   extractFrameBase64,
 } from '@/lib/auto-cut/analyzer';
 import { optimizeDurationAndAssemble } from '@/lib/auto-cut/optimizer';
 
 export const runtime = 'nodejs';
+
+const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,160}$/);
+const progressSchema = z.object({ jobId: idSchema, message: z.string().max(200) });
+
+export async function GET(req: NextRequest) {
+  const access = await requireMediaUser(req);
+  if (access.error) return access.error;
+  const project = idSchema.safeParse(req.nextUrl.searchParams.get('projectId'));
+  const job = idSchema.safeParse(req.nextUrl.searchParams.get('jobId'));
+  if (!project.success || !job.success) return NextResponse.json({ error: 'Invalid analysis status request' }, { status: 400 });
+  const directory = await clippingProjectAccess(access.user.id, project.data);
+  if (!directory) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  let progress: z.infer<typeof progressSchema> | null = null;
+  try {
+    const stored = progressSchema.parse(JSON.parse(await fs.promises.readFile(path.join(directory, '.autocut-progress.json'), 'utf8')));
+    if (stored.jobId === job.data) progress = stored;
+  } catch { /* The analysis may still be starting. */ }
+  return NextResponse.json({ progress }, { headers: { 'Cache-Control': 'private, no-store' } });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,10 +48,11 @@ export async function POST(req: NextRequest) {
       filePath: z.string().min(1).max(4096).optional(),
       projectId: z.string().regex(/^[a-zA-Z0-9_-]{1,160}$/),
       mediaAssetId: z.string().regex(/^[a-zA-Z0-9_-]{1,160}$/).optional(),
+      jobId: idSchema.optional(),
       settings: AutoCutSettingsSchema.default(() => AutoCutSettingsSchema.parse({})),
     }).safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ success: false, error: 'Invalid Auto Cut request or settings' }, { status: 400 });
-    const { filePath, projectId, mediaAssetId, settings } = parsed.data;
+    const { filePath, projectId, mediaAssetId, settings, jobId } = parsed.data;
     const directory = await clippingProjectAccess(access.user.id, projectId);
     if (!directory) return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     let targetFilePath = '';
@@ -51,17 +73,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Media not found or unavailable for this account' }, { status: 404 });
     }
     req.signal.throwIfAborted();
+    const reportProgress = async (message: string) => {
+      if (!jobId || req.signal.aborted) return;
+      await fs.promises.writeFile(path.join(directory, '.autocut-progress.json'), JSON.stringify({ jobId, message })).catch(() => {});
+    };
 
     // Run AI analysis
+    await reportProgress('Measuring source cuts and audio activity…');
     const analysis = await analyzeMediaForAutoCut(targetFilePath, settings, req.signal);
+    const stat = await fs.promises.stat(/*turbopackIgnore: true*/ targetFilePath);
+    const sourceVideoId = mediaAssetId || createHash('sha256').update(targetFilePath).digest('hex');
+    const identity = semanticProviderIdentity();
+    const key = createHash('sha256').update(JSON.stringify({ version: 4, file: targetFilePath, size: stat.size, modified: stat.mtimeMs, settings, identity })).digest('hex');
+    const cacheDir = assertSafePath(path.join(directory, '.autocut-cache'), directory);
+    const visualDir = path.join(cacheDir, key + '-visual');
+    const visualChunkSchema = z.object({
+      intervals: z.array(z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })),
+      gradual: z.array(z.object({ timestampSec: z.number().nonnegative(), score: z.number().min(0).max(1), kind: z.enum(['fade', 'dissolve']) })),
+      motionMs: z.array(z.number().int().nonnegative()),
+    });
+    const visual = analysis.hasVideo ? await detectVisualIntervals(targetFilePath, analysis.totalDurationMs, req.signal, {
+      async read(offset) {
+        try {
+          const chunk = visualChunkSchema.parse(JSON.parse(await fs.promises.readFile(path.join(visualDir, `${offset}.json`), 'utf8')));
+          const end = Math.min(offset + 120_000, analysis.totalDurationMs);
+          if (chunk.intervals.some(interval => interval.startMs < offset || interval.endMs > end || interval.startMs >= interval.endMs) ||
+            chunk.gradual.some(cut => cut.timestampSec * 1000 < offset || cut.timestampSec * 1000 >= end) ||
+            chunk.motionMs.some(time => time < offset || time > end)) return undefined;
+          return chunk;
+        } catch { return undefined; }
+      },
+      async write(offset, chunk) {
+        try {
+          await fs.promises.mkdir(visualDir, { recursive: true });
+          await fs.promises.writeFile(path.join(visualDir, `${offset}.json`), JSON.stringify(chunk), { flag: 'wx' });
+        } catch { /* A cache failure must not discard measured evidence. */ }
+      },
+      async onProgress(processedMs, totalMs) {
+        await reportProgress(`Scanning motion and transitions · ${Math.round(processedMs / totalMs * 100)}%`);
+      },
+    }) : { intervals: [], gradual: [], motionMs: [] };
+    let motionIndex = 0;
+    for (const candidate of analysis.candidates) {
+      while (motionIndex < visual.motionMs.length && visual.motionMs[motionIndex] < candidate.startMs) motionIndex++;
+      const samples = motionIndex;
+      while (motionIndex < visual.motionMs.length && visual.motionMs[motionIndex] < candidate.endMs) motionIndex++;
+      if (motionIndex - samples >= 3) candidate.visualActionScore = Math.max(18, candidate.visualActionScore);
+    }
     let method = 'scene-and-audio-heuristics';
     let warning = 'Scene and audio activity estimates; cooking actions and spoken meaning have not been recognized.';
     let provider: string | undefined;
     if (settings.analysisMethod === 'semantic') {
-      const stat = await fs.promises.stat(/*turbopackIgnore: true*/ targetFilePath);
-      const identity = semanticProviderIdentity();
-      const key = createHash('sha256').update(JSON.stringify({ version: 1, file: targetFilePath, size: stat.size, modified: stat.mtimeMs, settings, identity })).digest('hex');
-      const cacheDir = assertSafePath(path.join(directory, '.autocut-cache'), directory);
+      await reportProgress('Reviewing sampled scenes with the vision provider…');
       const cacheFile = path.join(cacheDir, key + '.json');
       const cacheSchema = z.object({ candidates: z.array(AutoCutClipCandidateSchema), warning: z.string(), provider: z.string(), model: z.string(), sampledWindows: z.number(), totalWindows: z.number(), speechAuthorizationFailed: z.boolean().optional() });
       let semantic: z.infer<typeof cacheSchema> | undefined;
@@ -85,8 +148,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Run Duration Optimizer and Assembly
-    const { assembledClips, totalDurationMs, targetDurationMs } =
-      optimizeDurationAndAssemble(analysis.candidates, settings);
+    await reportProgress('Assembling the scene list and reel draft…');
+    const { assembledClips, totalDurationMs, targetDurationMs } = optimizeDurationAndAssemble(
+      analysis.candidates.filter(candidate => !visual.intervals.some(interval =>
+        candidate.startMs >= interval.startMs && candidate.endMs <= interval.endMs)), settings);
+    const cuts = analysis.sceneCuts.filter(cut => !visual.gradual.some(gradual => Math.abs(gradual.timestampSec - cut.timestampSec) < 0.5));
+    const scenes = buildAutoCutScenes(sourceVideoId, analysis.totalDurationMs, [...cuts, ...visual.gradual], visual.intervals, analysis.candidates, visual.motionMs);
 
     // Generate thumbnails for assembled clips
     for (const clip of assembledClips.slice(0, 12)) {
@@ -120,6 +187,13 @@ export async function POST(req: NextRequest) {
     }
 
     req.signal.throwIfAborted();
+    for (const scene of scenes.slice(0, 12)) {
+      req.signal.throwIfAborted();
+      if (!analysis.hasVideo) break;
+      const time = scene.evidenceFrames[0] ?? Math.floor((scene.startMs + scene.endMs) / 2);
+      scene.thumbnail = (await extractFrameBase64(targetFilePath, time / 1000, 160, req.signal).catch(() => null)) ?? undefined;
+    }
+    req.signal.throwIfAborted();
     return NextResponse.json({
       success: true,
       analysis: {
@@ -133,6 +207,7 @@ export async function POST(req: NextRequest) {
         sceneCutCount: analysis.sceneCutCount,
         silenceCount: analysis.silenceCount,
         candidates: analysis.candidates,
+        scenes,
         method, warning, provider,
       },
       assembledClips,

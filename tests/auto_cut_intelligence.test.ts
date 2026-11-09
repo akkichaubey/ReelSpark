@@ -11,6 +11,11 @@ import { generateWithOllama } from '../src/lib/ollama';
 import { transcribeAutoCutAudio } from '../src/lib/cloudflare/ai';
 import { analyzeMediaForAutoCut } from '../src/lib/auto-cut/analyzer';
 import { optimizeDurationAndAssemble, autoCutClipsToTimelineClips } from '../src/lib/auto-cut/optimizer';
+import { detectVisualIntervals } from '../src/lib/auto-cut/analyzer';
+import { buildAutoCutScenes, reconcileAutoCutScenes, sceneCandidates } from '../src/lib/auto-cut/scenes';
+import { validateAutoCutScenes } from '../src/lib/auto-cut/types';
+import { assembleRecipe } from '../src/lib/auto-cut/recipe';
+import type { CookingActivity } from '../src/lib/auto-cut/types';
 import { saveSavedReel, getSavedReel } from '../src/lib/saved-reels/storage';
 import { serveTimelineAssets } from '../src/lib/timeline/render-assets';
 import { renderRemotionReelVideo } from '../src/lib/caption-maker/remotion-renderer';
@@ -18,7 +23,7 @@ import { probeVideo } from '../src/lib/ffmpeg';
 import { createAutoCutReel } from '../src/lib/auto-cut/reel-bridge';
 import { compileTimeline, validateTimeline } from '../src/lib/timeline/model';
 import { clippingProjectAccess } from '../src/lib/media-api-access';
-import { POST } from '../src/app/api/clipping-studio/auto-cut/route';
+import { GET as getAnalysisProgress, POST } from '../src/app/api/clipping-studio/auto-cut/route';
 import type { MediaAsset } from '../src/lib/clipping-studio/contracts';
 
 const candidate = (id: string, startMs: number, endMs: number): AutoCutClipCandidate => ({ id, startMs, endMs, durationMs: endMs - startMs,
@@ -34,6 +39,48 @@ async function main() {
   assert.equal(optimizeDurationAndAssemble([], settings).totalDurationMs, 0);
   const pool = Array.from({ length: 30 }, (_, i) => candidate(`c${i}`, i * 5000, (i + 1) * 5000));
   const before = JSON.stringify(pool);
+  const stages: CookingActivity[] = ['washing', 'peeling', 'chopping', 'marinating', 'frying', 'spices', 'garnishing', 'presentation'];
+  const cooking = stages.map((stage, index): AutoCutClipCandidate => ({
+    ...candidate(stage, index % 4 * 5000, (index % 4 + 1) * 5000),
+    sourceVideoId: index < 4 ? 'prep-angle' : 'stove-angle',
+    cookingActivity: stage, category: stage, recipeOrder: index,
+    recipeEvidence: { ingredients: [], utensils: [], techniques: [], footage: 'step', essential: true },
+  }));
+  const failed: AutoCutClipCandidate = { ...cooking[0], id: 'failed-take', recipeOrder: 8,
+    recipeEvidence: { ingredients: [], utensils: [], techniques: [], footage: 'failed_take', essential: false } };
+  const repeated: AutoCutClipCandidate = { ...cooking[4], id: 'repeat', sourceVideoId: 'extra-angle', recipeOrder: 9,
+    recipeEvidence: { ingredients: [], utensils: [], techniques: [], footage: 'repeat', essential: true } };
+  for (const recipeStyle of ['recipe', 'cinematic', 'quick_tip', 'step_by_step'] as const) {
+    for (const targetDurationSeconds of [15, 30, 40, 60, 23]) {
+      const result = assembleRecipe([...cooking, failed, repeated], AutoCutSettingsSchema.parse({ mode: 'cooking_recipe', recipeStyle, targetDurationSeconds }));
+      assert.deepEqual(result.assembledClips.map(clip => clip.cookingActivity), stages);
+      assert.ok(result.totalDurationMs <= targetDurationSeconds * 1000);
+      assert.equal(result.omittedSteps.length, 0);
+      assert.ok(result.hasFinalDish);
+    }
+  }
+  const shortRecipe = assembleRecipe(cooking, AutoCutSettingsSchema.parse({ mode: 'cooking_recipe', targetDurationSeconds: 5 }));
+  assert.ok(shortRecipe.hasFinalDish);
+  assert.ok(shortRecipe.omittedSteps.length > 0);
+  assert.ok(shortRecipe.assembledClips.some(clip => clip.cookingActivity === 'presentation'));
+  assert.equal(assembleRecipe(cooking.slice(0, -1), settings).hasFinalDish, false);
+  const baking = (['mixing', 'baking', 'plating'] as const).map((stage, index) => ({
+    ...candidate(stage, index * 900, (index + 1) * 900), category: stage, cookingActivity: stage,
+  }));
+  const bakingReel = assembleRecipe(baking, AutoCutSettingsSchema.parse({ mode: 'cooking_recipe', recipeStyle: 'quick_tip', targetDurationSeconds: 15 }));
+  assert.deepEqual(bakingReel.assembledClips.map(clip => clip.cookingActivity), ['mixing', 'baking', 'plating']);
+  assert.equal(bakingReel.hasFinalDish, false);
+  console.log('Recipe fixtures: 8/8 stages across 20 style/length combinations, 3/3 short baking stages, source order preserved.');
+  const shots = buildAutoCutScenes('source', 5000, [{ timestampSec: 3, score: 0.9 }], [{ startMs: 1000, endMs: 1500 }], []);
+  assert.deepEqual(shots.map(scene => [scene.startMs, scene.endMs, scene.shotType]), [
+    [0, 1000, 'continuous'], [1000, 1500, 'black'], [1500, 3000, 'continuous'], [3000, 5000, 'hard_cut'],
+  ]);
+  assert.throws(() => validateAutoCutScenes([shots[0], { ...shots[1], startMs: 999 }], 'source', 5000), /boundaries/);
+  assert.throws(() => validateAutoCutScenes([shots[0], { ...shots[1], sceneId: shots[0].sceneId }], 'source', 5000), /boundaries/);
+  assert.throws(() => validateAutoCutScenes([{ ...shots[0], evidenceFrames: [1000] }], 'source', 5000), /boundaries/);
+  const locked = [{ ...shots[0], locked: true }, ...shots.slice(1)];
+  assert.deepEqual(reconcileAutoCutScenes(locked, []), locked);
+  assert.equal(sceneCandidates(shots, []).length, 3);
   for (const mode of ['auto_highlight', 'cooking_recipe', 'fast_paced', 'tutorial', 'podcast', 'cinematic', 'custom'] as const) {
     for (const targetDurationSeconds of [5, 15, 30, 40, 45, 60, 90, 180]) {
       const result = optimizeDurationAndAssemble(pool, AutoCutSettingsSchema.parse({ mode, targetDurationSeconds, pacing: 'fast' }));
@@ -90,6 +137,37 @@ async function main() {
     execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=blue:duration=12:size=160x120:rate=25', '-c:v', 'libx264', silentVideo], { windowsHide: true });
     const noAudio = await analyzeMediaForAutoCut(silentVideo, AutoCutSettingsSchema.parse({ mode: 'cooking_recipe' }));
     assert.ok(noAudio.candidates.length > 0); assert.equal(noAudio.cookingDetected, false);
+    assert.equal(buildAutoCutScenes('silent', 12000, noAudio.sceneCuts, [], noAudio.candidates).length, 1);
+    const fades = path.join(media, 'fade.mp4');
+    execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i',
+      'color=white:duration=4:size=160x120:rate=24,fade=t=in:st=0.5:d=1', '-c:v', 'libx264', fades], { windowsHide: true });
+    const checkpoint = new Map<number, Awaited<Parameters<NonNullable<Parameters<typeof detectVisualIntervals>[3]>['write']>[1]>>();
+    const visual = await detectVisualIntervals(fades, 4000, undefined, {
+      read: async offset => checkpoint.get(offset),
+      write: async (offset, chunk) => { checkpoint.set(offset, chunk); },
+    });
+    assert.ok(visual.intervals.some(interval => interval.startMs <= 50 && interval.endMs >= 450));
+    assert.ok(visual.gradual.some(cut => cut.kind === 'fade' && cut.timestampSec > 0.5 && cut.timestampSec < 1.5));
+    const resumed = await detectVisualIntervals('unused-on-checkpoint-hit', 4000, undefined, {
+      read: async offset => checkpoint.get(offset),
+      write: async () => { throw new Error('Unexpected checkpoint rewrite'); },
+    });
+    assert.deepEqual(resumed, visual);
+    const transitionVideo = path.join(media, 'transitions.mp4');
+    execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i',
+      'color=white:duration=2:size=160x120:rate=24[a];color=red:duration=2:size=160x120:rate=24[b];[a][b]xfade=transition=fade:duration=0.5:offset=1.25[c];color=blue:duration=1:size=160x120:rate=24[d];[c][d]concat=n=2:v=1:a=0',
+      '-c:v', 'libx264', transitionVideo], { windowsHide: true });
+    const transitions = await analyzeMediaForAutoCut(transitionVideo, settings);
+    const transitionEvidence = await detectVisualIntervals(transitionVideo, transitions.totalDurationMs);
+    assert.ok(transitions.sceneCuts.some(cut => Math.abs(cut.timestampSec - 3.25) <= 0.09), 'Find the fixture hard cut within two frames');
+    assert.ok(transitionEvidence.gradual.some(cut => cut.kind === 'dissolve' && Math.abs(cut.timestampSec - 1.5) <= 0.25), `Find the fixture dissolve: ${JSON.stringify(transitionEvidence.gradual)}`);
+    console.log('Scene fixture timings:', JSON.stringify({ hardCuts: transitions.sceneCuts, gradual: transitionEvidence.gradual, fade: visual.gradual, black: visual.intervals }));
+    const pan = path.join(media, 'pan.mp4');
+    execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i',
+      'testsrc2=duration=6:size=320x120:rate=25', '-vf', "crop=160:120:x='20*t':y=0,select='not(mod(n,2))+not(mod(n,5))'",
+      '-fps_mode', 'vfr', '-c:v', 'libx264', pan], { windowsHide: true });
+    const panning = await analyzeMediaForAutoCut(pan, settings);
+    assert.equal(panning.sceneCutCount, 0, 'Avoid false hard cuts on the moving VFR fixture');
     const silentAudioVideo = path.join(media, 'silent-audio.mp4');
     execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=4:size=160x120:rate=25', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '4', '-c:v', 'libx264', '-c:a', 'aac', silentAudioVideo], { windowsHide: true });
     const silentCooking = await analyzeMediaForAutoCut(silentAudioVideo, AutoCutSettingsSchema.parse({ mode: 'cooking_recipe', silenceRemoval: 'aggressive' }));
@@ -105,9 +183,12 @@ async function main() {
     await assert.rejects(analyzeMediaForAutoCut(video, settings, abort.signal));
     console.log('PASS real FFmpeg media: tone, no audio, silent sections, truthful classification and cancellation');
 
-    const body = { projectId: 'qa_autocut', filePath: video, settings: { targetDurationSeconds: 30 } };
+    const body = { projectId: 'qa_autocut', filePath: video, jobId: 'qa-job', settings: { targetDurationSeconds: 30 } };
     const response = await POST(request(body)); assert.equal(response.status, 200, await response.clone().text());
     const data = await response.json(); assert.ok(data.totalDurationMs <= 8100); assert.ok(data.analysis.candidates.length);
+    assert.ok(validateAutoCutScenes(data.analysis.scenes, data.analysis.scenes[0].sourceVideoId, data.analysis.totalSourceDurationMs).length);
+    const progress = await getAnalysisProgress(new NextRequest('http://localhost/api/clipping-studio/auto-cut?projectId=qa_autocut&jobId=qa-job'));
+    assert.equal((await progress.json()).progress.jobId, 'qa-job');
     assert.equal((await POST(request({ ...body, settings: { targetDurationSeconds: -1 } }))).status, 400);
     assert.equal((await POST(request({ ...body, settings: { transition: 'smooth' } }))).status, 200);
     assert.equal((await POST(request({ ...body, projectId: '../escape' }))).status, 400);
@@ -126,7 +207,7 @@ async function main() {
     const aiSettings = AutoCutSettingsSchema.parse({ analysisMethod: 'semantic' });
     process.env.AI_PROVIDER = 'gemini'; process.env.GEMINI_API_KEY = 'qa-placeholder';
     let providerCalls = 0;
-    let responseMode: 'valid' | 'unknown-id' | 'bad-timing' | 'failure' = 'valid';
+    let responseMode: 'valid' | 'cooking' | 'unknown-id' | 'bad-timing' | 'failure' = 'valid';
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('generativelanguage.googleapis.com')) {
@@ -137,7 +218,11 @@ async function main() {
         const windows = parts.filter((part: any) => part.text?.startsWith('Window '));
         const clips = windows.map((part: any) => {
           const match = part.text.match(/Window (.*?): absolute source (\d+)–(\d+)/)!;
-          return { id: responseMode === 'unknown-id' ? 'invented' : match[1], title: 'Observed fixture', reason: 'Mock response for adapter validation', visualScore: 60, speechScore: 0, confidence: 70, cookingActivity: null,
+          return { id: responseMode === 'unknown-id' ? 'invented' : match[1], title: 'Observed fixture', reason: 'Mock response for adapter validation', visualScore: 60, speechScore: 0, confidence: 70,
+            cookingActivity: responseMode === 'cooking' ? 'baking' : null,
+            ...(responseMode === 'cooking' ? { recipeEvidence: {
+              ingredients: [], utensils: ['baking tray'], techniques: ['baking'], footage: 'step', essential: true,
+            } } : {}),
             transcript: responseMode === 'bad-timing' ? [
               { text: 'valid', startMs: Number(match[2]), endMs: Number(match[2]) + 100 },
               { text: 'invalid', startMs: Number(match[2]), endMs: Number(match[3]) + 1000 },
@@ -151,6 +236,13 @@ async function main() {
     try {
       const semantic = await analyzeSemanticMoments(silentVideo, noAudio.candidates.slice(0, 2), aiSettings, { hasVideo: true, hasAudio: false });
       assert.ok(semantic.candidates.every(c => c.analysisMethod === 'semantic' && c.confidence === 70));
+      responseMode = 'cooking';
+      const silentRecipe = await analyzeSemanticMoments(silentVideo, noAudio.candidates.slice(0, 1),
+        { ...aiSettings, mode: 'cooking_recipe' }, { hasVideo: true, hasAudio: false });
+      assert.equal(silentRecipe.candidates[0].cookingActivity, 'baking');
+      assert.deepEqual(silentRecipe.candidates[0].recipeEvidence?.utensils, ['baking tray']);
+      assert.deepEqual(silentRecipe.candidates[0].transcriptWords, []);
+      assert.ok(silentRecipe.candidates[0].evidenceFrames?.length);
       responseMode = 'unknown-id'; await assert.rejects(analyzeSemanticMoments(silentVideo, noAudio.candidates.slice(0, 2), aiSettings, { hasVideo: true, hasAudio: false }), /invalid set/);
       responseMode = 'bad-timing';
       const withSpeech = await analyzeSemanticMoments(video, result.candidates.slice(0, 2), aiSettings, { hasVideo: true, hasAudio: true });
@@ -226,6 +318,18 @@ async function main() {
     const asset: MediaAsset = { id: 'media_qa', projectId: 'qa_autocut', localPath: video, filename: 'qa_video.mp4', fileSizeBytes: (await fs.stat(video)).size,
       metadata: { durationMs: 8000, durationSeconds: 8, sizeBytes: 1, formatName: 'mp4', aspectRatio: '4:3', width: 320, height: 240, fps: 25, hasAudio: true, hasVideo: true }, createdAt: new Date().toISOString() };
     const reel = createAutoCutReel(asset, [candidate('one', 1000, 2500), candidate('two', 5000, 7000)], 'Full sequence');
+    const secondAngle: MediaAsset = { ...asset, id: 'angle_b', filename: 'silent.mp4', localPath: silentVideo,
+      metadata: { ...asset.metadata, durationMs: 12000, hasAudio: false, durationSeconds: 12 } };
+    const multiAngle = createAutoCutReel([asset, secondAngle], [
+      { ...candidate('second-first', 3000, 4500), sourceVideoId: secondAngle.id },
+      { ...candidate('first-second', 1000, 3000), sourceVideoId: asset.id },
+    ], 'Two camera sources');
+    const multiPlan = compileTimeline(multiAngle);
+    assert.equal(multiPlan.durationMs, 3500);
+    assert.deepEqual(multiPlan.timeline.clips.filter(clip => clip.trackId === 'video').map(clip =>
+      [clip.assetId, clip.startMs, clip.sourceStartMs, clip.durationMs]), [
+      ['source_angle_b', 0, 3000, 1500], ['source_media_qa', 1500, 1000, 2000],
+    ]);
     assert.deepEqual(validateTimeline(reel.timeline!), []);
     assert.equal(reel.timeline!.clips.filter(c => c.trackId === 'video').length, 2);
     assert.equal(reel.timeline!.clips.filter(c => c.trackId === 'audio').length, 2);
@@ -262,6 +366,20 @@ async function main() {
         assert.ok(Math.abs(probe.duration - 3.5) <= 0.1); assert.equal(probe.hasAudio, true);
         console.log('PASS real Remotion export: automatic dissolve, multi-clip duration and original audio');
       } finally { await server.close(); }
+      const angleServer = await serveTimelineAssets(new Map([
+        ['source_media_qa', video], ['source_angle_b', silentVideo],
+      ]));
+      try {
+        for (const source of multiPlan.timeline.assets) source.fileUrl = angleServer.url(source.id);
+        const output = path.join(root, 'recipe-two-sources.mp4');
+        await renderRemotionReelVideo({ timelinePlan: multiPlan, outputPath: output,
+          groups: multiPlan.captionGroups, words: multiPlan.transcript, style: multiAngle.captionStyle,
+          outputSettings: { ...multiAngle.outputSettings, width: 320, height: 240, fps: 25, aspectRatio: '4:3' } });
+        const result = await probeVideo(output);
+        assert.ok(Math.abs(result.duration - 3.5) <= 0.1);
+        assert.equal(result.hasAudio, true);
+        console.log('PASS real recipe export: two source assets, 3.5 seconds, original audio retained');
+      } finally { await angleServer.close(); }
     }
     console.log('PASS full-sequence Professional Timeline bridge: video/audio links, source offsets, silent media, duration, validation');
   } finally {

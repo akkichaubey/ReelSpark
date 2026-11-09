@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { AutoCutSceneReview } from './AutoCutSceneReview';
+import { reconcileAutoCutScenes, sceneCandidates } from '@/lib/auto-cut/scenes';
+import { assembleRecipe } from '@/lib/auto-cut/recipe';
+import { AutoCutRecipeReview } from './AutoCutRecipeReview';
 import { optimizeDurationAndAssemble } from '@/lib/auto-cut/optimizer';
 import { createAutoCutReel } from '@/lib/auto-cut/reel-bridge';
 import { saveReel } from '@/lib/saved-reels/client';
@@ -34,6 +38,10 @@ import { getMediaAssetWebUrl, type MediaAsset } from '@/lib/clipping-studio/cont
 import {
   AutoCutClipCandidateSchema,
   AutoCutSettingsSchema,
+  AutoCutSceneSchema,
+  validateAutoCutScenes,
+  type AutoCutScene,
+  type RecipeStyle,
   AutoCutClipCandidate,
   AutoCutMode,
   DurationPreset,
@@ -145,7 +153,10 @@ function readDraft(key: string | null) {
       sourceCandidates: AutoCutClipCandidateSchema.array().parse(saved.sourceCandidates),
       candidates: AutoCutClipCandidateSchema.array().parse(saved.candidates),
       settings: AutoCutSettingsSchema.parse(saved.settings),
+      scenes: AutoCutSceneSchema.array().parse(saved.scenes ?? []),
+      usingScenes: saved.usingScenes === true,
       notice: typeof saved.notice === 'string' ? saved.notice : '',
+      recipeNotice: typeof saved.recipeNotice === 'string' ? saved.recipeNotice : '',
     };
   } catch {
     return null;
@@ -194,7 +205,13 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
 
   // Results State
   const [sourceCandidates, setSourceCandidates] = useState<AutoCutClipCandidate[]>(savedDraft?.sourceCandidates ?? []);
+  const [recipeStyle, setRecipeStyle] = useState<RecipeStyle>(savedDraft?.settings.recipeStyle ?? 'recipe');
+  const [additionalSources, setAdditionalSources] = useState<string[]>(() =>
+    [...new Set(savedDraft?.sourceCandidates.flatMap(clip => clip.sourceVideoId && clip.sourceVideoId !== activeAsset?.id ? [clip.sourceVideoId] : []) ?? [])]);
+  const [recipeNotice, setRecipeNotice] = useState(savedDraft?.recipeNotice ?? '');
   const [candidates, setCandidates] = useState<AutoCutClipCandidate[]>(savedDraft?.candidates ?? []);
+  const [scenes, setScenes] = useState<AutoCutScene[]>(savedDraft?.scenes ?? []);
+  const [usingScenes, setUsingScenes] = useState(savedDraft?.usingScenes ?? false);
   const achievedDurationMs = candidates.filter(c => c.selected).reduce((sum, c) => sum + c.durationMs, 0);
   const [isOpening, setIsOpening] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -249,20 +266,23 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
       sessionStorage.setItem(draftKey, JSON.stringify({
         sourceCandidates,
         candidates,
+        scenes,
+        usingScenes,
         notice: analysisNotice,
-        settings: { analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition },
+        recipeNotice,
+        settings: { analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle },
       }));
     } catch { /* Draft remains available in the current editor. */ }
-  }, [draftKey, hasRun, sourceCandidates, candidates, analysisNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition]);
+  }, [draftKey, hasRun, sourceCandidates, candidates, scenes, usingScenes, analysisNotice, recipeNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle]);
 
-  const mediaWebUrl = useMemo(() => {
-    return activeAsset ? getMediaAssetWebUrl(activeAsset) : '';
-  }, [activeAsset]);
+  const previewAsset = activeProject?.mediaAssets.find(asset => asset.id === activeAuditionClip?.sourceVideoId) ?? activeAsset;
+  const mediaWebUrl = previewAsset ? getMediaAssetWebUrl(previewAsset) : '';
 
   // Handle Audition Clip Playback
   const auditionClip = (clip: AutoCutClipCandidate) => {
     if (!videoRef.current) return;
     setActiveAuditionClip(clip);
+    if (clip.sourceVideoId && clip.sourceVideoId !== previewAsset?.id) return;
     const startSec = clip.startMs / 1000;
     videoRef.current.currentTime = startSec;
     void videoRef.current.play().catch(() => {});
@@ -315,40 +335,108 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
     requestRef.current?.abort();
     requestRef.current = controller;
     const version = ++requestVersion.current;
+    const jobId = crypto.randomUUID();
+    let finished = false;
+    const progressQuery = new URLSearchParams({ projectId: activeProject.id, jobId });
+    const progressTimer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/clipping-studio/auto-cut?${progressQuery}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const { progress } = await response.json();
+        if (!finished && !controller.signal.aborted && version === requestVersion.current && typeof progress?.message === 'string') {
+          setProgressStage(progress.message);
+        }
+      } catch { /* Progress polling can recover on the next tick. */ }
+    }, 3000);
     setProgressStage('Measuring scene changes and audio activity. This may take a few minutes…');
 
     try {
-      const response = await fetch('/api/clipping-studio/auto-cut', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filePath: activeAsset.localPath,
-          projectId: activeProject.id,
-          mediaAssetId: activeAsset.id,
-          settings: {
-            analysisMethod: method,
-            mode,
-            targetDurationSeconds,
-            intensity,
-            pacing,
-            silenceRemoval,
-            sceneSelection,
-            transition,
-          },
-        }),
-      });
+      const analyzeSource = async (source: MediaAsset) => {
+        const response = await fetch('/api/clipping-studio/auto-cut', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filePath: source.localPath,
+            projectId: activeProject.id,
+            jobId,
+            mediaAssetId: source.id,
+            settings: {
+              analysisMethod: method,
+              mode,
+              targetDurationSeconds,
+              intensity,
+              pacing,
+              silenceRemoval,
+              sceneSelection,
+              transition,
+              recipeStyle: mode === 'cooking_recipe' ? recipeStyle : undefined,
+            },
+          }),
+        });
 
 
-      const data = await response.json();
+        const data = await response.json();
+        controller.signal.throwIfAborted();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to complete AI Auto Cut analysis.');
+        }
+        return data;
+      };
+      const data = await analyzeSource(activeAsset);
       if (controller.signal.aborted || version !== requestVersion.current) return;
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to complete AI Auto Cut analysis.');
+      if (mode === 'cooking_recipe') {
+        const sources = [activeAsset, ...additionalSources.flatMap(id => activeProject.mediaAssets.find(asset => asset.id === id) ?? [])];
+        const steps: AutoCutClipCandidate[] = [];
+        const warnings = new Set<string>();
+        const previousSteps = new Map(sourceCandidates.map(step => [step.id, step]));
+        for (const source of sources) {
+          const result = source === activeAsset ? data : await analyzeSource(source);
+          if (result.analysis?.warning) warnings.add(result.analysis.warning);
+          const windows = AutoCutClipCandidateSchema.array().parse(result.analysis?.candidates ?? []);
+          const thumbnails = new Map<string, string | undefined>((result.assembledClips ?? []).map((clip: AutoCutClipCandidate) =>
+            [clip.id, clip.thumbnailBase64]));
+          const sourceScenes = result.analysis?.scenes
+            ? validateAutoCutScenes(result.analysis.scenes, source.id, source.metadata.durationMs)
+            : [];
+          for (const clip of windows.sort((a, b) => a.startMs - b.startMs)) {
+            const id = `${source.id}:${clip.id}`;
+            const previous = previousSteps.get(id);
+            const shot = sourceScenes.find(scene => scene.startMs <= clip.startMs && scene.endMs >= clip.endMs);
+            steps.push({ ...clip, id, sourceVideoId: source.id, recipeOrder: previous?.recipeOrder ?? steps.length,
+              recipeImportance: previous?.recipeImportance ?? (shot?.shotType === 'black' ? 'excluded' : undefined),
+              category: previous?.recipeLabelEdited ? previous.category : clip.category,
+              cookingActivity: previous?.recipeLabelEdited ? previous.cookingActivity : clip.cookingActivity,
+              recipeLabelEdited: previous?.recipeLabelEdited, thumbnailBase64: clip.thumbnailBase64 ??
+                thumbnails.get(clip.id) ?? shot?.thumbnail });
+          }
+        }
+        if (controller.signal.aborted || version !== requestVersion.current) return;
+        setScenes(reconcileAutoCutScenes(scenes, data.analysis?.scenes
+          ? validateAutoCutScenes(data.analysis.scenes, activeAsset.id, activeAsset.metadata.durationMs) : []));
+        setUsingScenes(false);
+        applyRecipe(steps, method);
+        setAnalysisNotice([...warnings].join(' '));
+        setProgressStage('Analysis complete! Ready to review.');
+        setHasRun(true);
+        return;
       }
 
       setProgressStage('Analysis complete! Ready to review.');
+      const detected = data.analysis?.scenes
+        ? validateAutoCutScenes(data.analysis.scenes, activeAsset.id, activeAsset.metadata.durationMs)
+        : [];
+      const nextScenes = reconcileAutoCutScenes(scenes, detected);
+      setScenes(nextScenes);
       setAnalysisNotice(data.analysis?.warning || 'Review the generated clips before export.');
       setSourceCandidates(data.analysis?.candidates || []);
+      if (usingScenes && nextScenes.length) {
+        const pool = sceneCandidates(nextScenes, data.analysis?.candidates ?? []);
+        setCandidates(optimizeDurationAndAssemble(pool, {
+          analysisMethod: method, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition,
+        }).assembledClips);
+        return;
+      }
       const chosen = new Map<string, AutoCutClipCandidate>((data.assembledClips || []).map((c: AutoCutClipCandidate) => [c.id, c]));
       setCandidates((data.analysis?.candidates || []).map((c: AutoCutClipCandidate) => ({ ...(chosen.get(c.id) || c), selected: chosen.has(c.id) })));
       setHasRun(true);
@@ -356,8 +444,23 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
       if (controller.signal.aborted || version !== requestVersion.current) return;
       setError(err instanceof Error ? err.message : 'Auto Cut analysis failed. Please try again.');
     } finally {
+      finished = true;
+      window.clearInterval(progressTimer);
       if (version === requestVersion.current) setIsAnalyzing(false);
     }
+  };
+
+  const applyRecipe = (steps: AutoCutClipCandidate[], method = analysisMethod) => {
+    const result = assembleRecipe(steps, {
+      analysisMethod: method, mode: 'cooking_recipe', targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle,
+    });
+    setSourceCandidates(steps);
+    setCandidates(result.assembledClips);
+    setRecipeNotice([
+      result.omittedSteps.length ? `Required or essential steps left out because of duration or overlapping footage: ${result.omittedSteps.join(', ')}.` : '',
+      result.hasFinalDish ? '' : 'No final dish was confirmed in the included source footage.',
+      steps.some(step => step.cookingActivity && step.cookingActivity !== 'other') ? '' : 'Recipe stages could not be verified. Review and label the source ranges manually.',
+    ].filter(Boolean).join(' '));
   };
 
   // Bridge action: Add to Timeline
@@ -365,6 +468,10 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
     if (!activeProject || !activeAsset || !candidates.length) return;
     const selected = candidates.filter((c) => c.selected);
     if (!selected.length) return;
+    if (selected.some(clip => clip.sourceVideoId && clip.sourceVideoId !== activeAsset.id)) {
+      void openInReelMaker();
+      return;
+    }
 
     const items = selected.map((c, idx) => ({
       name: c.category
@@ -388,10 +495,10 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
     setIsOpening(true); setError(null);
     const version = requestVersion.current;
     try {
-      const sequence = candidates
-        .map(candidate => ({ ...candidate, transitionToNext: transition }))
-        .sort((first, second) => first.startMs - second.startMs);
-      const project = createAutoCutReel(activeAsset, sequence, activeProject.name + ' — Auto Cut');
+      const sequence = candidates.map(candidate => ({ ...candidate, transitionToNext: transition }));
+      const recipe = sequence.some(clip => clip.recipeOrder !== undefined);
+      if (!recipe) sequence.sort((first, second) => first.startMs - second.startMs);
+      const project = createAutoCutReel(recipe ? activeProject.mediaAssets : activeAsset, sequence, activeProject.name + ' — Auto Cut');
       const reel = await saveReel(project, { originProjectId: activeProject.id, originProjectName: activeProject.name });
       if (version === requestVersion.current) router.push('/reel-maker?savedReel=' + encodeURIComponent(reel.id));
     } catch (err: unknown) {
@@ -400,12 +507,29 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
   };
 
   const regenerateSelected = () => {
+    if (!usingScenes && sourceCandidates.some(clip => clip.recipeOrder !== undefined)) {
+      applyRecipe(sourceCandidates);
+      return;
+    }
     const ids = new Set(candidates.filter(c => c.selected).map(c => c.id));
-    const result = optimizeDurationAndAssemble(sourceCandidates.map(c => ({ ...c, selected: ids.has(c.id) })), {
+    const pool = usingScenes ? sceneCandidates(scenes, sourceCandidates.filter(clip =>
+      !clip.sourceVideoId || clip.sourceVideoId === activeAsset?.id)) : sourceCandidates;
+    const result = optimizeDurationAndAssemble(pool.map(c => ({ ...c, selected: ids.has(c.id) })), {
       analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition,
     });
     const chosen = new Map(result.assembledClips.map(c => [c.id, c]));
-    setCandidates(sourceCandidates.map(c => ({ ...(chosen.get(c.id) || c), selected: chosen.has(c.id) })));
+    setCandidates(pool.map(c => ({ ...(chosen.get(c.id) || c), selected: chosen.has(c.id) })));
+  };
+
+  const useIncludedScenes = () => {
+    if (!activeAsset) return;
+    const accepted = validateAutoCutScenes(scenes, activeAsset.id, activeAsset.metadata.durationMs);
+    const pool = sceneCandidates(accepted, sourceCandidates.filter(clip => !clip.sourceVideoId || clip.sourceVideoId === activeAsset.id));
+    const result = optimizeDurationAndAssemble(pool, {
+      analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition,
+    });
+    setCandidates(result.assembledClips);
+    setUsingScenes(true);
   };
 
   const selectedCount = candidates.filter((c) => c.selected).length;
@@ -475,6 +599,25 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
               {uploadProgress < 100 ? 'Uploading video (' + uploadProgress + '%)…' : 'Checking video…'}
             </p>}
             {uploadError && <p role="alert" className="text-xs text-red-300">{uploadError}</p>}
+            {mode === 'cooking_recipe' && activeProject && (
+              <fieldset disabled={isAnalyzing || isOpening} className="space-y-2 text-xs text-zinc-300">
+                <label className="flex flex-wrap items-center gap-2">Recipe style
+                  <select value={recipeStyle} onChange={event => setRecipeStyle(event.target.value as RecipeStyle)}
+                    className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1">
+                    <option value="recipe">Recipe focused</option><option value="cinematic">Cinematic</option>
+                    <option value="quick_tip">Quick tip</option><option value="step_by_step">Step by step</option>
+                  </select>
+                </label>
+                {activeProject.mediaAssets.filter(asset => asset.id !== activeAsset?.id && asset.metadata.hasVideo).map(asset => (
+                  <label key={asset.id} className="flex items-center gap-2">
+                    <input type="checkbox" checked={additionalSources.includes(asset.id)}
+                      disabled={additionalSources.length >= 3 && !additionalSources.includes(asset.id)}
+                      onChange={event => setAdditionalSources(previous => event.target.checked ? [...previous, asset.id] : previous.filter(id => id !== asset.id))} />
+                    Include {asset.filename}
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </div>
           {/* Duration Presets */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
@@ -766,7 +909,14 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
                   aria-label="Source video preview"
                   onContextMenu={event => event.preventDefault()}
                   onTimeUpdate={handlePreviewTimeUpdate}
-                  onLoadedMetadata={event => setPreviewDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+                  onLoadedMetadata={event => {
+                    const video = event.currentTarget;
+                    setPreviewDuration(Number.isFinite(video.duration) ? video.duration : 0);
+                    if (activeAuditionClip) {
+                      video.currentTime = activeAuditionClip.startMs / 1000;
+                      void video.play().catch(() => {});
+                    }
+                  }}
                   onPlay={() => setPreviewPlaying(true)}
                   onPause={() => setPreviewPlaying(false)}
                   onEnded={() => setPreviewPlaying(false)}
@@ -819,6 +969,25 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> 
               </Button>
             )}
           </div>
+
+          {scenes.length > 0 && activeAsset && (
+            <fieldset disabled={isAnalyzing || isOpening}>
+            <AutoCutSceneReview scenes={scenes} durationMs={activeAsset.metadata.durationMs} playheadMs={Math.round(previewTime * 1000)}
+              onChange={setScenes} onApply={useIncludedScenes}
+              onPreview={scene => {
+                const [clip] = sceneCandidates([{ ...scene, excluded: false }], []);
+                auditionClip(clip);
+              }} />
+            </fieldset>
+          )}
+
+          {sourceCandidates.some(clip => clip.recipeOrder !== undefined) && (
+            <fieldset disabled={isAnalyzing || isOpening}>
+              <AutoCutRecipeReview steps={sourceCandidates} notice={recipeNotice} onChange={setSourceCandidates}
+                sourceNames={Object.fromEntries(activeProject?.mediaAssets.map(asset => [asset.id, asset.filename]) ?? [])}
+                onApply={() => { setUsingScenes(false); applyRecipe(sourceCandidates); }} onPreview={auditionClip} />
+            </fieldset>
+          )}
 
           {/* Results Summary Box */}
           {hasRun && (

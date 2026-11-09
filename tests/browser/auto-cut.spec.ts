@@ -56,6 +56,56 @@ test('all candidates are reviewable; bulk selection, regeneration and full seque
   }
   expect(errors).toEqual([]);
 });
+
+test('scene review preserves manual splits and exclusions across reanalysis', async ({ page }) => {
+  const scenes = [{
+    sourceVideoId: 'asset_qa', sceneId: 'scene_0_5000', startMs: 0, endMs: 5000,
+    shotType: 'continuous', description: 'Continuous cooking action', actionTags: [], evidenceFrames: [],
+    confidence: 0, provenance: 'ffmpeg', excluded: false, locked: false,
+  }];
+  await page.route('**/api/clipping-studio/auto-cut', route => route.fulfill({
+    json: { ...response, analysis: { candidates, scenes } },
+  }));
+  await page.getByRole('button', { name: 'Generate reel', exact: true }).click();
+  await page.getByText('Scene review · 1 scenes').click();
+  await page.getByRole('button', { name: 'Split in half' }).click();
+  await expect(page.getByText('Scene review · 2 scenes')).toBeVisible();
+  await page.getByRole('button', { name: 'Exclude', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Use included scenes in draft' }).click();
+  await expect(page.getByText('1 clips selected')).toBeVisible();
+  await page.getByRole('button', { name: 'Generate reel', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate reel', exact: true })).toBeEnabled();
+  await expect(page.getByText('Scene review · 2 scenes')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  await expect(page.getByText('1 clips selected')).toBeVisible();
+});
+
+test('cooking review lets users edit, reorder and exclude observed steps', async ({ page }) => {
+  const steps = [
+    { ...candidates[0], category: 'Slice vegetables', cookingActivity: 'chopping', confidence: 78 },
+    { ...candidates[1], category: 'Cook vegetables', cookingActivity: 'frying', confidence: 65 },
+    { ...candidates[2], category: 'Show final dish', cookingActivity: 'presentation', confidence: 82 },
+  ];
+  await page.route('**/api/clipping-studio/auto-cut', route => route.fulfill({
+    json: { ...response, analysis: { candidates: steps } },
+  }));
+  await page.getByRole('button', { name: 'Optional settings' }).click();
+  await page.getByRole('button', { name: /Cooking Recipe/ }).click();
+  await page.getByLabel('Recipe style').selectOption('quick_tip');
+  await page.getByRole('button', { name: 'Generate reel', exact: true }).click();
+  await expect(page.getByText('Recipe steps · 3')).toBeVisible();
+  await page.getByLabel('Step 1 action label').fill('Dice vegetables');
+  await page.getByLabel('Step 1 priority').selectOption('required');
+  await page.getByLabel('Step 2 priority').selectOption('excluded');
+  await page.getByRole('button', { name: 'Move step 3 earlier' }).click();
+  await expect(page.getByLabel('Step 2 action label')).toHaveValue('Show final dish');
+  await page.getByRole('button', { name: 'Apply recipe steps' }).click();
+  await expect(page.getByText('2 clips selected')).toBeVisible();
+  await page.getByRole('button', { name: 'Generate reel', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate reel', exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Step 1 action label')).toHaveValue('Dice vegetables');
+  await expect(page.getByLabel('Step 3 priority')).toHaveValue('excluded');
+});
 test('errors recover; cancellation and source changes discard late results', async ({ page }) => {
   await page.route('**/api/clipping-studio/auto-cut', route => route.fulfill({ status: 500, json: { success: false, error: 'Fixture processing failure' } }));
   await page.getByRole('button', { name: 'Generate reel', exact: true }).click();

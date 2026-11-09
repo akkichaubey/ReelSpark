@@ -1,9 +1,13 @@
 import type { AutoCutClipCandidate, AutoCutSettings } from './types';
 import type { Clip } from '../clipping-studio/contracts';
 import type { TimelineClip } from '../timeline/model';
+import { assembleRecipe } from './recipe';
 
 /** Select bounded, non-overlapping source ranges. Never invent footage to fill a target. */
 export function optimizeDurationAndAssemble(candidates: AutoCutClipCandidate[], settings: AutoCutSettings) {
+  if (settings.mode === 'cooking_recipe' && candidates.some(clip => clip.recipeEvidence || clip.recipeImportance || clip.cookingActivity)) {
+    return assembleRecipe(candidates, settings);
+  }
   const targetDurationMs = Math.round(settings.targetDurationSeconds * 1000);
   const pool = candidates.filter(c => c.selected && Number.isFinite(c.startMs) && Number.isFinite(c.endMs) && c.startMs >= 0 && c.endMs > c.startMs)
     .map(c => ({ ...c, durationMs: c.endMs - c.startMs, speedMultiplier: 1 }));
@@ -110,6 +114,7 @@ export function autoCutClipsToTimelineClips(candidates: AutoCutClipCandidate[], 
   for (let index = 1; index < clips.length; index++) {
     const outgoing = selected[index - 1];
     const incoming = selected[index];
+    if (outgoing.sourceVideoId !== incoming.sourceVideoId) continue;
     const style = outgoing.transitionToNext;
     if (style !== 'smooth' && style !== 'dynamic') continue;
     // An unused tail in the source lets the incoming clip keep its planned position.
