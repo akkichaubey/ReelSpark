@@ -69,7 +69,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
 
   // Platform selection
   const [selectedPlatforms, setSelectedPlatforms] = useState<PublishingPlatformKey[]>(
-    initialPlatform ? [initialPlatform] : ['instagram', 'youtube', 'threads']
+    initialPlatform ? [initialPlatform] : initialMode === 'multi' ? ['instagram', 'youtube', 'facebook', 'threads'] : ['instagram', 'youtube', 'threads']
   );
   const [connections, setConnections] = useState<Record<PublishingPlatformKey, SafeOAuthConnection | null>>({
     youtube: null,
@@ -131,7 +131,9 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
   };
 
   // Sync initial props whenever modal opens or props change
-  useEffect(() => {
+  const [previousDefaults, setPreviousDefaults] = useState({ isOpen, defaultCaption, defaultTitle, initialPlatform, initialMode });
+  if (previousDefaults.isOpen !== isOpen || previousDefaults.defaultCaption !== defaultCaption || previousDefaults.defaultTitle !== defaultTitle || previousDefaults.initialPlatform !== initialPlatform || previousDefaults.initialMode !== initialMode) {
+    setPreviousDefaults({ isOpen, defaultCaption, defaultTitle, initialPlatform, initialMode });
     if (isOpen) {
       if (defaultCaption) setCaption(defaultCaption);
       if (defaultTitle) setTitle(defaultTitle);
@@ -146,7 +148,7 @@ export const PublishStudioModal: React.FC<PublishStudioModalProps> = ({
         setSelectedPlatforms(['instagram', 'youtube', 'facebook', 'threads']);
       }
     }
-  }, [isOpen, defaultCaption, defaultTitle, initialPlatform, initialMode]);
+  }
 
   // Fetch available videos and OAuth connections
   useEffect(() => {

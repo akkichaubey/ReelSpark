@@ -37,14 +37,17 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     Array<{ start: number; end: number; textHindi?: string; textEnglish?: string }> | null
   >(() => (candidate as any)?.syncedSegments || null);
 
+  const [syncCandidate, setSyncCandidate] = useState(candidate);
+  if (syncCandidate !== candidate) {
+    setSyncCandidate(candidate);
+    setSyncedSegments((candidate as any)?.syncedSegments || []);
+  }
+
   // Dynamically ensure acoustic-locked segments are loaded for ANY clip played in the modal
   useEffect(() => {
     if (!candidate || !project?.id) return;
     const existing = (candidate as any).syncedSegments;
-    if (Array.isArray(existing) && existing.length > 0) {
-      setSyncedSegments(existing);
-      return;
-    }
+    if (Array.isArray(existing) && existing.length > 0) return;
 
     let cancelled = false;
     fetch(`/api/projects/${project.id}/clip-audio`, {
@@ -60,14 +63,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
       .then((data) => {
         if (!cancelled && data?.success && Array.isArray(data.syncedSegments) && data.syncedSegments.length > 0) {
           setSyncedSegments(data.syncedSegments);
-          (candidate as any).syncedSegments = data.syncedSegments;
-          if (data.rawTranscriptHindi) {
-            candidate.transcriptHindi = data.rawTranscriptHindi;
-            candidate.transcript = data.rawTranscriptHindi;
-          }
-          if (data.rawTranscriptEnglish) {
-            candidate.transcriptEnglish = data.rawTranscriptEnglish;
-          }
+
         }
       })
       .catch(() => {});
@@ -93,6 +89,22 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   // Boundaries
   const clipStart = candidate ? (isRendered ? 0 : candidate.start) : 0;
   const clipEnd = candidate ? (isRendered ? candidate.duration : candidate.end) : 0;
+
+  const safePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch((err) => {
+          // Swallow benign media AbortError
+          if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
+            console.warn('Video playback error:', err);
+          }
+        });
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -206,22 +218,6 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleClose]);
-
-  const safePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    try {
-      const p = video.play();
-      if (p !== undefined) {
-        p.catch((err) => {
-          // Swallow benign media AbortError
-          if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
-            console.warn('Video playback error:', err);
-          }
-        });
-      }
-    } catch {}
-  };
 
   if (!candidate) return null;
 

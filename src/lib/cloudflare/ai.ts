@@ -78,8 +78,8 @@ async function cfAiText(
 /**
  * Run Whisper transcription on a raw audio buffer via CF AI REST API.
  */
-async function cfAiWhisper(audioBuffer: Buffer, mimeType: string): Promise<any> {
-  const blob = new Blob([audioBuffer.buffer as ArrayBuffer], { type: mimeType });
+async function cfAiWhisper(audioBuffer: Buffer, mimeType: string, signal?: AbortSignal): Promise<any> {
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
   const formData = new FormData();
   formData.append('file', blob, 'audio.mp3');
 
@@ -87,6 +87,7 @@ async function cfAiWhisper(audioBuffer: Buffer, mimeType: string): Promise<any> 
     method: 'POST',
     headers: getCfAiHeaders(),
     body: formData,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000),
   });
 
   if (!res.ok) {
@@ -97,6 +98,31 @@ async function cfAiWhisper(audioBuffer: Buffer, mimeType: string): Promise<any> 
   const data = await res.json() as { result: any; success: boolean; errors: any[] };
   if (!data.success) throw new Error(`CF Whisper error: ${JSON.stringify(data.errors)}`);
   return data.result;
+}
+
+export class CloudflareSpeechError extends Error {
+  constructor(public readonly status: number) {
+    super('Cloudflare speech recognition failed (' + status + ').');
+  }
+}
+
+/** Exact provider words only; callers supply the actual audio-window bounds. */
+export async function transcribeAutoCutAudio(audio: Buffer, signal?: AbortSignal): Promise<{ text: string; start: number; end: number }[]> {
+  const response = await fetch(getCfAiUrl(CF_MODELS.whisper), {
+    method: 'POST', headers: { ...getCfAiHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio: audio.toString('base64'), task: 'transcribe', vad_filter: true, condition_on_previous_text: false }),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000),
+  });
+  if (!response.ok) throw new CloudflareSpeechError(response.status);
+  const data = await response.json();
+  if (!data.success) throw new Error('Cloudflare speech recognition returned an error.');
+  const result = data.result || {};
+  const words = Array.isArray(result.words) ? result.words : Array.isArray(result.segments) ? result.segments.flatMap((segment: { words?: unknown[]; text?: string; start?: number; end?: number }) =>
+    Array.isArray(segment.words) && segment.words.length ? segment.words : [{ word: segment.text, start: segment.start, end: segment.end }]) : [];
+  return words.filter((word: { word?: unknown; start?: unknown; end?: unknown }) =>
+    typeof word.word === 'string' && typeof word.start === 'number' && Number.isFinite(word.start) && word.start >= 0 &&
+    typeof word.end === 'number' && Number.isFinite(word.end) && word.end > word.start)
+    .map((word: { word: string; start: number; end: number }) => ({ text: word.word, start: word.start, end: word.end }));
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

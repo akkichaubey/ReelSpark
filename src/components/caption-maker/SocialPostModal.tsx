@@ -53,11 +53,11 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (initialLanguage) {
-      setLanguage(initialLanguage);
-    }
-  }, [initialLanguage]);
+  const [previousLanguage, setPreviousLanguage] = useState(initialLanguage);
+  if (previousLanguage !== initialLanguage) {
+    setPreviousLanguage(initialLanguage);
+    if (initialLanguage) setLanguage(initialLanguage);
+  }
 
   // Fetch or regenerate social post bundle
   const handleGenerate = async (
@@ -107,7 +107,8 @@ export const SocialPostModal: React.FC<SocialPostModalProps> = ({
   // Auto-generate on first open if bundle is empty
   useEffect(() => {
     if (isOpen && !bundle && !isLoading) {
-      handleGenerate();
+      const timer = window.setTimeout(() => void handleGenerate(), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [isOpen]);
 

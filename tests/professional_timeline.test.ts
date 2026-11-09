@@ -374,6 +374,11 @@ async function main() {
       assert.equal((await response.arrayBuffer()).byteLength, 32);
       assert.equal((await fetch(server.url("missing"))).status, 404);
       const renderPlan = compileTimeline(reel);
+      // At 30 fps, independently rounding this clip's start and duration leaves frame 60 empty.
+      renderPlan.timeline.clips[0].startMs = 1015;
+      renderPlan.timeline.clips[0].durationMs = 1015;
+      renderPlan.timeline.clips[1].startMs = 2030;
+      renderPlan.timeline.clips[1].durationMs = 970;
       renderPlan.timeline.assets = assets.map((a) => ({
         ...a,
         fileUrl: server!.url(a.id),
@@ -394,7 +399,9 @@ async function main() {
       assert.equal(metadata.hasAudio, true);
       for (const [time, color] of [
         [0.5, "black"],
+        [1, "red"],
         [1.5, "red"],
+        [2, "red"],
         [2.5, "blue"],
       ] as const) {
         const { stdout } = await execute(

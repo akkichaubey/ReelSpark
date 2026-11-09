@@ -35,7 +35,7 @@ import {
 export type CloudflareConfigStatus = ReturnType<typeof getCloudflareStatus>;
 import { mediaServiceClient } from './media-service-client';
 
-export type StudioTab = 'media' | 'ai' | 'timeline' | 'merge' | 'export';
+export type StudioTab = 'media' | 'autocut' | 'ai' | 'timeline' | 'merge' | 'export';
 let initializationVersion = 0;
 
 interface ClippingStudioState {

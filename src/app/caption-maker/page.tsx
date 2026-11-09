@@ -38,7 +38,8 @@ import { ProfessionalTimeline } from '@/components/caption-maker/ProfessionalTim
 import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
 import { ThumbnailPoster, useThumbnailCover } from '@/components/caption-maker/ThumbnailCover';
 import { createThumbnailCoverDataUrl, THUMBNAIL_COVER_SECONDS } from '@/lib/caption-maker/thumbnail-cover';
-import { commitTimeline, projectTimelineAssets, synchronizeTimelineSources, timelineEnd } from '@/lib/timeline/model';
+import { commitTimeline, projectTimelineAssets, synchronizeTimelineSources, timelineEnd, type TrackKind } from '@/lib/timeline/model';
+import { BackgroundMusicPicker } from '@/components/caption-maker/BackgroundMusicPicker';
 import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
 import type { SavedReel } from '@/lib/saved-reels/types';
 import { saveReel } from '@/lib/saved-reels/client';
@@ -136,9 +137,10 @@ function CaptionMakerPageContent() {
   const [audioDuration, setAudioDuration] = useState<number>(0);
 
   // UI Panels & Tabs
-  const [leftTab, setLeftTab] = useState<'assets' | 'transcript'>('assets');
   const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('thumbnail');
   const [compactPanel, setCompactPanel] = useState<'preview' | 'media' | 'style'>('preview');
+  const [trackPanel, setTrackPanel] = useState<TrackKind | null>(null);
+  const [trackSettingsTarget, setTrackSettingsTarget] = useState<HTMLDivElement | null>(null);
   const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
@@ -204,7 +206,6 @@ function CaptionMakerPageContent() {
         setSavedReelLoadError(null);
         setProject(restored); setHistory([restored]); setHistoryIndex(0);
         setAudioDuration(restored.audio?.duration || restored.image?.duration || 0);
-        setLeftTab(restored.transcript.length ? 'transcript' : 'assets');
       } catch (error) { if (loadSequence === projectLoadSequence.current) setSavedReelLoadError(error instanceof Error ? error.message : 'Could not open saved reel'); }
       return;
     }
@@ -344,11 +345,6 @@ function CaptionMakerPageContent() {
       } else {
         setAudioDuration(0);
       }
-      if (restoredParsed.transcript && restoredParsed.transcript.length > 0) {
-        setLeftTab('transcript');
-      } else {
-        setLeftTab('assets');
-      }
       const recovery = detectCrashRecovery(restoredParsed);
       if (recovery.hasRecovery && recovery.recoverySnapshot) {
         setCrashRecoverySnapshot(recovery.recoverySnapshot);
@@ -420,7 +416,6 @@ function CaptionMakerPageContent() {
             if (dynamicReelProj.audio?.duration) {
               setAudioDuration(dynamicReelProj.audio.duration);
             }
-            setLeftTab('transcript');
             const recovery = detectCrashRecovery(dynamicReelProj);
             if (recovery.hasRecovery && recovery.recoverySnapshot) {
               setCrashRecoverySnapshot(recovery.recoverySnapshot);
@@ -449,7 +444,6 @@ function CaptionMakerPageContent() {
       setAudioDuration(0);
     }
     if (fallbackProj.transcript && fallbackProj.transcript.length > 0) {
-      setLeftTab('transcript');
     }
     const recovery = detectCrashRecovery(fallbackProj);
     if (recovery.hasRecovery && recovery.recoverySnapshot) {
@@ -887,7 +881,6 @@ function CaptionMakerPageContent() {
       handleSeek(0);
       setAudioDuration(0);
       setCenterViewMode('video');
-      setLeftTab('assets');
       setRightTab('thumbnail');
       setThumbnailSubTab('position');
       setIsPlaying(false);
@@ -1234,7 +1227,6 @@ function CaptionMakerPageContent() {
         } catch {}
         setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
         setHistoryIndex((prevIdx) => prevIdx + 1);
-        setLeftTab('transcript');
         return healed;
       } catch (err: any) {
         setTranscriptionError(err.message || 'Failed to re-analyze audio. Please retry.');
@@ -1351,7 +1343,6 @@ function CaptionMakerPageContent() {
     handleSeek(0);
 
     // Automatically switch to Transcript tab and trigger AI analysis & caption synchronization
-    setLeftTab('transcript');
     syncAudioWithTranscript(nextProject, false);
   };
 
@@ -1402,7 +1393,6 @@ function CaptionMakerPageContent() {
 
     // Switch view back to main video reel mode and assets tab
     setCenterViewMode('video');
-    setLeftTab('assets');
 
     try {
       if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
@@ -1902,6 +1892,98 @@ function CaptionMakerPageContent() {
 
   if (savedReelId && !savedReelSession) return <DashboardLayout title="Saved Reel"><div className="p-6" role={savedReelLoadError ? 'alert' : 'status'}>{savedReelLoadError || 'Loading saved reel…'} <Link href="/saved-reels" className="text-amber-400">Return to Saved Reels</Link></div></DashboardLayout>;
 
+  const renderAssetControls = (section: 'media' | 'voice') => (
+    <AssetUploadSection
+      section={section}
+      image={project.image}
+      mediaAssets={project.mediaAssets || (project.image ? [project.image] : [])}
+      audio={project.audio}
+      onImageChange={(img) => {
+        if (img) handleImageUploaded(img);
+        else {
+          const isAudioEmpty = !project.audio;
+          if (isAudioEmpty) {
+            setCenterViewMode('video');
+          }
+          updateProjectWithHistory((prev) => ({
+            ...prev,
+            image: undefined,
+            title: isAudioEmpty ? 'Untitled Reel' : prev.title,
+            thumbnailSettings: isAudioEmpty ? undefined : prev.thumbnailSettings,
+            updatedAt: new Date().toISOString(),
+          }));
+        }
+      }}
+      onAudioChange={(aud, useVideoAsBackground) => {
+        if (aud) handleAudioUploaded(aud, useVideoAsBackground);
+        else {
+          handleAudioRemoved();
+        }
+      }}
+      onTranscribe={handleTranscribe}
+      isTranscribing={isTranscribing}
+      onFitModeChange={handleFitModeChange}
+      onPositionChange={handleImagePositionChange}
+      onScaleChange={handleImageScaleChange}
+      preferredLanguage={project.preferredLanguage || 'en'}
+      onLanguageChange={handleSwitchLanguage}
+      voiceVolume={project.voiceVolume ?? 1.0}
+      voiceMuted={project.voiceMuted ?? false}
+      studioDenoise={project.studioDenoise ?? false}
+      onVoiceVolumeChange={(val) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          voiceVolume: val,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+      onVoiceMutedChange={(muted) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          voiceMuted: muted,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+      onStudioDenoiseChange={(denoise) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          studioDenoise: denoise,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+      audioAnalysis={project.audioAnalysis}
+      sfxCues={project.sfxCues}
+      autoSfxEnabled={project.autoSfxEnabled !== false}
+      onAutoSfxEnabledChange={(enabled) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          autoSfxEnabled: enabled,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+      fillerSegments={project.fillerSegments}
+      onTrimFillers={handleTrimFillers}
+      isTrimmingFillers={isTrimmingFillers}
+      onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
+      speaker1Color={project.speaker1Color || '#FFFFFF'}
+      speaker2Color={project.speaker2Color || '#06B6D4'}
+      onSpeaker1ColorChange={(col) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          speaker1Color: col,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+      onSpeaker2ColorChange={(col) => {
+        updateProjectWithHistory((prev) => ({
+          ...prev,
+          speaker2Color: col,
+          updatedAt: new Date().toISOString(),
+        }));
+      }}
+    />
+  );
+
   return (
     <DashboardLayout
       title="AI Reel Maker"
@@ -2249,32 +2331,29 @@ function CaptionMakerPageContent() {
 
       {/* Main 3-Column Studio Editor Workspace */}
       <div className="flex shrink-0 gap-1 border-b border-zinc-800 p-1.5 text-xs xl:hidden" role="tablist" aria-label="Editor panel">
-        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: 'Media & Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <Button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</Button>)}
+        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: trackPanel ? 'Track settings' : 'Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <Button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</Button>)}
       </div>
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
-        {/* LEFT COLUMN: Assets & Audio and Transcript Tabs */}
+        {/* LEFT COLUMN: Transcript */}
         <section className={`${compactPanel === 'media' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
-          {/* Tab Headers */}
-          <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
-            <Button
-              onClick={() => setLeftTab('assets')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                leftTab === 'assets'
-                  ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-              Assets & Audio
-            </Button>
-            <Button
-              onClick={() => setLeftTab('transcript')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                leftTab === 'transcript'
-                  ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
+          {trackPanel ? (
+            <>
+              <div className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/60 p-3 text-xs">
+                <h2 className="font-semibold text-white">
+                  {trackPanel === 'video' ? 'Background Video / Image' : trackPanel === 'audio' ? 'Spoken Audio / Voice' : trackPanel === 'music' ? 'Background Music' : 'Track settings'}
+                </h2>
+                <Button type="button" className="text-amber-300" onClick={() => setTrackPanel(null)}>Transcript</Button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                <div ref={setTrackSettingsTarget} />
+                {trackPanel === 'video' && renderAssetControls('media')}
+                {trackPanel === 'audio' && renderAssetControls('voice')}
+                {trackPanel === 'music' && <BackgroundMusicPicker bgMusic={project.bgMusic} audioAnalysis={project.audioAnalysis} onBgMusicChange={handleBgMusicChange} />}
+              </div>
+            </>
+          ) : (
+            <>
+          <h2 className="flex items-center justify-center gap-1.5 border-b border-zinc-800 bg-zinc-900/60 p-3 text-xs font-semibold text-white">
               <FileText className="w-3.5 h-3.5 text-amber-400" />
               Transcript
               {project.captionGroups.length > 0 && (
@@ -2282,10 +2361,8 @@ function CaptionMakerPageContent() {
                   {project.captionGroups.length}
                 </span>
               )}
-            </Button>
-          </div>
+          </h2>
 
-          {/* Left Tab Body (Scrollable for assets, flex pinned for transcript) */}
           {transcriptionError && (
             <div role="alert" className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
               <p>{transcriptionError}</p>
@@ -2296,103 +2373,7 @@ function CaptionMakerPageContent() {
               </Button>
             </div>
           )}
-          <div
-            className={`flex-1 min-h-0 ${
-              leftTab === 'transcript' ? 'overflow-hidden flex flex-col p-3' : 'overflow-y-auto p-3'
-            }`}
-          >
-            {leftTab === 'assets' ? (
-              <AssetUploadSection
-                image={project.image}
-                mediaAssets={project.mediaAssets || (project.image ? [project.image] : [])}
-                audio={project.audio}
-                onImageChange={(img) => {
-                  if (img) handleImageUploaded(img);
-                  else {
-                    const isAudioEmpty = !project.audio;
-                    if (isAudioEmpty) {
-                      setCenterViewMode('video');
-                    }
-                    updateProjectWithHistory((prev) => ({
-                      ...prev,
-                      image: undefined,
-                      title: isAudioEmpty ? 'Untitled Reel' : prev.title,
-                      thumbnailSettings: isAudioEmpty ? undefined : prev.thumbnailSettings,
-                      updatedAt: new Date().toISOString(),
-                    }));
-                  }
-                }}
-                onAudioChange={(aud, useVideoAsBackground) => {
-                  if (aud) handleAudioUploaded(aud, useVideoAsBackground);
-                  else {
-                    handleAudioRemoved();
-                  }
-                }}
-                onTranscribe={handleTranscribe}
-                isTranscribing={isTranscribing}
-                onFitModeChange={handleFitModeChange}
-                onPositionChange={handleImagePositionChange}
-                onScaleChange={handleImageScaleChange}
-                preferredLanguage={project.preferredLanguage || 'en'}
-                onLanguageChange={handleSwitchLanguage}
-                bgMusic={project.bgMusic}
-                onBgMusicChange={handleBgMusicChange}
-                voiceVolume={project.voiceVolume ?? 1.0}
-                voiceMuted={project.voiceMuted ?? false}
-                studioDenoise={project.studioDenoise ?? false}
-                onVoiceVolumeChange={(val) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    voiceVolume: val,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-                onVoiceMutedChange={(muted) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    voiceMuted: muted,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-                onStudioDenoiseChange={(denoise) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    studioDenoise: denoise,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-                audioAnalysis={project.audioAnalysis}
-                sfxCues={project.sfxCues}
-                autoSfxEnabled={project.autoSfxEnabled !== false}
-                onAutoSfxEnabledChange={(enabled) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    autoSfxEnabled: enabled,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-                fillerSegments={project.fillerSegments}
-                onTrimFillers={handleTrimFillers}
-                isTrimmingFillers={isTrimmingFillers}
-                onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
-                speaker1Color={project.speaker1Color || '#FFFFFF'}
-                speaker2Color={project.speaker2Color || '#06B6D4'}
-                onSpeaker1ColorChange={(col) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    speaker1Color: col,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-                onSpeaker2ColorChange={(col) => {
-                  updateProjectWithHistory((prev) => ({
-                    ...prev,
-                    speaker2Color: col,
-                    updatedAt: new Date().toISOString(),
-                  }));
-                }}
-              />
-            ) : (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
               <div className="h-full min-h-0">
                 <TranscriptEditor
                   groups={
@@ -2413,8 +2394,9 @@ function CaptionMakerPageContent() {
                   isTranscribing={isTranscribing}
                 />
               </div>
-            )}
           </div>
+            </>
+          )}
         </section>
 
         {/* CENTER COLUMN: Real-Time Canvas Video Preview OR Live Thumbnail Cover Output */}
@@ -2610,12 +2592,14 @@ function CaptionMakerPageContent() {
       {savedReelLoadError ? <div role="alert" className="bg-red-950 px-4 py-3 text-sm text-red-200">{savedReelLoadError} · <a href="/saved-reels">Return to Saved Reels</a></div> : (!savedReelId || savedReelSession) && <SavedReelActions project={project} session={savedReelSession} onUpdateProject={updates => updateProjectWithHistory(previous => ({ ...previous, ...updates, updatedAt: new Date().toISOString() }))} onSaved={(reel) => { setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); if (!savedReelId) router.push(`/reel-maker?savedReel=${encodeURIComponent(reel.id)}`); }} />}
       <footer className="shrink-0">
         <ProfessionalTimeline project={project} currentTime={currentTime} isPlaying={isPlaying} onSeek={handleSeek} onTogglePlay={togglePlay} onUndo={undo} onRedo={redo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1} onTrimChange={handleTrimChange} onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
+          trackSettingsTarget={trackSettingsTarget}
+          onOpenTrackPanel={kind => { setTrackPanel(kind); setCompactPanel('media'); }}
           thumbnailCoverUrl={thumbnailCover.url} thumbnailCoverError={thumbnailCover.error} onEditThumbnail={handleEditThumbnailCover}
           onThumbnailCoverChange={cover => updateProjectWithHistory(previous => ({ ...previous, thumbnailCover: cover, updatedAt: new Date().toISOString() }))}
           onAutoSyncCaptions={handleTranscribe} isSyncingCaptions={isTranscribing}
           onCaptionEffects={() => { setCompactPanel('style'); setRightTab('style'); }}
           onCaptionSourceChange={(assetId, groups) => updateProjectWithHistory(previous => updateCaptionSource(previous, assetId, groups))}
-          onEditCaptions={() => { setCompactPanel('media'); setLeftTab('transcript'); }} onRemoveMedia={async assetId => {
+          onEditCaptions={() => { setTrackPanel(null); setCompactPanel('media'); }} onRemoveMedia={async assetId => {
           const previous = editingSnapshot.current.project;
           const asset = projectTimelineAssets(previous).find(asset => asset.id === assetId);
           if (!asset) throw new Error('Media is no longer available.');

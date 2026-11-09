@@ -226,14 +226,16 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
     Array<{ start: number; end: number; textHindi?: string; textEnglish?: string }>
   >((candidate as any)?.syncedSegments || []);
 
+  const [syncCandidate, setSyncCandidate] = useState(candidate);
+  if (syncCandidate !== candidate) {
+    setSyncCandidate(candidate);
+    setSyncedSegments((candidate as any)?.syncedSegments || []);
+  }
+
   // Dynamically sync clip audio & clause timestamps when modal opens
   useEffect(() => {
     if (!candidate || !project?.id) return;
     let active = true;
-    const existing = (candidate as any)?.syncedSegments;
-    if (Array.isArray(existing) && existing.length > 0) {
-      setSyncedSegments(existing);
-    }
 
     fetch(`/api/projects/${project.id}/clip-audio`, {
       method: 'POST',
@@ -255,7 +257,7 @@ export const ClipEditorModal: React.FC<ClipEditorModalProps> = ({
     return () => {
       active = false;
     };
-  }, [candidate?.id, project?.id]);
+  }, [candidate?.id, candidate?.start, candidate?.end, project?.id]);
 
   const resolveSubtitleAtTime = useCallback(
     (absOrRelTime: number) => {

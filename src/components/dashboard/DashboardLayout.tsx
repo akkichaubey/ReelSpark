@@ -32,14 +32,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
   const closeMobileNavigation = useCallback(() => setMobileOpen(false), []);
 
-  // Sync persisted collapse state safely on client after initial hydration
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('reelspark_sidebar_collapsed');
-      if (stored === 'true') {
-        setIsCollapsed(true);
-      }
-    } catch {}
+    const restore = () => {
+      try { setIsCollapsed(localStorage.getItem('reelspark_sidebar_collapsed') === 'true'); } catch {}
+    };
+    const timer = window.setTimeout(restore, 0);
+    window.addEventListener('storage', restore);
+    return () => { window.clearTimeout(timer); window.removeEventListener('storage', restore); };
   }, []);
 
   // System Status & Modals

@@ -56,9 +56,9 @@ export const ExportStudio: React.FC = () => {
 
   // Export target selector
   const [exportScope, setExportScope] = useState<'single_clip' | 'selected_clips' | 'all_clips' | 'recipe'>('single_clip');
-  const [selectedClipId, setSelectedClipId] = useState<string>('');
+  const [requestedClipId, setSelectedClipId] = useState<string>('');
   const [selectedBatchClipIds, setSelectedBatchClipIds] = useState<string[]>([]);
-  const [selectedRecipeId, setSelectedRecipeId] = useState<string>('');
+  const [requestedRecipeId, setSelectedRecipeId] = useState<string>('');
 
   // Configuration options
   const [outputFormat, setOutputFormat] = useState<'mp4' | 'mov' | 'webm' | 'mp3' | 'wav'>('mp4');
@@ -90,15 +90,8 @@ export const ExportStudio: React.FC = () => {
   const recipes = activeProject?.mergeRecipes || [];
   const exportJobs = activeProject?.exportJobs || [];
 
-  // Default clip selection
-  useEffect(() => {
-    if (!selectedClipId && clips.length > 0) {
-      setSelectedClipId(clips[0].id);
-    }
-    if (!selectedRecipeId && recipes.length > 0) {
-      setSelectedRecipeId(recipes[0].id);
-    }
-  }, [clips, recipes, selectedClipId, selectedRecipeId]);
+  const selectedClipId = clips.some(c => c.id === requestedClipId) ? requestedClipId : clips[0]?.id || '';
+  const selectedRecipeId = recipes.some(r => r.id === requestedRecipeId) ? requestedRecipeId : recipes[0]?.id || '';
 
   // Periodic poll active jobs
   useEffect(() => {

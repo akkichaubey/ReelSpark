@@ -81,7 +81,10 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
 
   useEffect(() => {
-    setCustomPresets(getCustomPresets());
+    const refresh = () => setCustomPresets(getCustomPresets());
+    const timer = window.setTimeout(refresh, 0);
+    window.addEventListener('storage', refresh);
+    return () => { window.clearTimeout(timer); window.removeEventListener('storage', refresh); };
   }, []);
 
   const handleSavePreset = (e: React.FormEvent) => {

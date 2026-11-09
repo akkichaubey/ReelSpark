@@ -105,7 +105,7 @@ export const SocialAccountsManager: React.FC = () => {
       );
       const data = await res.json();
       if (data.success && data.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
       } else if (data.requiresCredentials) {
         setConfigModalPlatform(platform);
         setIsConfigModalOpen(true);
@@ -272,7 +272,8 @@ export const SocialAccountsManager: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    const timer = window.setTimeout(() => void fetchData(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const showToast = (msg: string) => {
@@ -467,7 +468,7 @@ export const SocialAccountsManager: React.FC = () => {
     }
 
     const newTag: SavedHashtag = {
-      id: `tag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `tag_${crypto.randomUUID()}`,
       tag: clean,
       enabled: true,
     };

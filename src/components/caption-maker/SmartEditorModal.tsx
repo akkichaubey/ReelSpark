@@ -3,7 +3,7 @@
 
 import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TranscriptWord,
   CaptionGroup,
@@ -67,7 +67,6 @@ export const SmartEditorModal: React.FC<SmartEditorModalProps> = ({
   const [activeTab, setActiveTab] = useState<'silence' | 'highlights'>('silence');
   const [minPauseDuration, setMinPauseDuration] = useState<number>(0.6);
   const [detectFillers, setDetectFillers] = useState<boolean>(true);
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isApplyingTrim, setIsApplyingTrim] = useState<boolean>(false);
   const [trimError, setTrimError] = useState<string | null>(null);
   const [highlightToast, setHighlightToast] = useState<string | null>(null);
@@ -82,14 +81,12 @@ export const SmartEditorModal: React.FC<SmartEditorModalProps> = ({
     return computed;
   }, [words, totalDuration, minPauseDuration, detectFillers]);
 
-  // Initialize selected indices to all detected gaps whenever detected gaps change
-  useEffect(() => {
-    if (detectedGaps.length > 0) {
-      setSelectedIndices(new Set(detectedGaps.map((_, idx) => idx)));
-    } else {
-      setSelectedIndices(new Set());
-    }
-  }, [detectedGaps]);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(() => new Set(detectedGaps.map((_, index) => index)));
+  const [selectionSource, setSelectionSource] = useState(detectedGaps);
+  if (selectionSource !== detectedGaps) {
+    setSelectionSource(detectedGaps);
+    setSelectedIndices(new Set(detectedGaps.map((_, index) => index)));
+  }
 
   const selectedGaps = useMemo(() => {
     return detectedGaps.filter((_, idx) => selectedIndices.has(idx));

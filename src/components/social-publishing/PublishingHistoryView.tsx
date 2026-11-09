@@ -28,27 +28,29 @@ export const PublishingHistoryView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (platformFilter !== 'all') params.set('platform', platformFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
 
-      const res = await fetch(`/api/social-publishing/history?${params.toString()}`);
+      const res = await fetch(`/api/social-publishing/history?${params.toString()}`, { signal });
       const data = await res.json();
-      if (data.success && data.history) {
+      if (!signal?.aborted && data.success && data.history) {
         setHistory(data.history);
       }
     } catch (e) {
-      console.error('Failed to fetch publishing history:', e);
+      if (!signal?.aborted) console.error('Failed to fetch publishing history:', e);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchHistory();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => void fetchHistory(controller.signal), 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [platformFilter, statusFilter]);
 
   const handleRetry = async (recordId: string) => {
@@ -128,7 +130,7 @@ export const PublishingHistoryView: React.FC = () => {
         {/* Refresh button */}
         <Button
           type="button"
-          onClick={fetchHistory}
+          onClick={() => void fetchHistory()}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />

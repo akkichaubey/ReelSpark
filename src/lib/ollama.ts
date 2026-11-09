@@ -36,6 +36,8 @@ export async function generateWithOllama(params: {
   model?: string;
   format?: 'json' | '';
   temperature?: number;
+  images?: string[];
+  signal?: AbortSignal;
 }): Promise<string> {
   const apiKey = process.env.OLLAMA_API_KEY?.trim();
   if (!apiKey) {
@@ -43,9 +45,9 @@ export async function generateWithOllama(params: {
   }
 
   const model = resolveOllamaCloudModel(params.model || getOllamaModel());
-  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  const messages: Array<{ role: 'system' | 'user'; content: string; images?: string[] }> = [];
   if (params.system) messages.push({ role: 'system', content: params.system });
-  messages.push({ role: 'user', content: params.prompt });
+  messages.push({ role: 'user', content: params.prompt, ...(params.images?.length ? { images: params.images } : {}) });
 
   const body: Record<string, unknown> = {
     model,
@@ -66,7 +68,7 @@ export async function generateWithOllama(params: {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
+    signal: params.signal ? AbortSignal.any([params.signal, AbortSignal.timeout(180_000)]) : AbortSignal.timeout(180_000),
   });
 
   if (!response.ok) {

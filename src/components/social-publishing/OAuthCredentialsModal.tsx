@@ -42,9 +42,11 @@ export const OAuthCredentialsModal: React.FC<OAuthCredentialsModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
+  const [previousPlatform, setPreviousPlatform] = useState(initialPlatform);
+  if (previousPlatform !== initialPlatform) {
+    setPreviousPlatform(initialPlatform);
     if (initialPlatform) setPlatform(initialPlatform);
-  }, [initialPlatform]);
+  }
 
   useEffect(() => {
     if (!isOpen) return;

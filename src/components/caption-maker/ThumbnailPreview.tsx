@@ -54,7 +54,7 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(360);
-  const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
+  const [loadedBackground, setLoadedBackground] = useState<{ url: string; image: HTMLImageElement } | null>(null);
 
   const isVideo =
     image?.mediaType === 'video' ||
@@ -79,19 +79,20 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  const backgroundUrl = settings.customBgUrl || image?.fileUrl;
+  const bgImageEl = loadedBackground && loadedBackground.url === backgroundUrl ? loadedBackground.image : null;
+
   // Preload background image for high-resolution canvas export
   useEffect(() => {
-    const sourceUrl = settings.customBgUrl || image?.fileUrl;
-    if (sourceUrl) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => setBgImageEl(img);
-      img.onerror = () => setBgImageEl(null);
-      img.src = sourceUrl;
-    } else {
-      setBgImageEl(null);
-    }
-  }, [settings.customBgUrl, image?.fileUrl]);
+
+    if (!backgroundUrl) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => setLoadedBackground({ url: backgroundUrl, image: img });
+    img.onerror = () => setLoadedBackground(null);
+    img.src = backgroundUrl;
+    return () => { img.onload = null; img.onerror = null; };
+  }, [backgroundUrl]);
 
   // Load font whenever fontFamily changes
   useEffect(() => {
@@ -193,7 +194,6 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   const effectiveTextAlign = settings.textAlign === 'custom' ? 'center' : (settings.textAlign || 'center');
   const justifyAlign =
     effectiveTextAlign === 'left' ? 'flex-start' : effectiveTextAlign === 'right' ? 'flex-end' : 'center';
-
 
   // Title words parser with active #FCD905 highlight support
   const renderTitleWords = () => {
@@ -508,7 +508,6 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
         </div>
           );
         })()}
-
 
         {/* 6. Offscreen Canvas for High-Resolution Export & Video Merging */}
         <canvas

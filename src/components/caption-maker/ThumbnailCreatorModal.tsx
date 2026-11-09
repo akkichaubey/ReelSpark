@@ -84,7 +84,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Background Media Elements
-  const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
+  const [loadedBackground, setLoadedBackground] = useState<{ url: string; image: HTMLImageElement } | null>(null);
   const [customBgDataUrl, setCustomBgDataUrl] = useState<string | null>(null);
   const [customBgProgress, setCustomBgProgress] = useState<number | null>(null);
   const [customBgError, setCustomBgError] = useState<string | null>(null);
@@ -118,36 +118,32 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
     return list;
   }, [project.title, project.captionGroups]);
 
+  const backgroundUrl = customBgDataUrl || project.image?.fileUrl;
+  const bgImageEl = loadedBackground && loadedBackground.url === backgroundUrl ? loadedBackground.image : null;
+
   // Load project media image when modal opens or image URL changes
   useEffect(() => {
     if (!isOpen) return;
+    if (!backgroundUrl) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => setLoadedBackground({ url: backgroundUrl, image: img });
+    img.onerror = () => setLoadedBackground(null);
+    img.src = backgroundUrl;
+    return () => { img.onload = null; img.onerror = null; };
+  }, [isOpen, backgroundUrl]);
 
-    const sourceUrl = customBgDataUrl || project.image?.fileUrl;
-    if (sourceUrl) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        setBgImageEl(img);
-      };
-      img.onerror = () => {
-        setBgImageEl(null);
-      };
-      img.src = sourceUrl;
-    } else {
-      setBgImageEl(null);
-    }
-  }, [isOpen, project.image?.fileUrl, customBgDataUrl]);
+  const [previousAspect, setPreviousAspect] = useState(initialAspect);
+  if (previousAspect !== initialAspect) {
+    setPreviousAspect(initialAspect);
+    if (!project.thumbnailSettings) setSettings(previous => ({ ...previous, aspectRatio: initialAspect }));
+  }
 
-  // Sync aspect ratio if outputSettings change and modal re-opens
-  useEffect(() => {
-    if (isOpen && !project.thumbnailSettings) {
-      setSettings((prev) => ({
-        ...prev,
-        title: prev.title || createDefaultThumbnailSettings(project.title).title,
-        aspectRatio: initialAspect,
-      }));
-    }
-  }, [isOpen, initialAspect, project.title, project.thumbnailSettings]);
+  // Trigger canvas redraw
+  const triggerCanvasRedraw = useCallback(() => {
+    if (!canvasRef.current) return;
+    renderThumbnailToCanvas(canvasRef.current, settings, bgImageEl);
+  }, [settings, bgImageEl]);
 
   // Load Google Font in document whenever fontFamily changes
   useEffect(() => {
@@ -156,13 +152,7 @@ export const ThumbnailCreatorModal: React.FC<ThumbnailCreatorModalProps> = ({
         triggerCanvasRedraw();
       });
     }
-  }, [settings.fontFamily]);
-
-  // Trigger canvas redraw
-  const triggerCanvasRedraw = useCallback(() => {
-    if (!canvasRef.current) return;
-    renderThumbnailToCanvas(canvasRef.current, settings, bgImageEl);
-  }, [settings, bgImageEl]);
+  }, [settings.fontFamily, triggerCanvasRedraw]);
 
   // Redraw canvas on any settings or image change
   useEffect(() => {

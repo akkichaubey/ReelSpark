@@ -51,6 +51,7 @@ export async function PATCH(
       }
 
       const updates = await req.json();
+      if (updates.hiddenFromOurWork === true) project.hiddenFromOurWork = true;
 
       if (updates.title) project.title = updates.title;
       if (updates.settings)
@@ -126,7 +127,7 @@ export async function DELETE(
   } catch (err: any) {
     if (err instanceof ProjectMediaReferencedError)
       return NextResponse.json(
-        { success: false, error: err.message },
+        { success: false, error: err.message, linkedWorkspaceId: err.linkedWorkspaceId },
         { status: 409 }
       );
     if (err instanceof StorageInUseError)

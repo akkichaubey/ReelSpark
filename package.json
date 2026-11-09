@@ -22,6 +22,7 @@
     "verify:linux-render": "tsx scripts/smoke-linux-render.ts",
     "test": "tsx tests/test_suite.ts",
     "test:studio": "tsx tests/unified_studio.test.ts",
+    "test:autocut": "tsx tests/auto_cut_intelligence.test.ts",
     "test:storage": "tsx tests/storage_maintenance.test.ts",
     "test:private-media": "tsx tests/private_media_cloud.test.ts",
     "test:cta": "tsx tests/reels_cta_presets.test.ts",

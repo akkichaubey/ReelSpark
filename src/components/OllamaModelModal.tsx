@@ -55,6 +55,7 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
+    const timer = window.setTimeout(() => {
     setIsLoadingSettings(true);
     setTestResult(null);
     setErrorMessage(null);
@@ -83,7 +84,8 @@ export const OllamaModelModal: React.FC<OllamaModelModalProps> = ({
       }
     })();
 
-    return () => { active = false; };
+    }, 0);
+    return () => { window.clearTimeout(timer); active = false; };
   }, [isOpen, currentModel]);
 
   if (!isOpen) return null;

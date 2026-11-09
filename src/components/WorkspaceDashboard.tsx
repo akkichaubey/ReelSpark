@@ -1,5 +1,6 @@
 'use client';
 import { Button } from '@/components/ui/button';
+import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
 import { accountCache } from '@/lib/account-cache';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -85,6 +86,10 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
   const initializeEditingProjects = useClippingStore(state => state.initializeStore);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState(false);
+  const [projectDeleteError, setProjectDeleteError] = useState('');
+  const [linkedWorkspaceId, setLinkedWorkspaceId] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const candidateWrites = useRef<Promise<unknown>>(Promise.resolve());
   const persistCandidateMutation = (id: string, mutation: Record<string, unknown>): Promise<Project> => {
@@ -570,14 +575,29 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
     } finally { setIsSavingSelectedToLibrary(false); }
   };
   // Handler: Delete Project
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project and all its rendered files?')) {
-      return;
-    }
+  const handleDeleteProject = (projectId: string) => {
+    setProjectDeleteError('');
+    setLinkedWorkspaceId(null);
+    setProjectToDelete(projects.find(project => project.id === projectId) ?? null);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete || deletingProject) return;
+    const projectId = projectToDelete.id;
+    setDeletingProject(true);
+    setProjectDeleteError('');
+    setLinkedWorkspaceId(null);
     try {
       const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        if (res.status === 409 && typeof data?.linkedWorkspaceId === 'string') {
+          setLinkedWorkspaceId(data.linkedWorkspaceId);
+        }
+        throw new Error(data?.error || `Could not delete the project (HTTP ${res.status}).`);
+      }
       if (data.success) {
+        setProjectToDelete(null);
         showToast('Project deleted', 'info');
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
         if (activeProject?.id === projectId) {
@@ -596,8 +616,25 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           }
         } catch {}
       }
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (error) {
+      setProjectDeleteError(error instanceof Error ? error.message : 'Could not delete the project.');
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
+  const removeProjectFromOurWork = async () => {
+    if (!projectToDelete || deletingProject) return;
+    setDeletingProject(true);
+    try {
+      const project = await persistCandidateMutation(projectToDelete.id, { hiddenFromOurWork: true });
+      setProjects(previous => previous.map(item => item.id === project.id ? project : item));
+      setProjectToDelete(null);
+      showToast('Project removed from Our Work', 'success');
+    } catch (error) {
+      setProjectDeleteError(error instanceof Error ? error.message : 'Could not remove the project from Our Work.');
+    } finally {
+      setDeletingProject(false);
     }
   };
 
@@ -1082,7 +1119,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
         <div className="max-w-7xl mx-auto space-y-8">
           <DashboardView
             userName={user.name}
-            projects={projects}
+            projects={projects.filter(project => !project.hiddenFromOurWork)}
             editingProjects={editingProjects.filter(project => !projects.some(source => primaryWorkspaceForSource(source.id, editingProjects)?.id === project.id))}
             onOpenProject={(p) => {
               setActiveProject(p);
@@ -1173,6 +1210,37 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           showToast(`Ollama model set to ${newModel}`, 'success');
         }}
       />
+      {projectToDelete && (
+        <DialogSurface
+          onClose={() => { if (!deletingProject) setProjectToDelete(null); }}
+          overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          className="w-full max-w-md space-y-4 rounded-2xl border border-zinc-700 bg-zinc-950 p-5"
+          aria-describedby="delete-project-description"
+        >
+          <DialogTitle className="font-semibold text-white">Delete project?</DialogTitle>
+          <p id="delete-project-description" className="text-sm text-zinc-300">
+            Delete “{projectToDelete.title}” and its project files?
+          </p>
+          {projectDeleteError && <p role="alert" className="text-sm text-red-300">{projectDeleteError}</p>}
+          {linkedWorkspaceId && (
+            <div className="flex flex-wrap items-center gap-3">
+            <a className="inline-block text-sm font-semibold text-amber-300 underline"
+              href={`/clipping-studio?project=${encodeURIComponent(linkedWorkspaceId)}`}>
+              Open linked project
+            </a>
+            <Button type="button" disabled={deletingProject} onClick={removeProjectFromOurWork}>
+              Remove from Our Work
+            </Button>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" autoFocus disabled={deletingProject} onClick={() => setProjectToDelete(null)}>Cancel</Button>
+            <Button type="button" disabled={deletingProject} className="rounded-lg bg-red-700 px-3 py-2 text-white" onClick={confirmDeleteProject}>
+              {deletingProject ? 'Deleting…' : 'Delete project'}
+            </Button>
+          </div>
+        </DialogSurface>
+      )}
     </WorkspaceLayout>
   );
 }

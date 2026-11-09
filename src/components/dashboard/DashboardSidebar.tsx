@@ -19,6 +19,7 @@ import {
   Users,
   BookOpen,
   Library,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ReelSparkLogo } from '@/components/ReelSparkLogo';
@@ -92,6 +93,12 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           label: 'AI Reel Maker',
           href: '/reel-maker',
           icon: Clapperboard,
+        },
+        {
+          id: 'auto-cut',
+          label: 'AI Auto Cut',
+          href: '/auto-cut',
+          icon: Sparkles,
         },
         {
           id: 'clipping-studio',

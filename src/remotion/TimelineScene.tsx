@@ -2,11 +2,13 @@ import React from "react";
 import {
   AbsoluteFill,
   Audio,
+  Freeze,
   Img,
   Loop,
   OffthreadVideo,
   Sequence,
   useCurrentFrame,
+  useRemotionEnvironment,
   useVideoConfig,
 } from "remotion";
 import type {
@@ -62,6 +64,7 @@ function ClipMedia({
   absoluteTime,
   plan,
   zIndex,
+  warmingUp,
 }: {
   clip: TimelineClip;
   asset: TimelineAsset;
@@ -69,6 +72,7 @@ function ClipMedia({
   absoluteTime: number;
   plan: TimelinePlan;
   zIndex: number;
+  warmingUp: boolean;
 }) {
   const { fps } = useVideoConfig();
   let opacity = clipEnvelope(clip, absoluteTime);
@@ -123,7 +127,7 @@ function ClipMedia({
       {visual && (
         <AbsoluteFill
           style={{
-            opacity: opacity * (motionStyle.opacity as number ?? 1),
+            opacity: warmingUp ? 0 : opacity * (motionStyle.opacity as number ?? 1),
             transform: transform || motionStyle.transform ? `${transform || ''} ${motionStyle.transform || ''}`.trim() : undefined,
             filter: motionStyle.filter,
             zIndex,
@@ -142,6 +146,7 @@ function ClipMedia({
                   <OffthreadVideo
                     src={asset.fileUrl}
                     startFrom={startFrom}
+                    pauseWhenBuffering={!warmingUp}
                     muted
                     style={{
                       width: "100%",
@@ -167,6 +172,7 @@ function ClipMedia({
               <OffthreadVideo
                 src={asset.fileUrl}
                 startFrom={startFrom}
+                pauseWhenBuffering={!warmingUp}
                 muted
                 style={mediaStyle}
               />
@@ -176,7 +182,7 @@ function ClipMedia({
           </SourceMedia>
         </AbsoluteFill>
       )}
-      {asset.mediaType !== "image" &&
+      {!warmingUp && asset.mediaType !== "image" &&
         asset.hasAudio !== false &&
         !track.muted &&
         !clip.muted && (
@@ -204,7 +210,9 @@ export function TimelineScene({
   | "sfxCues"
 >) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { isPlayer } = useRemotionEnvironment();
+  const { fps, durationInFrames } = useVideoConfig();
+  const preloadFrames = Math.ceil(fps * 1.5);
   const time = (frame * 1000) / fps;
   const assets = new Map(
     plan.timeline.assets.map((asset) => [asset.id, asset]),
@@ -231,10 +239,10 @@ export function TimelineScene({
               .filter((clip) => clip.trackId === track.id)
               .sort((a, b) => a.startMs - b.startMs)
               .map((clip, order) => {
-                const duration = Math.max(
-                  1,
-                  Math.round((clip.durationMs * fps) / 1000),
-                );
+                const startFrame = Math.round((clip.startMs * fps) / 1000);
+                const endFrame = Math.round(((clip.startMs + clip.durationMs) * fps) / 1000);
+                // Adjacent clips share one rounded boundary, even at subframe source offsets.
+                const duration = Math.max(1, endFrame - startFrame);
                 const asset = clip.assetId
                   ? assets.get(clip.assetId)
                   : undefined;
@@ -310,23 +318,28 @@ export function TimelineScene({
                     </AbsoluteFill>
                   );
                 }
-                return asset ? (
-                  <Sequence
-                    key={clip.id}
-                    from={Math.round((clip.startMs * fps) / 1000)}
-                    durationInFrames={duration}
-                    layout="none"
-                  >
-                    <ClipMedia
-                      clip={clip}
-                      asset={asset}
-                      track={track}
-                      absoluteTime={time}
-                      plan={plan}
-                      zIndex={zIndex}
-                    />
-                  </Sequence>
-                ) : null;
+                if (!asset) return null;
+                // Keep the same video element across the handoff. During the
+                // lead-in, its local clock sits on the first source frame.
+                const warmingUp = isPlayer && asset.mediaType === "video" &&
+                  track.kind !== "audio" && track.kind !== "music" &&
+                  ((frame < startFrame && frame >= startFrame - preloadFrames) ||
+                    (startFrame === 0 && frame >= endFrame && frame >= durationInFrames - preloadFrames));
+                return (
+                  <Freeze key={clip.id} frame={startFrame} active={warmingUp}>
+                    <Sequence from={startFrame} durationInFrames={duration} layout="none">
+                      <ClipMedia
+                        clip={clip}
+                        asset={asset}
+                        track={track}
+                        absoluteTime={Math.max(time, clip.startMs)}
+                        plan={plan}
+                        zIndex={zIndex}
+                        warmingUp={warmingUp}
+                      />
+                    </Sequence>
+                  </Freeze>
+                );
               }),
       )}
     </AbsoluteFill>

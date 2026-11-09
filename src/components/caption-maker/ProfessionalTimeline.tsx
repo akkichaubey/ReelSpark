@@ -1,6 +1,7 @@
 "use client";
 
 import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
+import { createPortal } from 'react-dom';
 import { ThumbnailCoverControls } from './ThumbnailCover';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -126,6 +127,8 @@ export function ProfessionalTimeline({
   thumbnailCoverError,
   onThumbnailCoverChange,
   onEditThumbnail,
+  onOpenTrackPanel,
+  trackSettingsTarget,
 }: {
   project: CaptionProject;
   currentTime: number;
@@ -149,6 +152,8 @@ export function ProfessionalTimeline({
   thumbnailCoverError?: string;
   onThumbnailCoverChange?: (cover: NonNullable<CaptionProject['thumbnailCover']>) => void;
   onEditThumbnail?: () => void;
+  onOpenTrackPanel?: (kind: TrackKind) => void;
+  trackSettingsTarget?: HTMLDivElement | null;
 }) {
   const base = useMemo(() => timelineFromProject(project), [project]);
   const [draft, setDraft] = useState<ReelTimeline | null>(null);
@@ -273,8 +278,10 @@ export function ProfessionalTimeline({
       const next = commitTimeline(action());
       onChange(next);
       setError("");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to edit timeline");
+      return false;
     }
   };
   useEffect(() => {
@@ -554,6 +561,116 @@ export function ProfessionalTimeline({
     { length: Math.ceil(viewport.width / (tickStep * px)) + 3 },
     (_, i) => (tickStart + i) * tickStep,
   ).filter((t) => t * px <= width);
+  const trackSettingsForm = trackEditor ? (
+      <form
+        aria-label="Track settings"
+        className="w-full max-w-sm space-y-4 rounded-2xl border border-zinc-700 bg-zinc-950 p-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          try {
+            const current = timeline.tracks.find(t => t.id === trackEditor.track.id);
+            if (!current) throw new Error("This track is no longer available.");
+            const tracks = timeline.tracks.filter(t => t.id !== current.id);
+            tracks.splice(trackEditor.index, 0, { ...current, name: trackEditor.track.name, height: trackEditor.track.height });
+            onChange(commitTimeline({ ...timeline, tracks }));
+            setTrackEditor(null);
+            setError("");
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Invalid track");
+          }
+        }}
+      >
+        {onOpenTrackPanel ? <h3 className="text-sm font-bold text-amber-300">Track settings</h3> : (
+          <DialogTitle className="text-base font-bold text-amber-300">Track settings</DialogTitle>
+        )}
+        <label className="block">
+          Track name
+          <Input
+            className="mt-1 w-full rounded bg-zinc-900 p-2"
+            value={trackEditor.track.name}
+            onChange={(e) =>
+              setTrackEditor({
+                ...trackEditor,
+                track: { ...trackEditor.track, name: e.target.value },
+              })
+            }
+          />
+        </label>
+        <label className="block">
+          Height (px)
+          <Input
+            type="number"
+            min="36"
+            max="160"
+            className="mt-1 w-full rounded bg-zinc-900 p-2"
+            value={trackEditor.track.height}
+            onChange={(e) =>
+              setTrackEditor({
+                ...trackEditor,
+                track: {
+                  ...trackEditor.track,
+                  height: Number(e.target.value),
+                },
+              })
+            }
+          />
+        </label>
+        <label className="block">
+          Layer order
+          <select
+            className="mt-1 w-full rounded bg-zinc-900 p-2"
+            value={trackEditor.index}
+            onChange={(e) =>
+              setTrackEditor({
+                ...trackEditor,
+                index: Number(e.target.value),
+              })
+            }
+          >
+            {timeline.tracks.map((t, i) => (
+              <option key={t.id} value={i}>
+                {i + 1}
+                {i === 0 ? " · Front layer" : ""} — {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-[10px] text-zinc-500">
+          Upper visual tracks appear in front. Remove clips before deleting
+          their track; Undo restores edits.
+        </p>
+        {error && (
+          <p role="alert" className="text-rose-300">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            className={button}
+            onClick={() => {
+              removeTrack(trackEditor.track.id);
+            }}
+          >
+            Delete track
+          </Button>
+          <Button
+            type="button"
+            className={button}
+            onClick={() => setTrackEditor(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="rounded bg-amber-400 px-3 py-2 font-bold text-black"
+            type="submit"
+          >
+            Apply
+          </Button>
+        </div>
+      </form>
+  ) : null;
+
   return (
     <section
       data-editor-timeline="true"
@@ -751,16 +868,29 @@ export function ProfessionalTimeline({
           value=""
           onValueChange={(value) => {
             if (value === 'thumbnail') { if (onEditThumbnail) onEditThumbnail(); else onThumbnailCoverChange?.({ enabled: true }); return; }
+            if (value === 'background-video' || value === 'background-music' || value === 'spoken-voice') {
+              setTrackEditor(null);
+              if (onOpenTrackPanel) onOpenTrackPanel(value === 'background-video' ? 'video' : value === 'background-music' ? 'music' : 'audio');
+              return;
+            }
             const kind = value as TrackKind;
-            run(() => ({
+            const track = createTimelineTrack(kind);
+            const added = run(() => ({
               ...timeline,
-              tracks: [createTimelineTrack(kind), ...timeline.tracks],
+              tracks: [track, ...timeline.tracks],
             }));
+            if (added && onOpenTrackPanel) {
+              onOpenTrackPanel(kind);
+              setTrackEditor({ track, index: 0 });
+            }
           }}
         >
           <SelectTrigger aria-label="Add track"><SelectValue placeholder="+ Add track" /></SelectTrigger>
           <SelectContent>
           {onThumbnailCoverChange && <SelectItem value="thumbnail">Thumbnail</SelectItem>}
+          {onOpenTrackPanel && <SelectItem value="background-video">Background Video / Image</SelectItem>}
+          {onOpenTrackPanel && <SelectItem value="spoken-voice">Spoken Audio / Voice</SelectItem>}
+          {onOpenTrackPanel && <SelectItem value="background-music">Background Music (BGM)</SelectItem>}
           {(
             [
               "video",
@@ -1011,10 +1141,11 @@ export function ProfessionalTimeline({
                     <Button
                       type="button"
                       className="flex-1 truncate text-left text-[11px] font-medium"
-                      title="Rename track"
-                      onClick={() =>
-                        setTrackEditor({ track: structuredClone(track), index })
-                      }
+                      title="Select track"
+                      onClick={() => {
+                        onOpenTrackPanel?.(track.kind);
+                        setTrackEditor({ track: structuredClone(track), index });
+                      }}
                     >
                       {track.name}
                     </Button>
@@ -1022,9 +1153,10 @@ export function ProfessionalTimeline({
                       type="button"
                       aria-label={`Track settings: ${track.name}`}
                       title="Track height, order or delete"
-                      onClick={() =>
-                        setTrackEditor({ track: structuredClone(track), index })
-                      }
+                      onClick={() => {
+                        onOpenTrackPanel?.(track.kind);
+                        setTrackEditor({ track: structuredClone(track), index });
+                      }}
                     >
                       <Settings2 size={11} />
                     </Button>
@@ -1218,6 +1350,9 @@ export function ProfessionalTimeline({
                           <span data-timeline-clip-label="true" className={`${track.kind === 'captions' ? 'hidden' : ''} pointer-events-none relative block truncate bg-black/30 px-2 py-1 text-[10px] font-medium text-white`}>
                             {clip.linkId ? "↔ " : ""}
                             {clip.text?.value || clip.name}
+                            {clip.transitionIn === "crossfade" && (track.kind === "video" || track.kind === "intro") && (
+                              <span className="ml-1 text-amber-200">· Dissolve {clip.fadeInMs} ms</span>
+                            )}
                           </span>
                           {selectedClip && audioTrack(track) && asset?.mediaType !== 'image' && preview?.hasAudio && (
                             <AudioClipControls clip={clip} disabled={track.locked}
@@ -1281,118 +1416,11 @@ export function ProfessionalTimeline({
             assets: [...projectTimelineAssets(project).filter(existing => existing.id !== asset.id), asset],
           }))}/>;
       })()}
-      {trackEditor && (
-        <DialogSurface asChild onClose={() => setTrackEditor(null)} aria-describedby={undefined} overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
-          <form
-            role="dialog"
-            aria-modal="true"
-            aria-label="Track settings"
-            className="w-full max-w-sm space-y-4 rounded-2xl border border-zinc-700 bg-zinc-950 p-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              try {
-                const tracks = timeline.tracks.filter(
-                  (t) => t.id !== trackEditor.track.id,
-                );
-                tracks.splice(trackEditor.index, 0, trackEditor.track);
-                onChange(commitTimeline({ ...timeline, tracks }));
-                setTrackEditor(null);
-                setError("");
-              } catch (e) {
-                setError(e instanceof Error ? e.message : "Invalid track");
-              }
-            }}
-          >
-            <DialogTitle asChild><h2 className="text-base font-bold text-amber-300">
-              Track settings
-            </h2></DialogTitle>
-            <label className="block">
-              Track name
-              <Input
-                className="mt-1 w-full rounded bg-zinc-900 p-2"
-                value={trackEditor.track.name}
-                onChange={(e) =>
-                  setTrackEditor({
-                    ...trackEditor,
-                    track: { ...trackEditor.track, name: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <label className="block">
-              Height (px)
-              <Input
-                type="number"
-                min="36"
-                max="160"
-                className="mt-1 w-full rounded bg-zinc-900 p-2"
-                value={trackEditor.track.height}
-                onChange={(e) =>
-                  setTrackEditor({
-                    ...trackEditor,
-                    track: {
-                      ...trackEditor.track,
-                      height: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-            </label>
-            <label className="block">
-              Layer order
-              <select
-                className="mt-1 w-full rounded bg-zinc-900 p-2"
-                value={trackEditor.index}
-                onChange={(e) =>
-                  setTrackEditor({
-                    ...trackEditor,
-                    index: Number(e.target.value),
-                  })
-                }
-              >
-                {timeline.tracks.map((t, i) => (
-                  <option key={t.id} value={i}>
-                    {i + 1}
-                    {i === 0 ? " · Front layer" : ""} — {t.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="text-[10px] text-zinc-500">
-              Upper visual tracks appear in front. Remove clips before deleting
-              their track; Undo restores edits.
-            </p>
-            {error && (
-              <p role="alert" className="text-rose-300">
-                {error}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                className={button}
-                onClick={() => {
-                  removeTrack(trackEditor.track.id);
-                }}
-              >
-                Delete track
-              </Button>
-              <Button
-                type="button"
-                className={button}
-                onClick={() => setTrackEditor(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="rounded bg-amber-400 px-3 py-2 font-bold text-black"
-                type="submit"
-              >
-                Apply
-              </Button>
-            </div>
-          </form>
-        </DialogSurface>
+      {trackSettingsForm && (onOpenTrackPanel
+        ? trackSettingsTarget && createPortal(trackSettingsForm, trackSettingsTarget)
+        : <DialogSurface asChild onClose={() => setTrackEditor(null)} aria-describedby={undefined} overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+            {trackSettingsForm}
+          </DialogSurface>
       )}
       {inspector && (
         <DialogSurface asChild onClose={() => setInspector(null)} aria-describedby={undefined} overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
@@ -1584,7 +1612,7 @@ export function ProfessionalTimeline({
                 className="ml-2 rounded border border-zinc-700 bg-zinc-900 p-2"
               >
                 {["cut", "fade", "crossfade", "slide", "zoom"].map((value) => (
-                  <option key={value}>{value}</option>
+                  <option key={value} value={value}>{({ cut: 'Clean cut', fade: 'Fade', crossfade: 'Crossfade / dissolve', slide: 'Slide', zoom: 'Subtle zoom' })[value as TimelineClip["transitionIn"]]}</option>
                 ))}
               </select>
             </label>

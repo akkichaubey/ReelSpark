@@ -41,7 +41,10 @@ export async function generateWithGemini(params: {
   model?: string;
   apiKey?: string;
   responseMimeType?: string;
+  responseJsonSchema?: Record<string, unknown>;
   temperature?: number;
+  signal?: AbortSignal;
+  retryRateLimit?: boolean;
 }): Promise<string> {
   const model = params.model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const apiKey = (
@@ -78,10 +81,12 @@ export async function generateWithGemini(params: {
     generationConfig: {
       temperature: params.temperature ?? 0.2,
       ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
+      ...(params.responseJsonSchema ? { responseJsonSchema: params.responseJsonSchema } : {}),
     },
   };
 
   for (let attempt = 0; attempt < 3; attempt++) {
+  params.signal?.throwIfAborted();
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -91,14 +96,14 @@ export async function generateWithGemini(params: {
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60000),
+      signal: params.signal ? AbortSignal.any([params.signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000),
     }
   );
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const error = new GeminiApiError(data.error?.message || `Google Gemini API error (${res.status})`, res.status);
-    if (attempt < 2 && isTemporaryGeminiError(error)) {
+    if (attempt < 2 && isTemporaryGeminiError(error) && (res.status !== 429 || params.retryRateLimit !== false)) {
       const retryAfter = res.headers.get('retry-after');
       const requestedWait = retryAfter ? (Number.isFinite(Number(retryAfter))
         ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : 0;

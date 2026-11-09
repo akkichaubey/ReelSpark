@@ -12,8 +12,8 @@ export class StorageInUseError extends Error {
 }
 
 export class ProjectMediaReferencedError extends Error {
-  constructor() {
-    super('Project media is referenced by another saved project. The project was retained to protect shared files.');
+  constructor(message = 'Project media is referenced by another saved project. Remove that reference before deleting this project.', readonly linkedWorkspaceId?: string) {
+    super(message);
     this.name = 'ProjectMediaReferencedError';
   }
 }
@@ -245,7 +245,9 @@ export async function deleteProject(projectId: string): Promise<boolean> {
     const referenceFile = path.join(studioRoot, entry.name, 'linked-workspace.json');
     try {
       const linked = JSON.parse(await fs.promises.readFile(referenceFile, 'utf8'));
-      if (containsPathInsideProject(linked, projectRoot)) throw new ProjectMediaReferencedError();
+      if (containsPathInsideProject(linked, projectRoot)) {
+        throw new ProjectMediaReferencedError('This project’s media is referenced by a linked project in Video & Audio Studio. Remove the shared media there, or delete the linked project, then retry here.', entry.name);
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

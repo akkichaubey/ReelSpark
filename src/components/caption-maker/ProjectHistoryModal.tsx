@@ -58,14 +58,14 @@ export const ProjectHistoryModal: React.FC<ProjectHistoryModalProps> = ({
   const importAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    const timer = window.setTimeout(() => { if (isOpen) {
       setSnapshots(getProjectSnapshots());
       setStatusNotice(null);
       setErrorNotice(null);
       setImportProgress(null);
       setImportComplete(false);
-    }
-    return () => importAbortController.current?.abort();
+    } }, 0);
+    return () => { window.clearTimeout(timer); importAbortController.current?.abort(); };
   }, [isOpen]);
 
   if (!isOpen) return null;

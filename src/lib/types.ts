@@ -125,6 +125,7 @@ export interface ProjectSettings {
 }
 
 export interface Project {
+  hiddenFromOurWork?: boolean;
   ownerUserId?: string;
   id: string;
   title: string;
