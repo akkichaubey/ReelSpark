@@ -100,7 +100,7 @@ interface ClippingStudioState {
   acceptLinkedProject: (project: ClippingProject) => void;
   updateActiveProject: (updater: (prev: ClippingProject) => ClippingProject) => void;
   saveActiveProject: () => void;
-  deleteProject: (projectId: string) => void;
+  deleteProject: (projectId: string) => Promise<string | null>;
   duplicateProject: (projectId: string) => ClippingProject | null;
   renameProject: (projectId: string, newName: string) => void;
 
@@ -426,8 +426,14 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
     try {
       const response = await fetch(`/api/clipping-studio/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
       const result = await response.json();
-      if (!response.ok || !result.success) { set({ saveStatus: 'error' }); return; }
-    } catch { set({ saveStatus: 'error' }); return; }
+      if (!response.ok || !result.success) {
+        set({ saveStatus: 'error' });
+        return result.error || 'Could not delete the Studio project.';
+      }
+    } catch {
+      set({ saveStatus: 'error' });
+      return 'Could not delete the Studio project.';
+    }
     deleteProjectLocally(projectId);
     clearCrashRecoverySnapshot(projectId);
     set((state) => {
@@ -441,6 +447,7 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
         activeTab: 'media',
       };
     });
+    return null;
   },
 
   duplicateProject: (projectId: string) => {

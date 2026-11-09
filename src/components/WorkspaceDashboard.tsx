@@ -86,7 +86,7 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
   const initializeEditingProjects = useClippingStore(state => state.initializeStore);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; title: string; studio?: boolean } | null>(null);
   const [deletingProject, setDeletingProject] = useState(false);
   const [projectDeleteError, setProjectDeleteError] = useState('');
   const [linkedWorkspaceId, setLinkedWorkspaceId] = useState<string | null>(null);
@@ -588,6 +588,13 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
     setProjectDeleteError('');
     setLinkedWorkspaceId(null);
     try {
+      if (projectToDelete.studio) {
+        const error = await useClippingStore.getState().deleteProject(projectId);
+        if (error) throw new Error(error);
+        setProjectToDelete(null);
+        showToast('Project deleted', 'info');
+        return;
+      }
       const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
@@ -1126,6 +1133,13 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
               router.push(studioProjectUrl(p.id));
             }}
             onDeleteProject={handleDeleteProject}
+            onDeleteEditingProject={id => {
+              const project = editingProjects.find(item => item.id === id);
+              if (!project) return;
+              setProjectDeleteError('');
+              setLinkedWorkspaceId(null);
+              setProjectToDelete({ id, title: project.name, studio: true });
+            }}
             onNewProject={() => setShowCreatorModal(true)}
             ollamaModel={systemStatus?.ollama?.model || selectedOllamaModel}
           />

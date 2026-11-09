@@ -25,6 +25,7 @@ interface DashboardViewProps {
   editingProjects?: ClippingProject[];
   onOpenProject: (project: Project) => void;
   onDeleteProject: (projectId: string) => void;
+  onDeleteEditingProject: (projectId: string) => void;
   onNewProject: () => void;
   ollamaModel?: string;
 }
@@ -35,6 +36,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   editingProjects = [],
   onOpenProject,
   onDeleteProject,
+  onDeleteEditingProject,
   onNewProject,
 }) => {
   return (
@@ -269,10 +271,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             ))}
             {editingProjects.map(project => (
-              <Link key={project.id} href={studioProjectUrl(project.id, 'media')} className="group flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 shadow-md transition-colors hover:border-amber-400/40">
+              <div key={project.id} className="group flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-5 shadow-md transition-colors hover:border-amber-400/40">
                 <div className="space-y-3"><Scissors className="h-5 w-5 text-amber-400" /><h4 className="truncate text-sm font-bold text-white">{project.name}</h4><p className="text-xs text-zinc-400">{project.mediaAssets.length} media · {project.clips.length} clips · {project.exportJobs.length} exports</p></div>
-                <span className="flex items-center gap-1 border-t border-white/5 pt-3 text-xs font-semibold text-white">Open Project <ArrowRight className="h-3.5 w-3.5" /></span>
-              </Link>
+                <div className="flex items-center justify-between border-t border-white/5 pt-3">
+                  <Link href={studioProjectUrl(project.id, 'media')} className="flex items-center gap-1 text-xs font-semibold text-white">Open Project <ArrowRight className="h-3.5 w-3.5" /></Link>
+                  <Button type="button" aria-label={`Delete ${project.name}`} title="Delete project" className="rounded-lg p-2 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={() => onDeleteEditingProject(project.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         )}
