@@ -38,6 +38,12 @@ export async function DELETE(
     if (Array.from(fallbackJobs.values()).some(job => job.projectId === projectId && job.ownerUserId === access.user.id && ['running', 'queued'].includes(job.status))) {
       return NextResponse.json({ error: 'Project processing is still stopping. Retry deletion in a moment.' }, { status: 409 });
     }
+    const projectsBaseDir = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
+    const projectDir = assertSafePath(path.join(projectsBaseDir, projectId), projectsBaseDir);
+    if (!ownedProjectDir && !fs.existsSync(projectDir) && !projectCloudEnabled() && !mediaLifecycleEnabled()) {
+      // The browser can remove its draft without a server-side deletion.
+      return NextResponse.json({ success: true, localOnly: true });
+    }
     if (mediaLifecycleEnabled()) {
       await deleteOwnedClippingProject(access.user.id, projectId);
       return NextResponse.json({ success: true, cleanupPending: true, message: 'Project deleted; private objects are queued for maintenance cleanup' }, { status: 202 });
@@ -49,24 +55,10 @@ export async function DELETE(
     if (projectCloudEnabled() || process.env.CLOUD_PROJECT_METADATA_ENABLED === 'true' || privateMediaEnabled()) {
       return NextResponse.json({ error: 'Cloud deletion requires lifecycle migration/configuration; local project retained' }, { status: 503 });
     }
-    if (!(await clippingProjectAccess(access.user.id, projectId))) {
-      const target = assertSafePath(path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects', projectId));
-      if (!fs.existsSync(target)) return NextResponse.json({ success: true, localOnly: true });
+    if (!ownedProjectDir) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-    if (!projectId || typeof projectId !== 'string') {
-      return NextResponse.json({ success: false, error: 'Invalid project ID' }, { status: 400 });
-    }
-
-    const projectsBaseDir = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
-    const projectDir = path.join(projectsBaseDir, projectId);
-
-    // Assert safe path to prevent directory traversal
-    assertSafePath(projectDir, projectsBaseDir);
-
-    if (fs.existsSync(projectDir)) {
-      fs.rmSync(projectDir, { recursive: true, force: true });
-    }
+    fs.rmSync(ownedProjectDir, { recursive: true, force: true });
 
     return NextResponse.json({
       success: true,

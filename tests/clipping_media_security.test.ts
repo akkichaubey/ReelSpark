@@ -57,6 +57,19 @@ async function main() {
     assert.equal((await bridge(request({ sourcePath: otherMedia, clipId: 'clip', startMs: 0, endMs: 1000 }))).status, 404);
     assert.equal((await relink(request({ assetId: 'a', newPath: otherMedia }, 'PUT'), context)).status, 404);
     assert.equal((await deleteProject(request({}, 'DELETE'), { params: Promise.resolve({ id: 'bob-project' }) })).status, 404);
+    const previousPrivateMedia = process.env.CLOUD_PRIVATE_MEDIA_ENABLED;
+    try {
+      process.env.CLOUD_PRIVATE_MEDIA_ENABLED = 'true';
+      const draftDeletion = await deleteProject(request({}, 'DELETE'), { params: Promise.resolve({ id: 'browser-draft' }) });
+      assert.equal(draftDeletion.status, 200);
+      assert.deepEqual(await draftDeletion.json(), { success: true, localOnly: true });
+      const blocked = await deleteProject(request({}, 'DELETE'), { params: Promise.resolve({ id: 'bob-project' }) });
+      assert.notEqual(blocked.status, 200);
+      assert.equal(await fs.readFile(otherMedia, 'utf8'), 'other audio');
+    } finally {
+      if (previousPrivateMedia === undefined) delete process.env.CLOUD_PRIVATE_MEDIA_ENABLED;
+      else process.env.CLOUD_PRIVATE_MEDIA_ENABLED = previousPrivateMedia;
+    }
     assert.equal((await probe(request({}, 'POST', 'https://attacker.example'))).status, 403);
     process.env.REELSPARK_ALLOW_REMOTE = 'true';
     assert.equal((await exportJob(request({ args: ['unsafe'] }))).status, 400);
