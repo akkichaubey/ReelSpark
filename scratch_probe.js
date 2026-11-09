@@ -1,5 +1,4 @@
-const { spawnSync } = require('child_process');
-const fs = require('fs');
+import { spawnSync } from 'node:child_process';
 const res = spawnSync('ffprobe', [
   '-v', 'error',
   '-select_streams', 'v:0',

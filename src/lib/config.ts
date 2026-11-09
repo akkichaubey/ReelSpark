@@ -28,6 +28,12 @@ export function getFfmpegPath(): string {
     return process.env.FFMPEG_PATH;
   }
 
+  if (process.platform === 'win32') {
+    // App commands can launch FFmpeg directly. The wrapper is for Remotion.
+    const nativeExe = path.join(APP_CONFIG.binDir, 'ffmpeg-real.exe');
+    if (fs.existsSync(nativeExe)) return nativeExe;
+  }
+
   const localExe = path.join(APP_CONFIG.binDir, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
   if (fs.existsSync(localExe)) {
     return localExe;

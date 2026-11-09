@@ -6,6 +6,9 @@ import {
   Sparkles,
   Play,
   Pause,
+  Maximize,
+  Volume2,
+  VolumeX,
   Sliders,
   AlertCircle,
   Scissors,
@@ -20,13 +23,17 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { optimizeDurationAndAssemble } from '@/lib/auto-cut/optimizer';
 import { createAutoCutReel } from '@/lib/auto-cut/reel-bridge';
 import { saveReel } from '@/lib/saved-reels/client';
 import { useClippingStore } from '@/lib/clipping-studio/use-clipping-store';
+import { useAuthStore } from '@/lib/use-auth-store';
 import { uploadFileWithProgress, UploadCancelledError } from '@/lib/upload-with-progress';
 import { getMediaAssetWebUrl, type MediaAsset } from '@/lib/clipping-studio/contracts';
 import {
+  AutoCutClipCandidateSchema,
+  AutoCutSettingsSchema,
   AutoCutClipCandidate,
   AutoCutMode,
   DurationPreset,
@@ -115,13 +122,39 @@ const DURATION_PRESETS: { value: DurationPreset; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
-export const AutoCutStudio: React.FC = () => {
-  const workspaceKey = useClippingStore(state => state.activeProject?.id + ':' + (state.selectedAssetId || state.activeProject?.mediaAssets[0]?.id || ''));
-  return <AutoCutWorkspace key={workspaceKey} />;
+function formatPreviewTime(seconds: number) {
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+export const AutoCutStudio: React.FC<{ visible?: boolean }> = ({ visible = true }) => {
+  const accountId = useAuthStore(state => state.user?.id);
+  const projectId = useClippingStore(state => state.activeProject?.id);
+  const assetId = useClippingStore(state => (state.activeProject?.mediaAssets.find(asset => asset.id === state.selectedAssetId) || state.activeProject?.mediaAssets[0])?.id);
+  const workspaceKey = JSON.stringify([accountId, projectId, assetId]);
+  const draftKey = accountId && projectId && assetId ? `reelspark:auto-cut-draft:v1:${workspaceKey}` : null;
+  return <AutoCutWorkspace key={workspaceKey} visible={visible} draftKey={draftKey} />;
 };
 
-const AutoCutWorkspace: React.FC = () => {
+function readDraft(key: string | null) {
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null');
+    if (!saved) return null;
+    return {
+      sourceCandidates: AutoCutClipCandidateSchema.array().parse(saved.sourceCandidates),
+      candidates: AutoCutClipCandidateSchema.array().parse(saved.candidates),
+      settings: AutoCutSettingsSchema.parse(saved.settings),
+      notice: typeof saved.notice === 'string' ? saved.notice : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null }> = ({ visible, draftKey }) => {
   const router = useRouter();
+  const [savedDraft] = useState(() => readDraft(draftKey));
   const {
     activeProject,
     selectedAssetId,
@@ -140,16 +173,18 @@ const AutoCutWorkspace: React.FC = () => {
   }, [activeProject, selectedAssetId]);
 
   // Settings State
-  const [analysisMethod, setAnalysisMethod] = useState<'semantic' | 'scene_audio'>('semantic');
-  const [analysisNotice, setAnalysisNotice] = useState('');
-  const [mode, setMode] = useState<AutoCutMode>('auto_highlight');
-  const [durationPreset, setDurationPreset] = useState<DurationPreset>(60);
-  const [customDuration, setCustomDuration] = useState<number>(30);
-  const [intensity, setIntensity] = useState<EditingIntensity>('balanced');
-  const [pacing, setPacing] = useState<VideoPacing>('normal');
-  const [silenceRemoval, setSilenceRemoval] = useState<SilenceRemoval>('moderate');
-  const [sceneSelection, setSceneSelection] = useState<SceneSelection>('balanced');
-  const [transition, setTransition] = useState<TransitionStyle>('dynamic');
+  const [analysisMethod, setAnalysisMethod] = useState<'semantic' | 'scene_audio'>(savedDraft?.settings.analysisMethod ?? 'semantic');
+  const [analysisNotice, setAnalysisNotice] = useState(savedDraft?.notice ?? '');
+  const [mode, setMode] = useState<AutoCutMode>(savedDraft?.settings.mode ?? 'auto_highlight');
+  const [durationPreset, setDurationPreset] = useState<DurationPreset>(() => savedDraft
+    ? DURATION_PRESETS.find(preset => preset.value === savedDraft.settings.targetDurationSeconds)?.value ?? 'custom'
+    : 60);
+  const [customDuration, setCustomDuration] = useState<number>(savedDraft?.settings.targetDurationSeconds ?? 30);
+  const [intensity, setIntensity] = useState<EditingIntensity>(savedDraft?.settings.intensity ?? 'balanced');
+  const [pacing, setPacing] = useState<VideoPacing>(savedDraft?.settings.pacing ?? 'normal');
+  const [silenceRemoval, setSilenceRemoval] = useState<SilenceRemoval>(savedDraft?.settings.silenceRemoval ?? 'moderate');
+  const [sceneSelection, setSceneSelection] = useState<SceneSelection>(savedDraft?.settings.sceneSelection ?? 'balanced');
+  const [transition, setTransition] = useState<TransitionStyle>(savedDraft?.settings.transition ?? 'dynamic');
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   // Analysis State
@@ -158,8 +193,8 @@ const AutoCutWorkspace: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Results State
-  const [sourceCandidates, setSourceCandidates] = useState<AutoCutClipCandidate[]>([]);
-  const [candidates, setCandidates] = useState<AutoCutClipCandidate[]>([]);
+  const [sourceCandidates, setSourceCandidates] = useState<AutoCutClipCandidate[]>(savedDraft?.sourceCandidates ?? []);
+  const [candidates, setCandidates] = useState<AutoCutClipCandidate[]>(savedDraft?.candidates ?? []);
   const achievedDurationMs = candidates.filter(c => c.selected).reduce((sum, c) => sum + c.durationMs, 0);
   const [isOpening, setIsOpening] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -193,16 +228,32 @@ const AutoCutWorkspace: React.FC = () => {
   };
   const requestVersion = useRef(0);
   useEffect(() => () => { requestVersion.current++; requestRef.current?.abort(); uploadRef.current?.abort(); }, []);
-  const [hasRun, setHasRun] = useState<boolean>(false);
+  const [hasRun, setHasRun] = useState(Boolean(savedDraft));
 
   // Player Audition State
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [previewTime, setPreviewTime] = useState(0);
+  const [previewDuration, setPreviewDuration] = useState(0);
+  const [previewVolume, setPreviewVolume] = useState(1);
+  const [previewMuted, setPreviewMuted] = useState(false);
   const [activeAuditionClip, setActiveAuditionClip] = useState<AutoCutClipCandidate | null>(null);
-  const [currentTimeSec, setCurrentTimeSec] = useState<number>(0);
 
   const targetDurationSeconds =
     durationPreset === 'custom' ? customDuration : Number(durationPreset);
+
+  useEffect(() => {
+    if (!draftKey || !hasRun) return;
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify({
+        sourceCandidates,
+        candidates,
+        notice: analysisNotice,
+        settings: { analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition },
+      }));
+    } catch { /* Draft remains available in the current editor. */ }
+  }, [draftKey, hasRun, sourceCandidates, candidates, analysisNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition]);
 
   const mediaWebUrl = useMemo(() => {
     return activeAsset ? getMediaAssetWebUrl(activeAsset) : '';
@@ -214,38 +265,36 @@ const AutoCutWorkspace: React.FC = () => {
     setActiveAuditionClip(clip);
     const startSec = clip.startMs / 1000;
     videoRef.current.currentTime = startSec;
-    videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-  };
-
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
+    void videoRef.current.play().catch(() => {});
   };
 
   useEffect(() => {
+    if (!visible) videoRef.current?.pause();
+  }, [visible]);
+
+  const handlePreviewTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    if (activeAuditionClip && video.currentTime >= activeAuditionClip.endMs / 1000) {
+      video.pause();
+      video.currentTime = activeAuditionClip.startMs / 1000;
+    }
+    setPreviewTime(video.currentTime);
+  };
+
+  const togglePreview = () => {
     const video = videoRef.current;
     if (!video) return;
+    if (video.paused) void video.play().catch(() => {});
+    else video.pause();
+  };
 
-    const handleTimeUpdate = () => {
-      setCurrentTimeSec(video.currentTime);
-      if (activeAuditionClip) {
-        const endSec = activeAuditionClip.endMs / 1000;
-        if (video.currentTime >= endSec) {
-          video.pause();
-          setIsPlaying(false);
-          video.currentTime = activeAuditionClip.startMs / 1000;
-        }
-      }
-    };
-
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    return () => video.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [activeAuditionClip, mediaWebUrl]);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement === previewRef.current) {
+      void document.exitFullscreen().catch(() => {});
+    } else {
+      void previewRef.current?.requestFullscreen?.().catch(() => {});
+    }
+  };
 
   // Toggle clip inclusion
   const toggleClipSelection = (clipId: string) => {
@@ -697,7 +746,7 @@ const AutoCutWorkspace: React.FC = () => {
           {/* Audition Player */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-300">Audition Player</span>
+              <span className="text-xs font-bold text-zinc-300">Video Preview</span>
               {activeAuditionClip && (
                 <span className="text-[10px] font-mono text-amber-400 truncate max-w-[200px]">
                   {activeAuditionClip.category || 'Clip Audition'}
@@ -705,44 +754,70 @@ const AutoCutWorkspace: React.FC = () => {
               )}
             </div>
 
-            <div className="relative aspect-video rounded-xl bg-black overflow-hidden border border-zinc-800 flex items-center justify-center">
+            <div ref={previewRef} className="overflow-hidden rounded-xl border border-zinc-800 bg-black fullscreen:flex fullscreen:flex-col fullscreen:justify-center">
               {mediaWebUrl ? (
+                <>
                 <video
                   ref={videoRef}
                   src={mediaWebUrl}
-                  className="w-full h-full object-contain"
+                  className="aspect-video w-full object-contain fullscreen:min-h-0 fullscreen:flex-1"
                   playsInline
+                  preload="metadata"
+                  aria-label="Source video preview"
+                  onContextMenu={event => event.preventDefault()}
+                  onTimeUpdate={handlePreviewTimeUpdate}
+                  onLoadedMetadata={event => setPreviewDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+                  onPlay={() => setPreviewPlaying(true)}
+                  onPause={() => setPreviewPlaying(false)}
+                  onEnded={() => setPreviewPlaying(false)}
+                  onVolumeChange={event => {
+                    setPreviewVolume(event.currentTarget.volume);
+                    setPreviewMuted(event.currentTarget.muted);
+                  }}
                 />
+                <div className="space-y-1 border-t border-zinc-800 bg-zinc-950 px-3 py-2">
+                  <Slider aria-label="Seek video" min={0} max={previewDuration || 1} step={0.01}
+                    disabled={!previewDuration} value={[Math.min(previewTime, previewDuration)]}
+                    onValueChange={([time]) => {
+                      if (!videoRef.current) return;
+                      if (activeAuditionClip && (time < activeAuditionClip.startMs / 1000 || time >= activeAuditionClip.endMs / 1000)) setActiveAuditionClip(null);
+                      videoRef.current.currentTime = time;
+                      setPreviewTime(time);
+                    }} />
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="ghost" size="icon" aria-label={previewPlaying ? 'Pause preview' : 'Play preview'} onClick={togglePreview}>
+                      {previewPlaying ? <Pause size={17} /> : <Play size={17} />}
+                    </Button>
+                    <span className="mr-auto text-xs tabular-nums text-zinc-300">
+                      {formatPreviewTime(previewTime)} / {formatPreviewTime(previewDuration)}
+                    </span>
+                    <Button type="button" variant="ghost" size="icon" aria-label={previewMuted ? 'Unmute preview' : 'Mute preview'} onClick={() => {
+                      if (videoRef.current) videoRef.current.muted = !videoRef.current.muted;
+                    }}>
+                      {previewMuted || previewVolume === 0 ? <VolumeX size={17} /> : <Volume2 size={17} />}
+                    </Button>
+                    <Slider className="w-14 sm:w-20" aria-label="Preview volume" min={0} max={1} step={0.01}
+                      value={[previewMuted ? 0 : previewVolume]} onValueChange={([volume]) => {
+                        if (!videoRef.current) return;
+                        videoRef.current.volume = volume;
+                        videoRef.current.muted = false;
+                      }} />
+                    <Button type="button" variant="ghost" size="icon" aria-label="Toggle fullscreen" onClick={toggleFullscreen}>
+                      <Maximize size={17} />
+                    </Button>
+                  </div>
+                </div>
+                </>
               ) : (
-                <div className="text-xs text-zinc-500">No active video loaded</div>
+                <div className="grid aspect-video place-items-center text-xs text-zinc-500">No active video loaded</div>
               )}
 
-              {/* Play/Pause Overlay */}
-              <button
-                type="button"
-                aria-label={isPlaying ? 'Pause preview' : 'Play preview'}
-                onClick={togglePlay}
-                className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/10 transition-colors group cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-full bg-black/70 border border-white/20 group-hover:scale-105 transition-transform flex items-center justify-center text-white shadow-xl">
-                  {isPlaying ? (
-                    <Pause className="w-5 h-5" />
-                  ) : (
-                    <Play className="w-5 h-5 ml-0.5" />
-                  )}
-                </div>
-              </button>
             </div>
-
-            {/* Time readout */}
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 px-1">
-              <span>{currentTimeSec.toFixed(1)}s</span>
-              <span>
-                {activeAsset
-                  ? `${(activeAsset.metadata.durationSeconds || 0).toFixed(1)}s`
-                  : '0.0s'}
-              </span>
-            </div>
+            {activeAuditionClip && (
+              <Button type="button" onClick={() => setActiveAuditionClip(null)} className="text-xs text-amber-300">
+                Switch to full video
+              </Button>
+            )}
           </div>
 
           {/* Results Summary Box */}

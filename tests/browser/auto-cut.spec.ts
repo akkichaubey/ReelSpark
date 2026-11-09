@@ -19,6 +19,10 @@ test.beforeEach(async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: 'Auto Cut QA', exact: true })).toBeVisible();
 });
 test('all candidates are reviewable; bulk selection, regeneration and full sequence handoff', async ({ page }) => {
+  await expect(page.getByRole('slider', { name: 'Seek video' })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Preview volume' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Toggle fullscreen' })).toBeVisible();
+  await expect(page.locator('video[controls]')).toHaveCount(0);
   const errors: string[] = []; page.on('pageerror', e=>errors.push(e.message));
   let calls = 0;
   await page.route('**/api/clipping-studio/auto-cut', route => { calls++; return route.fulfill({ json: response }); });

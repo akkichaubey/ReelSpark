@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import React, { useCallback, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { Project } from '@/lib/types';
 import { primaryWorkspaceForSource, studioProjectUrl } from '@/lib/clipping-studio/project-bridge';
@@ -46,6 +46,7 @@ const AIMoments = dynamic(() => import('../WorkspaceDashboard').then(module => m
 
 export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
   const tabParam = searchParams.get('tab');
   const requestedProject = searchParams.get('project');
@@ -90,6 +91,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const [showAnalysisCreator, setShowAnalysisCreator] = useState(false);
   const [aiMounted, setAiMounted] = useState(tabParam === 'ai');
+  const [autoCutMounted, setAutoCutMounted] = useState(tabParam === 'autocut');
+  if (activeTab === 'autocut' && !autoCutMounted) setAutoCutMounted(true);
   const projectResolved = !requestedProject || activeProject?.id === requestedProject || activeProject?.sourceProjectId === requestedProject;
 
   useEffect(() => {
@@ -162,7 +165,8 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
     setActiveTab(tab);
     if (tab === 'ai' || activeTab === 'ai') setAiMounted(true);
     const project = requestedProject || activeProject?.id;
-    router.replace(project ? studioProjectUrl(project, tab) : `/clipping-studio?tab=${tab}`, { scroll: false });
+    const url = project ? studioProjectUrl(project, tab) : `/clipping-studio?tab=${tab}`;
+    router.replace(pathname === '/auto-cut' ? url.replace('/clipping-studio', '/auto-cut') : url, { scroll: false });
   };
 
   const importSelected = async () => {
@@ -537,7 +541,16 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
             </div>
           )}
           {linking && <div role="status" className="p-4 text-center text-sm text-amber-300">Opening your linked workspace…</div>}
-          {!projectResolved || activeTab === 'ai' ? null : viewMode === 'ai_candidates' ? (
+          {(autoCutMounted || activeTab === 'autocut') && projectResolved && activeProject && viewMode !== 'ai_candidates' && (
+            <div hidden={activeTab !== 'autocut'} className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+              <div className="pb-4 border-b border-white/10">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">{activeProject.name}</span>
+                <h2 className="text-2xl font-black text-white tracking-tight mt-0.5">AI Auto Cut &amp; Smart Video Editor</h2>
+              </div>
+              <AutoCutStudio visible={activeTab === 'autocut'} />
+            </div>
+          )}
+          {!projectResolved || activeTab === 'ai' || (activeTab === 'autocut' && activeProject && viewMode !== 'ai_candidates') ? null : viewMode === 'ai_candidates' ? (
             /* Render existing AI candidates UI */
             <div className="max-w-[1600px] mx-auto p-4">{children}</div>
           ) : !activeProject ? (
@@ -571,7 +584,6 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   </span>
                   <h2 className="text-2xl font-black text-white tracking-tight capitalize mt-0.5">
                     {activeTab === 'media' && 'Media Library & Inspector'}
-                    {activeTab === 'autocut' && 'AI Auto Cut & Smart Video Editor'}
                     {activeTab === 'timeline' && 'Timeline & Bulk Timestamp Clipping'}
                     {activeTab === 'merge' && 'Merge Studio (Sequence Builder)'}
                     {activeTab === 'export' && 'Export Queue & Job Manager'}
@@ -581,7 +593,6 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
 
               {/* Media Library View (Phase 2) */}
               {activeTab === 'media' && <MediaLibrary />}
-              {activeTab === 'autocut' && <AutoCutStudio />}
 
               {/* Timeline, Player & Bulk Clips Workspace (Phase 2) */}
               {activeTab === 'timeline' && (
