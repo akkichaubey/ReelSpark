@@ -6,7 +6,8 @@ import { assertSafePath, containsPathInsideProject, listProjects } from '@/lib/s
 import { requireMediaUser, clippingProjectAccess } from '@/lib/media-api-access';
 import { mediaLifecycleEnabled } from '@/lib/cloudflare/media-lifecycle-state';
 import { deleteOwnedClippingProject, deleteOwnedClippingProjectDirect } from '@/lib/cloudflare/media-lifecycle';
-import { projectCloudEnabled } from '@/lib/cloudflare/project-documents';
+import { listClippingDocuments, projectCloudEnabled } from '@/lib/cloudflare/project-documents';
+import { d1Query } from '@/lib/cloudflare/d1';
 import { privateMediaEnabled } from '@/lib/cloudflare/private-media';
 import { fallbackJobs } from '@/lib/clipping-studio/export-job-registry';
 import { cancelStorageTasksUnder, isStoragePathActive } from '@/lib/storage-runtime';
@@ -52,7 +53,30 @@ export async function DELETE(
       await deleteOwnedClippingProjectDirect(access.user.id, projectId);
       return NextResponse.json({ success: true, message: 'Project deleted; independently saved reels retained' });
     }
+    if (projectCloudEnabled() && (ownedProjectDir || !fs.existsSync(projectDir))) {
+      const project = (await listClippingDocuments(access.user.id)).find(document => document.id === projectId);
+      if (!project && !ownedProjectDir) {
+        return NextResponse.json({ success: true, localOnly: true });
+      }
+      if (project && !project.sourceProjectId && !project.mediaAssets.length && !project.clips.length && !project.exportJobs.length) {
+        // Match the empty state again in the write in case the draft was just updated.
+        const deleted = await d1Query<{ id: string }>(
+          `DELETE FROM project_documents WHERE kind = 'clipping' AND id = ? AND owner_user_id = ?
+           AND json_extract(payload, '$.sourceProjectId') IS NULL
+           AND json_array_length(payload, '$.mediaAssets') = 0
+           AND json_array_length(payload, '$.clips') = 0
+           AND json_array_length(payload, '$.exportJobs') = 0 RETURNING id`,
+          [projectId, access.user.id],
+        );
+        if (deleted.success && deleted.results.length) return NextResponse.json({ success: true });
+        return NextResponse.json({ error: 'Project changed while deleting. Refresh and retry.' }, { status: 409 });
+      }
+    }
     if (projectCloudEnabled() || process.env.CLOUD_PROJECT_METADATA_ENABLED === 'true' || privateMediaEnabled()) {
+      if (!projectCloudEnabled() && ownedProjectDir &&
+        (await fs.promises.readdir(ownedProjectDir)).every(name => name === '.owner.json')) {
+        return NextResponse.json({ success: true, localOnly: true });
+      }
       return NextResponse.json({ error: 'Cloud deletion requires lifecycle migration/configuration; local project retained' }, { status: 503 });
     }
     if (!ownedProjectDir) {
