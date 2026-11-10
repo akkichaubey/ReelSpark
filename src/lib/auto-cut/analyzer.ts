@@ -186,7 +186,7 @@ export async function analyzeMediaForAutoCut(videoFilePath: string, settings: Au
       candidates.push({ id: `autocut_${cursor}_${endMs}`, startMs: cursor, endMs, durationMs: endMs - cursor,
         score, confidence: 0, reason: `${cut ? 'Measured scene change' : 'Continuous source footage'}; ${meta.hasAudio ? silent ? 'silent audio' : 'audio activity (speech not verified)' : 'no audio track'}.`,
         category: settings.mode === 'cooking_recipe' ? 'Recipe sequence — review step' : 'Scene / audio estimate',
-        visualActionScore, audioScore, selected: true, speedMultiplier: 1, transitionToNext: settings.transition });
+        visualActionScore, audioScore, measuredSilence: !meta.hasAudio || silent, selected: true, speedMultiplier: 1, transitionToNext: settings.transition });
     }
   }
   return { totalDurationMs, candidates, hasAudio: meta.hasAudio, hasVideo: meta.width > 0, cookingDetected: false, detectedActivities: [] as CookingActivity[],
@@ -194,7 +194,7 @@ export async function analyzeMediaForAutoCut(videoFilePath: string, settings: Au
 }
 
 export async function extractFrameBase64(videoFilePath: string, timestampSec: number, width = 320, signal?: AbortSignal): Promise<string | null> {
-  const { stdout } = await run(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-ss', Math.max(0, timestampSec).toFixed(3),
+  const { stdout } = await run(getFfmpegPath(), ['-hide_banner', '-nostdin', '-loglevel', 'error', '-ss', Math.max(0, timestampSec).toFixed(3),
     '-i', videoFilePath, '-vframes', '1', '-vf', `scale=${width}:-1`, '-q:v', '3', '-f', 'image2pipe', '-c:v', 'mjpeg', '-'],
     { ...options(signal), timeout: 30_000, encoding: 'buffer' });
   return stdout.length ? `data:image/jpeg;base64,${stdout.toString('base64')}` : null;

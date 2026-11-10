@@ -1,6 +1,13 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Play,
@@ -471,21 +478,27 @@ export const MediaPlayerPreview: React.FC = () => {
         {/* Speed & Volume */}
         <div className="flex items-center space-x-2">
           {/* Speed Selector */}
-          <select
-            value={playbackRate}
-            onChange={(e) => {
-              const rate = parseFloat(e.target.value);
-              setPlaybackRate(rate);
-              if (mediaRef.current) mediaRef.current.playbackRate = rate;
-            }}
-            className="px-2 py-1 rounded-lg bg-zinc-800 border border-white/10 text-zinc-300 text-xs focus:outline-none"
-          >
-            <option value="0.5">0.5x</option>
-            <option value="1.0">1.0x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2.0">2.0x</option>
-          </select>
+          <div className="w-20">
+            <Select
+              value={String(playbackRate)}
+              onValueChange={(val) => {
+                const rate = parseFloat(val);
+                setPlaybackRate(rate);
+                if (mediaRef.current) mediaRef.current.playbackRate = rate;
+              }}
+            >
+              <SelectTrigger className="h-8 bg-zinc-800 border-white/10 text-zinc-300 text-xs px-2 py-1">
+                <SelectValue placeholder="1.0x" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[5rem]">
+                <SelectItem value="0.5">0.5x</SelectItem>
+                <SelectItem value="1">1.0x</SelectItem>
+                <SelectItem value="1.25">1.25x</SelectItem>
+                <SelectItem value="1.5">1.5x</SelectItem>
+                <SelectItem value="2">2.0x</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Mute Toggle */}
           <Button

@@ -1,4 +1,6 @@
 import type { AutoCutClipCandidate, AutoCutSettings } from './types';
+import { scoreAutoCutQuality } from './quality';
+import { clusterDuplicates, qualityRedundancy } from './duplicates';
 
 const styleTiming = {
   recipe: { minimum: 1000, preferred: 4000 },
@@ -20,7 +22,7 @@ export function assembleRecipe(candidates: AutoCutClipCandidate[], settings: Aut
     Number.isSafeInteger(clip.startMs) && Number.isSafeInteger(clip.endMs) && clip.startMs >= 0 &&
     clip.endMs - clip.startMs >= 100);
   const priority = (clip: AutoCutClipCandidate) => {
-    if (clip.recipeImportance === 'required') return 4;
+    if (clip.locked || clip.recipeImportance === 'required' || clip.duplicateKeep) return 4;
     if (clip.recipeEvidence && clip.recipeEvidence.footage !== 'step') return 0;
     if (clip.cookingActivity === 'presentation') return 3;
     if (clip.recipeImportance === 'optional') return 1;
@@ -29,17 +31,12 @@ export function assembleRecipe(candidates: AutoCutClipCandidate[], settings: Aut
   };
   const useful = pool.filter(clip => priority(clip) > 0 ||
     (settings.recipeStyle === 'cinematic' && clip.recipeEvidence?.footage === 'aesthetic'));
+  const redundancy = qualityRedundancy(clusterDuplicates(useful, []));
+  const quality = new Map(useful.map(clip => [clip, scoreAutoCutQuality(clip, settings, redundancy.get(clip.id)).total ?? clip.score]));
   const ranked = [...useful].sort((a, b) => priority(b) - priority(a) ||
     (a.cookingActivity === 'presentation' && b.cookingActivity === 'presentation' ? chronological(b, a) : 0) ||
-    b.score - a.score || chronological(a, b));
-  const seen = new Set<string>();
-  const distinct = ranked.filter(clip => {
-    if (clip.recipeImportance === 'required' || !clip.cookingActivity) return true;
-    const label = `${clip.cookingActivity}:${clip.category.trim().toLowerCase()}`;
-    if (seen.has(label)) return false;
-    seen.add(label);
-    return true;
-  });
+    quality.get(b)! - quality.get(a)! || chronological(a, b));
+  const distinct = ranked;
   const stages = new Set<string>();
   const stageWinners = distinct.filter(clip => {
     if (!clip.cookingActivity || clip.cookingActivity === 'other' || stages.has(clip.cookingActivity)) return false;
@@ -57,10 +54,11 @@ export function assembleRecipe(candidates: AutoCutClipCandidate[], settings: Aut
       sourceSequence[Math.round(index * (sourceSequence.length - 1) / Math.max(1, coverageCount - 1))]);
   const anchors = new Set([...mandatory, ...stageWinners, ...coverage]);
   const ordered = [...new Set([...anchors, ...distinct])];
-  const picks: { clip: AutoCutClipCandidate; duration: number }[] = [];
-  let totalDurationMs = 0;
-  let preferredCoverageMs = 0;
+  const picks = pool.filter(clip => clip.locked).map(clip => ({ clip, duration: clip.endMs - clip.startMs }));
+  let totalDurationMs = picks.reduce((sum, pick) => sum + pick.duration, 0);
+  let preferredCoverageMs = totalDurationMs;
   for (const clip of ordered) {
+    if (clip.locked) continue;
     if (!anchors.has(clip) && preferredCoverageMs >= targetDurationMs) break;
     const duration = Math.min(timing.minimum, clip.endMs - clip.startMs);
     if (totalDurationMs + duration > targetDurationMs) continue;
@@ -71,7 +69,8 @@ export function assembleRecipe(candidates: AutoCutClipCandidate[], settings: Aut
     preferredCoverageMs += Math.min(timing.preferred, clip.endMs - clip.startMs);
   }
   for (const pick of picks) {
-    const extra = Math.min(targetDurationMs - totalDurationMs,
+    if (pick.clip.locked) continue;
+    const extra = Math.min(Math.max(0, targetDurationMs - totalDurationMs),
       Math.max(0, Math.min(timing.preferred, pick.clip.endMs - pick.clip.startMs) - pick.duration));
     pick.duration += extra;
     totalDurationMs += extra;

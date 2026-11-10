@@ -1174,7 +1174,8 @@ function CaptionMakerPageContent() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Failed to transcribe audio');
+          setTranscriptionError(data.error || 'Failed to transcribe audio. Please retry.');
+          return null;
         }
 
         const lang = targetProj.preferredLanguage || 'en';

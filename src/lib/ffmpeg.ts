@@ -22,7 +22,7 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
 
   const args = [
     '-v', 'error',
-    '-show_entries', 'format=duration,size,format_name:stream=codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels',
+    '-show_entries', 'format=duration,size,format_name:format_tags=creation_time:stream=codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels:stream_side_data=rotation',
     '-of', 'json',
     filePath,
   ];
@@ -71,6 +71,9 @@ export async function probeVideo(filePath: string): Promise<VideoMetadata> {
       format,
       sizeBytes,
       hasAudio: Boolean(audioStream),
+      creationTime: typeof data.format?.tags?.creation_time === 'string' ? data.format.tags.creation_time : undefined,
+      rotation: videoStream?.side_data_list?.find((item: { rotation?: number }) => Number.isFinite(item.rotation))?.rotation,
+      audioTrackCount: data.streams?.filter((item: { codec_type: string }) => item.codec_type === 'audio').length ?? 0,
       audioCodec: audioStream?.codec_name,
       videoCodec: videoStream?.codec_name,
     };

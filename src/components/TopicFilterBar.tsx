@@ -1,6 +1,13 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React from 'react';
 import { ArrowUpDown, CheckSquare, Square, Filter, Languages, ChevronDown } from 'lucide-react';
 import { SortField } from '@/lib/ranking';
@@ -82,17 +89,20 @@ export const TopicFilterBar: React.FC<TopicFilterBarProps> = ({
         <div className="flex items-center space-x-2">
           <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400" />
           <span className="text-zinc-400">Sort By:</span>
-          <div className="relative min-w-0"><select aria-label="Sort clips"
-            value={sortBy}
-            onChange={(e) => onSortChange(e.target.value as SortField)}
-            className="appearance-none min-h-10 w-full cursor-pointer bg-zinc-950/70 border border-white/15 rounded-lg pl-3 pr-10 text-xs text-zinc-100 hover:border-amber-400/40 transition-colors"
-          >
-            <option value="score">Editorial Score (Highest)</option>
-            <option value="confidence">Context Confidence</option>
-            <option value="duration">Clip Duration</option>
-            <option value="timestamp">Timeline Order</option>
-            <option value="topic">Topic Category</option>
-          </select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-400" /></div>
+          <div className="w-52">
+            <Select value={sortBy} onValueChange={(val) => onSortChange(val as SortField)}>
+              <SelectTrigger aria-label="Sort clips" className="min-h-10 bg-zinc-950/70 border-white/15 text-zinc-100 text-xs hover:border-amber-400/40">
+                <SelectValue placeholder="Sort clips" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[13rem]">
+                <SelectItem value="score">Editorial Score (Highest)</SelectItem>
+                <SelectItem value="confidence">Context Confidence</SelectItem>
+                <SelectItem value="duration">Clip Duration</SelectItem>
+                <SelectItem value="timestamp">Timeline Order</SelectItem>
+                <SelectItem value="topic">Topic Category</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Global Language Toggle */}

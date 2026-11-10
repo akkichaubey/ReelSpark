@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { naturalTransitionKinds, naturalTransitionNames, type NaturalTransitionKind } from '@/lib/auto-cut/natural-transitions';
+import { setNaturalTimelineBoundary } from '@/lib/timeline/natural-transitions';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
 import {
   Play,
@@ -1435,6 +1437,18 @@ export function ProfessionalTimeline({
                   timeline.tracks.find((t) => t.id === existing.trackId)?.locked
                 )
                   throw new Error("Unlock this track first.");
+                const submitter = (e.nativeEvent as SubmitEvent).submitter;
+                if (submitter instanceof HTMLButtonElement && submitter.value === 'natural-boundary') {
+                  const fields = new FormData(e.currentTarget);
+                  const kind = fields.get('naturalBoundary');
+                  const duration = Number(fields.get('naturalDuration'));
+                  if (!naturalTransitionKinds.includes(kind as NaturalTransitionKind) || !Number.isInteger(duration) || duration < 67 || duration > 600) {
+                    throw new Error('Choose a valid transition and a duration from 67 to 600 ms.');
+                  }
+                  onChange(setNaturalTimelineBoundary(timeline, existing.id, kind as NaturalTransitionKind, duration));
+                  setInspector(null); setError('');
+                  return;
+                }
                 const related = linkedSelection(timeline, [existing.id]);
                 const next = commitTimeline({
                   ...timeline,
@@ -1607,6 +1621,7 @@ export function ProfessionalTimeline({
                     ...inspector,
                     transitionIn: e.target
                       .value as TimelineClip["transitionIn"],
+                    naturalTransition: undefined,
                   })
                 }
                 className="ml-2 rounded border border-zinc-700 bg-zinc-900 p-2"
@@ -1620,6 +1635,20 @@ export function ProfessionalTimeline({
               Use Fade in / out for transition duration. Crossfade requires an
               overlap of the same duration on a video track.
             </p>
+            {timeline.tracks.some(track => track.id === inspector.trackId && ['video', 'intro'].includes(track.kind)) &&
+              timeline.clips.some(clip => clip.trackId === inspector.trackId && clip.startMs < inspector.startMs) && (
+                <fieldset className="space-y-2 rounded border border-zinc-800 p-2">
+                  <legend className="text-xs">Natural boundary transition</legend>
+                  <Select name="naturalBoundary" defaultValue={inspector.naturalTransition?.kind ?? (inspector.transitionIn === 'crossfade' ? 'crossfade' : 'cut')}>
+                    <SelectTrigger aria-label="Natural transition type"><SelectValue /></SelectTrigger>
+                    <SelectContent>{naturalTransitionKinds.map(kind => <SelectItem key={kind} value={kind}>{naturalTransitionNames[kind]}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <label className="ml-2">Blend (ms) <input name="naturalDuration" type="number" min={67} max={600}
+                    defaultValue={Math.min(600, Math.max(67, inspector.fadeInMs || timeline.naturalTransitionSettings?.durationMs || 200))} className="ml-1 w-20 rounded bg-zinc-900 p-1" /></label>
+                  {inspector.naturalTransition && <p className="text-xs text-zinc-400">{inspector.naturalTransition.reason}</p>}
+                  <Button type="submit" value="natural-boundary" size="sm" variant="secondary">Apply boundary transition</Button>
+                </fieldset>
+              )}
             {inspector.text && (
               <>
                 <div className="grid grid-cols-2 gap-2">
@@ -1714,8 +1743,8 @@ export function ProfessionalTimeline({
               <Button
                 type="button"
                 onClick={() => {
-                  onSeek(inspector.startMs / 1000);
-                  onTogglePlay();
+                  onSeek(Math.max(0, inspector.startMs / 1000 - (inspector.naturalTransition ? 0.65 : 0)));
+                  if (!isPlaying) onTogglePlay();
                 }}
                 className={button}
               >

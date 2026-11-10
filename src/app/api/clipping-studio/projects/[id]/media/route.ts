@@ -175,6 +175,9 @@ export async function POST(
         hasAudio: meta.hasAudio,
         videoCodec: meta.videoCodec,
         audioCodec: meta.audioCodec,
+        creationTime: meta.creationTime,
+        rotation: meta.rotation,
+        audioTrackCount: meta.audioTrackCount,
       },
       createdAt: now,
     };

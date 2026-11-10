@@ -76,6 +76,11 @@ function ClipMedia({
 }) {
   const { fps } = useVideoConfig();
   let opacity = clipEnvelope(clip, absoluteTime);
+  if (clip.naturalTransition?.kind === 'fade' && clip.transitionIn === 'crossfade' && clip.fadeInMs &&
+      absoluteTime < clip.startMs + clip.fadeInMs) {
+    const progress = Math.max(0, Math.min(1, (absoluteTime - clip.startMs) / clip.fadeInMs));
+    opacity = progress * progress * (3 - 2 * progress);
+  }
   const motionStyle = clipMotionStyle(clip, absoluteTime);
   // An incoming cross dissolve covers its outgoing neighbour; avoid double-fading the lower layer.
   if (

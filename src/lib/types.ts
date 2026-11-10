@@ -26,6 +26,9 @@ export type TopicCategory =
   | 'Other';
 
 export interface VideoMetadata {
+  creationTime?: string;
+  rotation?: number;
+  audioTrackCount?: number;
   duration: number; // in seconds
   width: number;
   height: number;

@@ -84,6 +84,9 @@ export function sceneCandidates(scenes: AutoCutScene[], candidates: AutoCutClipC
     return {
       ...observed,
       id: scene.sceneId,
+      sourceVideoId: scene.sourceVideoId,
+      locked: scene.locked,
+      transitionShot: scene.shotType,
       startMs: scene.startMs,
       endMs: scene.endMs,
       durationMs: scene.endMs - scene.startMs,

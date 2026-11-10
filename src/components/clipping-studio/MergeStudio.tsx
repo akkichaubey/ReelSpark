@@ -2,6 +2,13 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React, { useState, useMemo } from 'react';
 import {
   Layers,
@@ -355,31 +362,39 @@ export const MergeStudio: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">Output Format</label>
-                    <select
+                    <Select
                       value={activeRecipe.outputFormat}
-                      onChange={(e) => updateRecipe(activeRecipe.id, { outputFormat: e.target.value as any })}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/10 text-white focus:outline-none"
+                      onValueChange={(val) => updateRecipe(activeRecipe.id, { outputFormat: val as any })}
                     >
-                      <option value="mp4">MP4 (Video + Audio)</option>
-                      <option value="mov">MOV (QuickTime)</option>
-                      <option value="webm">WEBM (HTML5 Video)</option>
-                      <option value="mp3">MP3 (Audio Only)</option>
-                      <option value="wav">WAV (Lossless Audio)</option>
-                    </select>
+                      <SelectTrigger className="w-full h-8 bg-zinc-950 border-white/10 text-white text-xs px-2.5 py-1">
+                        <SelectValue placeholder="Output Format" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                        <SelectItem value="mp4">MP4 (Video + Audio)</SelectItem>
+                        <SelectItem value="mov">MOV (QuickTime)</SelectItem>
+                        <SelectItem value="webm">WEBM (HTML5 Video)</SelectItem>
+                        <SelectItem value="mp3">MP3 (Audio Only)</SelectItem>
+                        <SelectItem value="wav">WAV (Lossless Audio)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">Target Resolution</label>
-                    <select
+                    <Select
                       value={activeRecipe.targetResolution}
-                      onChange={(e) => updateRecipe(activeRecipe.id, { targetResolution: e.target.value as any })}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/10 text-white focus:outline-none"
+                      onValueChange={(val) => updateRecipe(activeRecipe.id, { targetResolution: val as any })}
                     >
-                      <option value="source">Match Source Video</option>
-                      <option value="1080p">1080p Full HD</option>
-                      <option value="720p">720p HD</option>
-                      <option value="4k">4K UHD</option>
-                    </select>
+                      <SelectTrigger className="w-full h-8 bg-zinc-950 border-white/10 text-white text-xs px-2.5 py-1">
+                        <SelectValue placeholder="Target Resolution" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                        <SelectItem value="source">Match Source Video</SelectItem>
+                        <SelectItem value="1080p">1080p Full HD</SelectItem>
+                        <SelectItem value="720p">720p HD</SelectItem>
+                        <SelectItem value="4k">4K UHD</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div>

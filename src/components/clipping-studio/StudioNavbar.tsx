@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -11,6 +12,7 @@ import {
   ChevronDown,
   LayoutDashboard,
   Share2,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { AuthModal } from '../AuthModal';
@@ -36,9 +38,9 @@ export const StudioNavbar: React.FC = () => {
             <div>
               <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
                 Clipping Studio
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                <Badge variant="warning" className="text-[10px] font-mono px-1.5 py-0.5">
                   Pro Studio
-                </span>
+                </Badge>
               </span>
             </div>
           </Link>
@@ -51,6 +53,13 @@ export const StudioNavbar: React.FC = () => {
             >
               <LayoutDashboard className="w-3 h-3" />
               <span>Dashboard</span>
+            </Link>
+            <Link
+              href="/auto-cut"
+              className="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>AI Auto Cut</span>
             </Link>
             <Link
               href="/reel-maker"
@@ -99,6 +108,49 @@ export const StudioNavbar: React.FC = () => {
                   <div className="px-3 py-2 border-b border-zinc-800 mb-1">
                     <p className="font-bold text-white truncate">{user.name}</p>
                     <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
+                  </div>
+                  {/* Mobile Navigation Links */}
+                  <div className="md:hidden py-1 border-b border-zinc-800/80 mb-1 space-y-0.5">
+                    <Link
+                      href="/"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Dashboard</span>
+                    </Link>
+                    <Link
+                      href="/auto-cut"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>AI Auto Cut</span>
+                    </Link>
+                    <Link
+                      href="/reel-maker"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors"
+                    >
+                      <Film className="w-3.5 h-3.5 text-amber-400" />
+                      <span>AI Reel Maker</span>
+                    </Link>
+                    <Link
+                      href="/clipping-studio"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors"
+                    >
+                      <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Clipping Studio</span>
+                    </Link>
+                    <Link
+                      href="/social-post"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                      <span>AI Social Post</span>
+                    </Link>
                   </div>
                   <Button
                     onClick={() => {

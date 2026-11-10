@@ -2,6 +2,13 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -293,15 +300,18 @@ export const ClipsLibrary: React.FC = () => {
             </div>
 
             {/* Sort Dropdown */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-2.5 py-1.5 text-xs bg-zinc-900 border border-white/10 rounded-lg text-zinc-300 focus:outline-none focus:border-amber-400"
-            >
-              <option value="timeline">Sort: Timeline Order</option>
-              <option value="duration">Sort: Duration (Longest)</option>
-              <option value="name">Sort: Name (A-Z)</option>
-            </select>
+            <div className="w-44">
+              <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
+                <SelectTrigger className="h-8 bg-zinc-900 border-white/10 text-zinc-300 text-xs px-2.5 py-1 focus:border-amber-400">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[11rem]">
+                  <SelectItem value="timeline">Sort: Timeline Order</SelectItem>
+                  <SelectItem value="duration">Sort: Duration (Longest)</SelectItem>
+                  <SelectItem value="name">Sort: Name (A-Z)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Grid vs List View Toggle */}
             <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5">

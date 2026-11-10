@@ -14,6 +14,7 @@ const buttonVariants = cva('', {
       outline: 'border border-zinc-700 bg-transparent text-zinc-200 hover:bg-zinc-800',
       ghost: 'text-zinc-400 hover:bg-zinc-800 hover:text-white',
       destructive: 'bg-red-600 text-[#fff] hover:bg-red-700',
+      success: 'bg-emerald-400 text-zinc-950 font-bold shadow-sm hover:bg-emerald-300',
       link: 'text-amber-400 underline-offset-4 hover:underline',
       appearance: 'flex shrink-0 items-center justify-center gap-3 rounded-xl p-2.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white',
       authGate: 'px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs cursor-pointer shadow-sm transition-all',
@@ -26,7 +27,7 @@ const buttonVariants = cva('', {
     },
   },
   compoundVariants: [{
-    variant: ['default', 'secondary', 'outline', 'ghost', 'destructive', 'link'],
+    variant: ['default', 'secondary', 'outline', 'ghost', 'destructive', 'link', 'success'],
     className: 'inline-flex shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-red-500 aria-invalid:border-red-500',
   }],
   defaultVariants: { variant: 'legacy' },

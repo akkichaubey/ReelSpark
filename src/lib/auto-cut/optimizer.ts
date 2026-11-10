@@ -2,6 +2,8 @@ import type { AutoCutClipCandidate, AutoCutSettings } from './types';
 import type { Clip } from '../clipping-studio/contracts';
 import type { TimelineClip } from '../timeline/model';
 import { assembleRecipe } from './recipe';
+import { scoreAutoCutQuality } from './quality';
+import { clusterDuplicates, qualityRedundancy } from './duplicates';
 
 /** Select bounded, non-overlapping source ranges. Never invent footage to fill a target. */
 export function optimizeDurationAndAssemble(candidates: AutoCutClipCandidate[], settings: AutoCutSettings) {
@@ -12,11 +14,14 @@ export function optimizeDurationAndAssemble(candidates: AutoCutClipCandidate[], 
   const pool = candidates.filter(c => c.selected && Number.isFinite(c.startMs) && Number.isFinite(c.endMs) && c.startMs >= 0 && c.endMs > c.startMs)
     .map(c => ({ ...c, durationMs: c.endMs - c.startMs, speedMultiplier: 1 }));
   const chronological = [...pool].sort((a, b) => a.startMs - b.startMs);
+  const redundancy = qualityRedundancy(clusterDuplicates(pool, []));
+  const quality = new Map<AutoCutClipCandidate, number | undefined>(pool.map(clip => [clip, scoreAutoCutQuality(clip, settings, redundancy.get(clip.id)).total]));
   const visualWeight = settings.sceneSelection === 'visual' ? 0.85 : settings.sceneSelection === 'speech' ? 0.15 : 0.5;
-  const rank = (c: AutoCutClipCandidate) => c.analysisMethod === 'semantic' ?
+  const legacyRank = (c: AutoCutClipCandidate) => c.speechProtected ? c.score : c.analysisMethod === 'semantic' ?
     (settings.mode === 'podcast' ? c.audioScore : settings.mode === 'cooking_recipe' && c.cookingActivity && c.cookingActivity !== 'other' ? c.score + 20 : c.score) : settings.mode === 'podcast' ? c.audioScore :
     settings.mode === 'cinematic' ? c.visualActionScore + Math.min(c.durationMs / 1000, 10) :
     c.visualActionScore * visualWeight + c.audioScore * (1 - visualWeight);
+  const rank = (c: AutoCutClipCandidate) => (c.duplicateKeep ? 1000 : 0) + (quality.get(c) ?? legacyRank(c));
   let ranked = [...pool].sort((a, b) => rank(b) - rank(a) || a.startMs - b.startMs);
   const coverage = new Set<(typeof pool)[number]>();
   const coverageShotMs = 3000;
@@ -41,15 +46,8 @@ export function optimizeDurationAndAssemble(candidates: AutoCutClipCandidate[], 
       }
     }
     for (const clip of sections.values()) coverage.add(clip);
-    const seen = new Set([...coverage].filter(clip => clip.analysisMethod === 'semantic').map(clip => clip.category.trim().toLowerCase()));
-    const repeats = new Set<(typeof pool)[number]>();
-    for (const clip of ranked) {
-      if (coverage.has(clip) || clip.analysisMethod !== 'semantic') continue;
-      const label = clip.category.trim().toLowerCase();
-      if (seen.has(label)) repeats.add(clip);
-      seen.add(label);
-    }
-    ranked = [...coverage, ...ranked.filter(clip => !coverage.has(clip) && !repeats.has(clip)), ...repeats];
+    ranked = [...ranked.filter(clip => clip.duplicateKeep), ...[...coverage].filter(clip => !clip.duplicateKeep),
+      ...ranked.filter(clip => !coverage.has(clip) && !clip.duplicateKeep)];
   }
   if (settings.mode === 'cooking_recipe' || settings.mode === 'tutorial') {
     const count = Math.min(chronological.length, Math.max(2, Math.ceil(targetDurationMs / 5000)));
@@ -64,28 +62,43 @@ export function optimizeDurationAndAssemble(candidates: AutoCutClipCandidate[], 
   const intensity = settings.intensity === 'minimal' ? 1.5 : settings.intensity === 'aggressive' ? 0.65 : 1;
   const shotLimit = settings.mode === 'fast_paced' ? 3000 : settings.mode === 'cinematic' ? 8000 :
     settings.pacing === 'slow' ? 8000 : settings.pacing === 'fast' ? 3000 : 5000;
-  const assembledClips: AutoCutClipCandidate[] = [];
-  let totalDurationMs = 0;
+  const assembledClips: AutoCutClipCandidate[] = pool.filter(clip => clip.locked).map(clip => ({ ...clip, transitionToNext: 'cut' }));
+  let totalDurationMs = assembledClips.reduce((sum, clip) => sum + clip.durationMs, 0);
   for (const c of ranked) {
     if (totalDurationMs >= targetDurationMs) break;
+    if (c.locked) continue;
     const cap = Math.round(shotLimit * intensity * (settings.pacing === 'dynamic' ? (c.visualActionScore >= 65 ? 0.65 : 1.3) : 1));
-    const durationMs = Math.min(c.durationMs, settings.mode === 'fast_paced' || coverage.has(c) ? Math.min(coverageShotMs, cap) : cap, targetDurationMs - totalDurationMs);
+    if (c.speechProtected && c.durationMs > targetDurationMs - totalDurationMs) continue;
+    let durationMs = c.speechProtected ? c.durationMs :
+      Math.min(c.durationMs, settings.mode === 'fast_paced' || coverage.has(c) ? Math.min(coverageShotMs, cap) : cap, targetDurationMs - totalDurationMs);
+    for (const word of c.transcriptWords ?? []) {
+      if (word.startMs < c.startMs + durationMs && word.endMs > c.startMs + durationMs) {
+        durationMs = word.startMs - c.startMs;
+      }
+    }
     if (durationMs < 100) continue;
     const clip = { ...c, durationMs, endMs: c.startMs + durationMs, transitionToNext: settings.transition };
-    if (assembledClips.some(other => clip.startMs < other.endMs && clip.endMs > other.startMs)) continue;
+    if (assembledClips.some(other => clip.sourceVideoId === other.sourceVideoId &&
+      clip.startMs < other.endMs && clip.endMs > other.startMs)) continue;
     assembledClips.push(clip); totalDurationMs += durationMs;
   }
   // Expand only into unused footage within the candidate's original range.
   if (settings.mode !== 'fast_paced' && totalDurationMs < targetDurationMs) {
     for (const clip of assembledClips) {
+      if (clip.locked) continue;
       const original = pool.find(c => c.id === clip.id)!;
-      const next = assembledClips.filter(c => c.startMs > clip.startMs).sort((a,b) => a.startMs-b.startMs)[0];
+      const next = assembledClips.filter(c => c.sourceVideoId === clip.sourceVideoId && c.startMs > clip.startMs).sort((a,b) => a.startMs-b.startMs)[0];
       const availableEnd = Math.min(original.endMs, next?.startMs ?? original.endMs);
-      const extra = Math.max(0, Math.min(availableEnd - clip.endMs, targetDurationMs - totalDurationMs));
+      let extra = Math.max(0, Math.min(availableEnd - clip.endMs, targetDurationMs - totalDurationMs));
+      for (const word of original.transcriptWords ?? []) {
+        if (word.startMs < clip.endMs + extra && word.endMs > clip.endMs + extra) extra = Math.max(0, word.startMs - clip.endMs);
+      }
       clip.endMs += extra; clip.durationMs += extra; totalDurationMs += extra;
     }
   }
-  assembledClips.sort((a, b) => a.startMs - b.startMs);
+  assembledClips.sort((a, b) => a.sourceVideoId === b.sourceVideoId ? a.startMs - b.startMs :
+    chronological.findIndex(clip => clip.sourceVideoId === a.sourceVideoId) -
+    chronological.findIndex(clip => clip.sourceVideoId === b.sourceVideoId));
   return { assembledClips, totalDurationMs, targetDurationMs };
 }
 
@@ -114,6 +127,7 @@ export function autoCutClipsToTimelineClips(candidates: AutoCutClipCandidate[], 
   for (let index = 1; index < clips.length; index++) {
     const outgoing = selected[index - 1];
     const incoming = selected[index];
+    if (outgoing.locked || incoming.locked) continue;
     if (outgoing.sourceVideoId !== incoming.sourceVideoId) continue;
     const style = outgoing.transitionToNext;
     if (style !== 'smooth' && style !== 'dynamic') continue;

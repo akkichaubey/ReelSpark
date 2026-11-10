@@ -3,6 +3,15 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React, { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -34,6 +43,7 @@ import {
   Trash2,
   RefreshCw,
   AlertTriangle,
+  ChevronDown,
 } from 'lucide-react';
 
 interface StudioShellProps {
@@ -461,24 +471,48 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:px-6">
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-zinc-400">
-            <span className="shrink-0">Project</span>
-            <select
-              aria-label="Open saved project"
-              value={requestedProject === activeProject?.id ? activeProject?.id : analysisProjects.some(project => project.id === activeProject?.sourceProjectId) ? activeProject!.sourceProjectId : activeProject?.id || ''}
-              disabled={linking}
-              onChange={event => { setLinkError(null); setLinkNotice(null); router.push(studioProjectUrl(event.target.value, tabParam || 'media')); }}
-              className="min-w-0 w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white hover:border-amber-400/40 transition-colors focus-visible:outline-amber-400"
-            >
-              <option value="" disabled>Choose a saved project</option>
-              <optgroup label="AI and linked projects">
-                {analysisProjects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.status}</option>)}
-              </optgroup>
-              <optgroup label="Editing projects">
-                {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </optgroup>
-            </select>
-          </label>
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-zinc-400">
+            <span className="shrink-0 font-medium">Project</span>
+            <div className="min-w-0 w-full max-w-lg">
+              <Select
+                value={requestedProject === activeProject?.id ? activeProject?.id : analysisProjects.some(project => project.id === activeProject?.sourceProjectId) ? activeProject!.sourceProjectId : activeProject?.id || undefined}
+                disabled={linking}
+                onValueChange={(val) => {
+                  if (!val) return;
+                  setLinkError(null);
+                  setLinkNotice(null);
+                  const targetUrl = studioProjectUrl(val, tabParam || (pathname === '/auto-cut' ? 'autocut' : 'media'));
+                  router.push(pathname === '/auto-cut' ? targetUrl.replace('/clipping-studio', '/auto-cut') : targetUrl);
+                }}
+              >
+                <SelectTrigger aria-label="Open saved project" className="w-full bg-zinc-950 border-zinc-700 hover:border-amber-400/40 text-xs py-2">
+                  <SelectValue placeholder="Choose a saved project" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                  {analysisProjects.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">AI and linked projects</SelectLabel>
+                      {analysisProjects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.title} · {project.status}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {projects.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Editing projects</SelectLabel>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <Button type="button" onClick={() => setShowAnalysisCreator(true)} className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-300 hover:border-amber-400/60 hover:bg-amber-400/10 transition-colors">Upload & analyze</Button>
           {activeProject && <Button type="button" disabled={linking} onClick={async () => {
             saveActiveProject();

@@ -2,6 +2,15 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -28,6 +37,7 @@ import {
   Video,
   Mic,
   Zap,
+  ChevronDown,
 } from 'lucide-react';
 import { ProgressCircle } from '@/components/ProgressCircle';
 import { getExportDownloadUrl } from '@/lib/clipping-studio/export-download';
@@ -218,7 +228,7 @@ export const ExportStudio: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left 7 Columns: Export Job Setup */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="p-6 rounded-2xl bg-zinc-900 border border-white/10 space-y-6 shadow-xl">
+          <Card className="p-6 space-y-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -233,15 +243,15 @@ export const ExportStudio: React.FC = () => {
               </div>
 
               {mediaServiceStatus?.ffmpeg.available ? (
-                <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+                <Badge variant="success" className="gap-1.5 py-1 px-2.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>FFmpeg 9.x Ready</span>
-                </span>
+                </Badge>
               ) : (
-                <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-semibold">
+                <Badge variant="warning" className="gap-1.5 py-1 px-2.5">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   <span>Media Daemon Standby</span>
-                </span>
+                </Badge>
               )}
             </div>
 
@@ -374,17 +384,18 @@ export const ExportStudio: React.FC = () => {
               {/* Target Picker Sub-views */}
               {exportScope === 'single_clip' && (
                 <div className="pt-2">
-                  <select
-                    value={selectedClipId}
-                    onChange={(e) => setSelectedClipId(e.target.value)}
-                    className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                  >
-                    {clips.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({formatMsToTimestamp(c.durationMs)})
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={selectedClipId} onValueChange={setSelectedClipId}>
+                    <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-amber-500">
+                      <SelectValue placeholder="Select clip to export" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                      {clips.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} ({formatMsToTimestamp(c.durationMs)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -424,17 +435,18 @@ export const ExportStudio: React.FC = () => {
 
               {exportScope === 'recipe' && (
                 <div className="pt-2">
-                  <select
-                    value={selectedRecipeId}
-                    onChange={(e) => setSelectedRecipeId(e.target.value)}
-                    className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                  >
-                    {recipes.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name} ({r.items.length} clips)
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={selectedRecipeId} onValueChange={setSelectedRecipeId}>
+                    <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-purple-500">
+                      <SelectValue placeholder="Select recipe to export" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                      {recipes.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name} ({r.items.length} clips)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
@@ -443,58 +455,62 @@ export const ExportStudio: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-zinc-300">Output Format</label>
-                <select
-                  value={outputFormat}
-                  onChange={(e) => setOutputFormat(e.target.value as any)}
-                  className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="mp4">MP4 Video (H.264 / AAC)</option>
-                  <option value="mov">QuickTime MOV (Apple ProRes / H.264)</option>
-                  <option value="webm">WebM Video (VP9 / Opus)</option>
-                  <option value="mp3">MP3 Audio Only (320kbps)</option>
-                  <option value="wav">WAV Audio Only (Uncompressed 24-bit)</option>
-                </select>
+                <Select value={outputFormat} onValueChange={(val) => setOutputFormat(val as any)}>
+                  <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-amber-500">
+                    <SelectValue placeholder="Select output format" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                    <SelectItem value="mp4">MP4 Video (H.264 / AAC)</SelectItem>
+                    <SelectItem value="mov">QuickTime MOV (Apple ProRes / H.264)</SelectItem>
+                    <SelectItem value="webm">WebM Video (VP9 / Opus)</SelectItem>
+                    <SelectItem value="mp3">MP3 Audio Only (320kbps)</SelectItem>
+                    <SelectItem value="wav">WAV Audio Only (Uncompressed 24-bit)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-zinc-300">Output Streams</label>
-                <select
-                  value={outputType}
-                  onChange={(e) => setOutputType(e.target.value as any)}
-                  className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="video_and_audio">Video + Audio (Standard)</option>
-                  <option value="video_only">Video Only (Mute)</option>
-                  <option value="audio_only">Audio Only (Extract voice & music)</option>
-                </select>
+                <Select value={outputType} onValueChange={(val) => setOutputType(val as any)}>
+                  <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-amber-500">
+                    <SelectValue placeholder="Select output stream" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                    <SelectItem value="video_and_audio">Video + Audio (Standard)</SelectItem>
+                    <SelectItem value="video_only">Video Only (Mute)</SelectItem>
+                    <SelectItem value="audio_only">Audio Only (Extract voice & music)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-zinc-300">Quality Profile</label>
-                <select
-                  value={qualityProfile}
-                  onChange={(e) => setQualityProfile(e.target.value as any)}
-                  className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="source">⚡ Lossless Source Copy (0 CPU transcode, millisecond speed)</option>
-                  <option value="high">🌟 High Fidelity (CRF 18 / Master Quality)</option>
-                  <option value="medium">⚖️ Balanced Production (CRF 23)</option>
-                  <option value="fast">⚡ Fast Draft Render (CRF 28)</option>
-                </select>
+                <Select value={qualityProfile} onValueChange={(val) => setQualityProfile(val as any)}>
+                  <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-amber-500">
+                    <SelectValue placeholder="Select quality profile" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                    <SelectItem value="source">⚡ Lossless Source Copy (0 CPU transcode, millisecond speed)</SelectItem>
+                    <SelectItem value="high">🌟 High Fidelity (CRF 18 / Master Quality)</SelectItem>
+                    <SelectItem value="medium">⚖️ Balanced Production (CRF 23)</SelectItem>
+                    <SelectItem value="fast">⚡ Fast Draft Render (CRF 28)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-zinc-300">Resolution</label>
-                <select
-                  value={targetResolution}
-                  onChange={(e) => setTargetResolution(e.target.value as any)}
-                  className="w-full bg-zinc-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="source">Match Source Resolution</option>
-                  <option value="1080p">1080p Full HD (1920x1080)</option>
-                  <option value="720p">720p HD (1280x720)</option>
-                  <option value="4k">4K UHD (3840x2160)</option>
-                </select>
+                <Select value={targetResolution} onValueChange={(val) => setTargetResolution(val as any)}>
+                  <SelectTrigger className="w-full bg-zinc-800 border-white/10 rounded-xl px-3 py-2 text-xs text-white hover:border-white/20 focus:border-amber-500">
+                    <SelectValue placeholder="Select resolution" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                    <SelectItem value="source">Match Source Resolution</SelectItem>
+                    <SelectItem value="1080p">1080p Full HD (1920x1080)</SelectItem>
+                    <SelectItem value="720p">720p HD (1280x720)</SelectItem>
+                    <SelectItem value="4k">4K UHD (3840x2160)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -544,12 +560,12 @@ export const ExportStudio: React.FC = () => {
                 {exportScope === 'recipe' && 'Queue Merged Sequence Export'}
               </span>
             </Button>
-          </div>
+          </Card>
         </div>
 
         {/* Right 5 Columns: Active Queue & Export Provenance Inspector */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="p-6 rounded-2xl bg-zinc-900 border border-white/10 space-y-4 shadow-xl">
+          <Card className="p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div className="flex items-center space-x-2">
                 <Clock className="w-4 h-4 text-amber-400" />
@@ -558,16 +574,19 @@ export const ExportStudio: React.FC = () => {
 
               <div className="flex items-center space-x-2">
                 {/* Status Filter */}
-                <select
-                  value={queueFilter}
-                  onChange={(e) => setQueueFilter(e.target.value as any)}
-                  className="bg-zinc-800 text-[11px] text-zinc-300 rounded px-2 py-1 border border-white/10 focus:outline-none"
-                >
-                  <option value="all">All Jobs</option>
-                  <option value="running">Running / Queued</option>
-                  <option value="completed">Completed</option>
-                  <option value="failed">Failed</option>
-                </select>
+                <div className="w-32">
+                  <Select value={queueFilter} onValueChange={(val) => setQueueFilter(val as any)}>
+                    <SelectTrigger className="h-8 bg-zinc-800 text-[11px] text-zinc-300 rounded-lg px-2.5 py-1 border-white/10 hover:border-white/20">
+                      <SelectValue placeholder="All Jobs" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[8rem]">
+                      <SelectItem value="all">All Jobs</SelectItem>
+                      <SelectItem value="running">Running / Queued</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <Button
                   type="button"
@@ -735,11 +754,11 @@ export const ExportStudio: React.FC = () => {
                 })}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Source Mapping Provenance Drawer */}
           {selectedJob && (
-            <div className="p-5 rounded-2xl bg-zinc-900 border border-white/10 space-y-3">
+            <Card className="p-5 space-y-3">
               <div className="flex items-center space-x-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
                 <Info className="w-4 h-4" />
                 <span>Source Provenance & Dependencies</span>
@@ -768,7 +787,7 @@ export const ExportStudio: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
         </div>
       </div>

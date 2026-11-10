@@ -35,6 +35,21 @@ test('clip drag, duplicate, split and undo operate on the actual timeline compon
   await page.getByRole('button', { name: 'Split at playhead (S)', exact: true }).click();
   expect((await projectState(page)).timeline!.clips.length).toBe(initial.timeline!.clips.length + 1);
 });
+test('the Reel Maker inspector applies and reopens a natural boundary', async ({ page }) => {
+  const original = await projectState(page);
+  const later = original.timeline!.clips.find(c => c.name === 'Later video')!;
+  await page.getByRole('button', { name: 'Remove gaps', exact: true }).click();
+  await clipLocator(page, later.id).dblclick({ position: { x: 24, y: 8 } });
+  await page.getByRole('combobox', { name: 'Natural transition type' }).click();
+  await page.getByRole('option', { name: 'Action-Aligned Cut', exact: true }).click();
+  await page.getByRole('button', { name: 'Apply boundary transition', exact: true }).click();
+  expect((await projectState(page)).timeline!.clips.find(c => c.id === later.id)?.naturalTransition?.kind).toBe('action');
+  await page.getByRole('button', { name: 'Save QA copy', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByRole('button', { name: 'Reopen QA copy', exact: true }).click();
+  expect((await projectState(page)).timeline!.clips.find(c => c.id === later.id)?.naturalTransition?.kind).toBe('action');
+});
+
 test('caption inline editing, boundary keyboard and undo update source groups', async ({ page }) => {
   const word = page.getByRole('button', { name: 'Caption: Hello', exact: true }); await word.dblclick();
   const input = page.getByRole('textbox', { name: 'Edit caption word', exact: true }); await input.fill('Hello QA'); await input.press('Enter');

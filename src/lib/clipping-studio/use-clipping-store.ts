@@ -105,7 +105,7 @@ interface ClippingStudioState {
   renameProject: (projectId: string, newName: string) => void;
 
   // Media Asset Actions (Phase 2)
-  addMediaAsset: (asset: MediaAsset) => void;
+  addMediaAsset: (asset: MediaAsset, select?: boolean) => void;
   removeMediaAsset: (assetId: string) => void;
   relinkMediaAsset: (assetId: string, newPath: string, newSize: number, newDurationMs: number) => void;
   selectAsset: (assetId: string) => void;
@@ -476,13 +476,13 @@ export const useClippingStore = create<ClippingStudioState>((set, get) => ({
   // ---------------------------------------------------------------------------
   // Media Asset Actions
   // ---------------------------------------------------------------------------
-  addMediaAsset: (asset: MediaAsset) => {
+  addMediaAsset: (asset: MediaAsset, select = true) => {
     get().updateActiveProject((prev) => ({
       ...prev,
       mediaAssets: [asset, ...prev.mediaAssets],
     }));
 
-    set({
+    if (select) set({
       selectedAssetId: asset.id,
       currentTimeMs: 0,
       inPointMs: 0,

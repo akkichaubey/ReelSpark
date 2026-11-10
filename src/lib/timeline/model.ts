@@ -44,6 +44,8 @@ export interface TimelineText {
   y: number;
 }
 export interface TimelineClip {
+  naturalTransition?: { kind: 'cut' | 'crossfade' | 'fade' | 'match' | 'action'; reason: string };
+  transitionEvidence?: { black: { startMs: number; endMs: number }[]; silence?: { startMs: number; endMs: number } };
   motion?: ClipMotion;
   id: string;
   trackId: string;
@@ -71,6 +73,7 @@ export interface ReelTimeline {
   version: 1;
   enabled: boolean;
   fps: number;
+  naturalTransitionSettings?: { profile: 'none' | 'natural' | 'cinematic' | 'fast'; durationMs: number };
   tracks: TimelineTrack[];
   clips: TimelineClip[];
   assets: TimelineAsset[];

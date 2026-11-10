@@ -11,12 +11,15 @@ import { APP_CONFIG } from '@/lib/config';
 import { assertSafePath } from '@/lib/storage';
 import { AutoCutSettingsSchema, AutoCutClipCandidateSchema } from '@/lib/auto-cut/types';
 import { buildAutoCutScenes } from '@/lib/auto-cut/scenes';
+import { buildSpeechMoments, speechClip } from '@/lib/auto-cut/speech';
 import {
   analyzeMediaForAutoCut,
   detectVisualIntervals,
   extractFrameBase64,
 } from '@/lib/auto-cut/analyzer';
 import { optimizeDurationAndAssemble } from '@/lib/auto-cut/optimizer';
+import { fingerprintDuplicateScenes } from '@/lib/auto-cut/duplicate-fingerprints';
+import { annotateTransitionScenes } from '@/lib/auto-cut/natural-transitions';
 
 export const runtime = 'nodejs';
 
@@ -84,7 +87,8 @@ export async function POST(req: NextRequest) {
     const stat = await fs.promises.stat(/*turbopackIgnore: true*/ targetFilePath);
     const sourceVideoId = mediaAssetId || createHash('sha256').update(targetFilePath).digest('hex');
     const identity = semanticProviderIdentity();
-    const key = createHash('sha256').update(JSON.stringify({ version: 4, file: targetFilePath, size: stat.size, modified: stat.mtimeMs, settings, identity })).digest('hex');
+    const key = createHash('sha256').update(JSON.stringify({ version: 9, file: targetFilePath, size: stat.size, modified: stat.mtimeMs,
+      settings: { ...settings, quality: undefined }, identity })).digest('hex');
     const cacheDir = assertSafePath(path.join(directory, '.autocut-cache'), directory);
     const visualDir = path.join(cacheDir, key + '-visual');
     const visualChunkSchema = z.object({
@@ -126,7 +130,7 @@ export async function POST(req: NextRequest) {
     if (settings.analysisMethod === 'semantic') {
       await reportProgress('Reviewing sampled scenes with the vision provider…');
       const cacheFile = path.join(cacheDir, key + '.json');
-      const cacheSchema = z.object({ candidates: z.array(AutoCutClipCandidateSchema), warning: z.string(), provider: z.string(), model: z.string(), sampledWindows: z.number(), totalWindows: z.number(), speechAuthorizationFailed: z.boolean().optional() });
+      const cacheSchema = z.object({ candidates: z.array(AutoCutClipCandidateSchema), warning: z.string(), provider: z.string(), model: z.string(), sampledWindows: z.number(), totalWindows: z.number(), speechAuthorizationFailed: z.boolean().optional(), partialSpeech: z.boolean().optional() });
       let semantic: z.infer<typeof cacheSchema> | undefined;
       try {
         const cached = cacheSchema.parse(JSON.parse(await fs.promises.readFile(/*turbopackIgnore: true*/ cacheFile, 'utf8')));
@@ -138,7 +142,7 @@ export async function POST(req: NextRequest) {
         await fs.promises.mkdir(cacheDir, { recursive: true });
         // Bound cache growth without deleting original media or saved versions.
         const entries = await fs.promises.readdir(/*turbopackIgnore: true*/ cacheDir);
-        if (!semantic.speechAuthorizationFailed && entries.length < 20) await fs.promises.writeFile(cacheFile, JSON.stringify(semantic), { flag: 'wx' }).catch(() => {});
+        if (!semantic.speechAuthorizationFailed && !semantic.partialSpeech && entries.length < 20) await fs.promises.writeFile(cacheFile, JSON.stringify(semantic), { flag: 'wx' }).catch(() => {});
       }
       analysis.candidates = semantic.candidates;
       analysis.cookingDetected = semantic.candidates.some(c => c.cookingActivity && c.cookingActivity !== 'other');
@@ -147,11 +151,18 @@ export async function POST(req: NextRequest) {
       method = 'multimodal-ai'; warning = semantic.warning; provider = semantic.provider + '/' + semantic.model;
     }
 
+    await reportProgress('Measuring shot quality and checking for repeated footage…');
+    const fingerprinted = await fingerprintDuplicateScenes(targetFilePath, cacheDir, analysis.candidates, analysis, req.signal)
+      .catch(() => { req.signal.throwIfAborted(); return analysis.candidates; });
+    analysis.candidates = fingerprinted;
     // Run Duration Optimizer and Assembly
     await reportProgress('Assembling the scene list and reel draft…');
+    const visibleCandidates = analysis.candidates.filter(candidate => !visual.intervals.some(interval =>
+      candidate.startMs >= interval.startMs && candidate.endMs <= interval.endMs));
+    const speechHighlights = settings.mode === 'podcast' ? buildSpeechMoments(visibleCandidates)
+      .filter(moment => moment.complete && !moment.repeat).map(moment => speechClip(moment)) : [];
     const { assembledClips, totalDurationMs, targetDurationMs } = optimizeDurationAndAssemble(
-      analysis.candidates.filter(candidate => !visual.intervals.some(interval =>
-        candidate.startMs >= interval.startMs && candidate.endMs <= interval.endMs)), settings);
+      speechHighlights.length ? speechHighlights : visibleCandidates, settings);
     const cuts = analysis.sceneCuts.filter(cut => !visual.gradual.some(gradual => Math.abs(gradual.timestampSec - cut.timestampSec) < 0.5));
     const scenes = buildAutoCutScenes(sourceVideoId, analysis.totalDurationMs, [...cuts, ...visual.gradual], visual.intervals, analysis.candidates, visual.motionMs);
 
@@ -206,11 +217,11 @@ export async function POST(req: NextRequest) {
         speechDetected: analysis.speechDetected,
         sceneCutCount: analysis.sceneCutCount,
         silenceCount: analysis.silenceCount,
-        candidates: analysis.candidates,
+        candidates: annotateTransitionScenes(analysis.candidates, scenes),
         scenes,
         method, warning, provider,
       },
-      assembledClips,
+      assembledClips: annotateTransitionScenes(assembledClips, scenes),
       totalDurationMs,
       targetDurationMs,
     });

@@ -1,6 +1,13 @@
 'use client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -149,34 +156,44 @@ function Library() {
                 }}
                 className="min-w-[180px] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 p-2"
               />
-              <select
-                aria-label="Sort reels"
-                value={sort}
-                onChange={(e) => {
-                  setSort(e.target.value);
-                  setPage(0);
-                }}
-                className={button}
-              >
-                <option value="updated">Last modified</option>
-                <option value="created">Newest created</option>
-                <option value="name">Title A–Z</option>
-                <option value="duration">Longest first</option>
-              </select>
-              <select
-                aria-label="Filter reels"
-                value={filter}
-                onChange={(e) => {
-                  setFilter(e.target.value);
-                  setPage(0);
-                }}
-                className={button}
-              >
-                <option value="all">All reels</option>
-                <option value="rendered">Rendered</option>
-                <option value="editable">Editable / needs render</option>
-                <option value="captions">With captions</option>
-              </select>
+              <div className="w-40">
+                <Select
+                  value={sort}
+                  onValueChange={(val) => {
+                    setSort(val);
+                    setPage(0);
+                  }}
+                >
+                  <SelectTrigger aria-label="Sort reels" className="h-10 bg-zinc-900 border-zinc-700 text-xs">
+                    <SelectValue placeholder="Sort reels" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[10rem]">
+                    <SelectItem value="updated">Last modified</SelectItem>
+                    <SelectItem value="created">Newest created</SelectItem>
+                    <SelectItem value="name">Title A–Z</SelectItem>
+                    <SelectItem value="duration">Longest first</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-44">
+                <Select
+                  value={filter}
+                  onValueChange={(val) => {
+                    setFilter(val);
+                    setPage(0);
+                  }}
+                >
+                  <SelectTrigger aria-label="Filter reels" className="h-10 bg-zinc-900 border-zinc-700 text-xs">
+                    <SelectValue placeholder="Filter reels" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-950 border-zinc-800 text-white min-w-[12rem]">
+                    <SelectItem value="all">All reels</SelectItem>
+                    <SelectItem value="rendered">Rendered</SelectItem>
+                    <SelectItem value="editable">Editable / needs render</SelectItem>
+                    <SelectItem value="captions">With captions</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Button
                 className={button}
                 aria-pressed={view === 'grid'}

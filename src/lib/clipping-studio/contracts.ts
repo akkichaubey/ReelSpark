@@ -270,6 +270,9 @@ export const MediaStreamSchema = z.object({
 });
 
 export const MediaMetadataSchema = z.object({
+  creationTime: z.string().optional(),
+  rotation: z.number().optional(),
+  audioTrackCount: z.number().int().nonnegative().optional(),
   durationSeconds: z.number().min(0),
   durationMs: z.number().min(0),
   sizeBytes: z.number().min(0),

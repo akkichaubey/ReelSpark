@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QualityConfigSchema, QualityMeasurementsSchema, SemanticQualitySchema } from './quality';
 
 export type AutoCutMode =
   | 'auto_highlight'
@@ -78,9 +79,30 @@ export const AutoCutClipCandidateSchema = z.object({
   thumbnailBase64: z.string().optional(),
   analysisMethod: z.enum(['scene_audio', 'semantic']).optional(),
   evidenceFrames: z.array(z.number().int().nonnegative()).optional(),
+  hookEvidence: z.object({ resultMs: z.number().int().nonnegative().optional(),
+    beforeAfterMs: z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]).optional() }).optional(),
   actionTags: z.array(z.string().min(1).max(80)).max(12).optional(),
   objects: z.array(z.string().min(1).max(80)).max(12).optional(),
   visionProvider: z.string().optional(),
+  measuredSilence: z.boolean().optional(),
+  speechLanguage: z.enum(['english', 'hindi', 'hinglish', 'mixed', 'unknown']).optional(),
+  speechTiming: z.enum(['provider_estimate', 'provider_segment']).optional(),
+  speechHighlight: z.enum(['statement', 'question', 'explanation', 'emotion', 'tip', 'conclusion', 'none']).optional(),
+  speechClarity: z.number().min(0).max(100).optional(),
+  speechHook: z.number().min(0).max(100).optional(),
+  speechProtected: z.boolean().optional(),
+  duplicateEvidence: z.object({ contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+    frames: z.array(z.array(z.string().regex(/^[a-f0-9]{16}$/)).max(2)).length(3).optional(),
+    audio: z.array(z.number().int().min(-120).max(0)).max(60).optional() }).optional(),
+  duplicateKeep: z.boolean().optional(),
+  qualityMeasurements: QualityMeasurementsSchema.optional(),
+  semanticQuality: SemanticQualitySchema.optional(),
+  locked: z.boolean().optional(),
+  transitionShot: z.enum(['continuous', 'hard_cut', 'fade', 'dissolve', 'black', 'manual']).optional(),
+  cameraFraming: z.enum(['wide', 'medium', 'close-up', 'macro', 'overhead', 'side-angle']).optional(),
+  transitionBlack: z.array(z.object({ startMs: z.number().int(), endMs: z.number().int() })).optional(),
+  repeatedTake: z.boolean().optional(),
+  audioQuality: z.enum(['clear_signal', 'quiet_signal', 'clipped_signal', 'silent_signal', 'unknown']).optional(),
   transcriptWords: z.array(z.object({ text: z.string().min(1), startMs: z.number().int().min(0), endMs: z.number().int().min(1) })).optional(),
   speedMultiplier: z.number().optional(),
   transitionToNext: z.enum(['none', 'cut', 'smooth', 'dynamic']).optional(),
@@ -106,6 +128,8 @@ export const AutoCutSettingsSchema = z.object({
   sceneSelection: z.enum(['visual', 'speech', 'balanced', 'custom']).default('balanced'),
   transition: z.enum(['none', 'cut', 'smooth', 'dynamic']).default('cut'),
   recipeStyle: RecipeStyleSchema.optional(),
+  quality: QualityConfigSchema.optional(),
+  storyGenre: z.enum(['product', 'vlog']).optional(),
 });
 
 export type AutoCutSettings = z.infer<typeof AutoCutSettingsSchema>;
