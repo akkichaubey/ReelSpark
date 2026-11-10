@@ -84,3 +84,8 @@ test('video hover decodes a real muted source frame and keeps clip labels', asyn
   await expect.poll(async () => video.evaluate(el => (el as HTMLVideoElement).currentTime)).toBeLessThan(1);
   await expect(node.locator('[data-timeline-clip-label]')).toContainText(clip.name); await expect(node.locator('[data-timeline-clip-duration]')).toContainText('4.0s');
 });
+
+test('upload video/audio button is visible and accessible in timeline toolbar', async ({ page }) => {
+  const uploadButton = page.getByRole('button', { name: 'Upload Video / Audio', exact: true });
+  await expect(uploadButton).toBeVisible();
+});

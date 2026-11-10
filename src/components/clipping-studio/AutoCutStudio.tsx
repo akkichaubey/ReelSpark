@@ -1133,19 +1133,22 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                     {detectedCategory.description}
                   </p>
                   {mode !== detectedCategory.mode ? (
-                    <Button
-                      type="button"
-                      variant="success"
-                      disabled={isAnalyzing || isOpening}
-                      onClick={() => setMode(detectedCategory.mode)}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 text-xs font-bold text-zinc-950 shadow-md transition-all active:scale-[0.99] cursor-pointer"
-                    >
-                      <CategoryIcon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Switch to {detectedCategory.category} Mode (Recommended)</span>
-                      <ArrowRight className="w-3.5 h-3.5 shrink-0 ml-1 opacity-75" />
-                    </Button>
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        disabled={isAnalyzing || isOpening}
+                        onClick={() => setMode(detectedCategory.mode)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-zinc-950 font-bold px-3.5 py-2 text-xs shadow-sm hover:shadow-emerald-500/20 transition-all active:scale-[0.99] cursor-pointer"
+                      >
+                        <CategoryIcon className="w-4 h-4 shrink-0" />
+                        <span>Switch to {detectedCategory.category} Mode (Recommended)</span>
+                        <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                      </Button>
+                    </div>
                   ) : (
-                    <div className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 py-2 px-4 text-xs font-bold text-emerald-300">
+                    <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-300">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>{detectedCategory.category} Mode Active</span>
                     </div>

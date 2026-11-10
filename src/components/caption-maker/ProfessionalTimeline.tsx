@@ -36,8 +36,11 @@ import {
   GripVertical,
   Settings2,
   MousePointer2,
+  Upload,
+  Loader2,
 } from "lucide-react";
-import type { CaptionProject } from "@/lib/caption-maker/types";
+import type { CaptionProject, ImageAsset, AudioAsset } from "@/lib/caption-maker/types";
+import { uploadFileWithProgress, UploadCancelledError } from "@/lib/upload-with-progress";
 import { CaptionTimeline } from "./CaptionTimeline";
 import { TimelineMediaPicker } from "./TimelineMediaPicker";
 import { hoverSeekTime } from "@/lib/timeline/pointer";
@@ -72,6 +75,7 @@ import {
   timelineFromProject,
   trimTimelineClip,
   type ReelTimeline,
+  type TimelineAsset,
   type TimelineClip,
   type TrackKind,
   type TimelineTrack,
@@ -183,6 +187,14 @@ export function ProfessionalTimeline({
     [],
   );
   const [height, setHeight] = useState(220);
+  const directUploadRef = useRef<HTMLInputElement>(null);
+  const directUploadAbort = useRef<AbortController | null>(null);
+  const [isUploadingDirectMedia, setIsUploadingDirectMedia] = useState(false);
+  const [directUploadProgress, setDirectUploadProgress] = useState<number | null>(null);
+
+  useEffect(() => () => {
+    directUploadAbort.current?.abort();
+  }, []);
   const viewportHeight = useSyncExternalStore(subscribeViewportHeight, viewportHeightSnapshot, serverViewportHeight);
   const resizeGrab = useRef<{ pointerId:number; y:number; height:number } | null>(null);
   const [simple, setSimple] = useState(false);
@@ -519,6 +531,116 @@ export function ProfessionalTimeline({
       );
       return { ...timeline, assets: all, clips: [...timeline.clips, clip] };
     });
+
+  const handleDirectMediaUpload = async (file: File) => {
+    if (directUploadAbort.current) return;
+    const request = new AbortController();
+    directUploadAbort.current = request;
+    setIsUploadingDirectMedia(true);
+    setDirectUploadProgress(0);
+    setError("");
+
+    try {
+      const type = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)
+        ? "image"
+        : file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name)
+          ? "video"
+          : "audio";
+
+      const result = await uploadFileWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: ImageAsset | AudioAsset;
+        type?: "image" | "video" | "audio";
+      }>("/api/caption-maker/upload", file, setDirectUploadProgress, type, request.signal);
+
+      if (request.signal.aborted) return;
+      if (!result.success || !result.asset) {
+        throw new Error(result.error || "Upload failed. Please retry.");
+      }
+
+      const source = result.asset;
+      const visual = "fitMode" in source ? source : undefined;
+      const durationMs = Math.round((source.duration || (type === "image" ? 3 : 0)) * 1000);
+
+      const timelineAsset: TimelineAsset = {
+        id: source.id,
+        fileName: source.fileName,
+        fileUrl: source.fileUrl,
+        mediaType: result.type || type,
+        durationMs,
+        width: visual?.width,
+        height: visual?.height,
+        fitMode: visual?.fitMode,
+        position: visual?.position,
+        scale: visual?.scale,
+        hasAudio: (result.type || type) !== "image",
+      };
+
+      const isTimelineEmpty = timeline.clips.length === 0;
+
+      run(() => {
+        const targetKind: TrackKind = (result.type || type) === "audio" ? "audio" : "video";
+        let targetTrack = timeline.tracks.find(
+          (t) => !t.locked && (targetKind === "audio" ? ["audio", "music"].includes(t.kind) : ["video", "intro", "overlay"].includes(t.kind))
+        );
+
+        let nextTracks = [...timeline.tracks];
+        if (!targetTrack) {
+          targetTrack = {
+            ...createTimelineTrack(targetKind),
+            id: makeTimelineId(`track_${targetKind}`),
+          };
+          nextTracks = [targetTrack, ...nextTracks];
+        }
+
+        const startMs = isTimelineEmpty ? 0 : (trackEnds.get(targetTrack.id) || 0);
+        const clipDuration = Math.max(
+          Math.floor(1000 / timeline.fps),
+          Math.floor((Math.floor(((durationMs || 3000) * timeline.fps) / 1000) * 1000) / timeline.fps)
+        );
+
+        const clip = createTimelineClip(
+          targetTrack,
+          timelineAsset,
+          frameTime(startMs, timeline.fps),
+          clipDuration
+        );
+
+        const nextAssets = [
+          ...projectTimelineAssets(project).filter((a) => a.id !== timelineAsset.id),
+          timelineAsset,
+        ];
+
+        return {
+          ...timeline,
+          tracks: nextTracks,
+          assets: nextAssets,
+          clips: [...timeline.clips, clip],
+        };
+      });
+
+      if (isTimelineEmpty) {
+        onSeek(0);
+      }
+
+      if (durationMs > 0 && scroll.current) {
+        const totalDurationSec = durationMs / 1000;
+        const fitZoom = Math.max(5, Math.min(200, (scroll.current.clientWidth - 160) / (totalDurationSec + 2)));
+        setZoom(fitZoom);
+      }
+    } catch (cause) {
+      if (!request.signal.aborted && !(cause instanceof UploadCancelledError)) {
+        setError(cause instanceof Error ? cause.message : "Upload failed. Please retry.");
+      }
+    } finally {
+      if (directUploadAbort.current === request) directUploadAbort.current = null;
+      if (!request.signal.aborted) {
+        setIsUploadingDirectMedia(false);
+        setDirectUploadProgress(null);
+      }
+    }
+  };
   const removeTrack = (id:string) => run(() => {
     const next = deleteTimelineTrack(timeline,id);
     setSelected(previous=>previous.filter(id=>next.clips.some(clip=>clip.id===id)));
@@ -910,6 +1032,38 @@ export function ProfessionalTimeline({
           ))}
           </SelectContent>
         </Select>
+        <input
+          ref={directUploadRef}
+          type="file"
+          hidden
+          accept="video/*,audio/*,image/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              void handleDirectMediaUpload(file);
+            }
+            e.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          disabled={isUploadingDirectMedia}
+          onClick={() => directUploadRef.current?.click()}
+          className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+          title="Upload video or audio to automatically place it on the timeline and define the project duration"
+        >
+          {isUploadingDirectMedia ? (
+            <>
+              <Loader2 size={13} className="animate-spin text-amber-400" />
+              <span>{directUploadProgress !== null ? `Uploading ${directUploadProgress}%` : "Uploading…"}</span>
+            </>
+          ) : (
+            <>
+              <Upload size={13} />
+              <span>Upload Video / Audio</span>
+            </>
+          )}
+        </Button>
         <div className="ml-auto flex items-center gap-2">
           <Button
             type="button"
@@ -1412,11 +1566,57 @@ export function ProfessionalTimeline({
         return <TimelineMediaPicker key={track.id} track={track} assets={projectTimelineAssets(project)}
           onDelete={onRemoveMedia}
           onClose={() => setMediaTrackId(null)}
-          onAdd={assetId => { addAsset(track.id, assetId, trackEnds.get(track.id) || 0); setMediaTrackId(null); }}
-          onUpload={asset => run(() => ({
-            ...timeline,
-            assets: [...projectTimelineAssets(project).filter(existing => existing.id !== asset.id), asset],
-          }))}/>;
+          onAdd={assetId => {
+            const isTimelineEmpty = timeline.clips.length === 0;
+            const startMs = isTimelineEmpty ? 0 : (trackEnds.get(track.id) || 0);
+            addAsset(track.id, assetId, startMs);
+            if (isTimelineEmpty) {
+              onSeek(0);
+              const asset = projectTimelineAssets(project).find(a => a.id === assetId);
+              if (asset?.durationMs && scroll.current) {
+                const totalDurationSec = asset.durationMs / 1000;
+                const fitZoom = Math.max(5, Math.min(200, (scroll.current.clientWidth - 160) / (totalDurationSec + 2)));
+                setZoom(fitZoom);
+              }
+            }
+            setMediaTrackId(null);
+          }}
+          onUpload={asset => {
+            const isTimelineEmpty = timeline.clips.length === 0;
+            const startMs = isTimelineEmpty ? 0 : (trackEnds.get(track.id) || 0);
+            const all = [
+              ...projectTimelineAssets(project).filter(existing => existing.id !== asset.id),
+              asset,
+            ];
+            const clipDuration = Math.max(
+              Math.floor(1000 / timeline.fps),
+              Math.floor(
+                (Math.floor(
+                  ((asset.mediaType === "image" ? 3000 : asset.durationMs || 3000) * timeline.fps) / 1000
+                ) * 1000) / timeline.fps
+              )
+            );
+            const clip = createTimelineClip(
+              track,
+              asset,
+              frameTime(startMs, timeline.fps),
+              clipDuration
+            );
+            run(() => ({
+              ...timeline,
+              assets: all,
+              clips: [...timeline.clips, clip],
+            }));
+            if (isTimelineEmpty) {
+              onSeek(0);
+              if (asset.durationMs > 0 && scroll.current) {
+                const totalDurationSec = asset.durationMs / 1000;
+                const fitZoom = Math.max(5, Math.min(200, (scroll.current.clientWidth - 160) / (totalDurationSec + 2)));
+                setZoom(fitZoom);
+              }
+            }
+            setMediaTrackId(null);
+          }}/>;
       })()}
       {trackSettingsForm && (onOpenTrackPanel
         ? trackSettingsTarget && createPortal(trackSettingsForm, trackSettingsTarget)

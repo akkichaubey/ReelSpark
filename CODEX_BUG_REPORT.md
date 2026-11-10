@@ -29,6 +29,7 @@ Per the strict mandate of this audit:
 | **`BUG-FNC-006`** | Threads Publishing Character Limit Guard | **Low** | Social / Validation | Ready for Codex |
 | **`BUG-FNC-007`** | Candidate Save Batching / D1 SQLite Lock | **Medium** | Storage / API | Ready for Codex |
 | **`BUG-FNC-008`** | Remotion Canvas Multi-Asset Preview Lag | **Medium** | Video / Rendering | Ready for Codex |
+| **`BUG-FNC-009`** | Self-Referential Media Lock Blocks Project Deletion from Dashboard | **High** | Storage / Lifecycle | Ready for Codex |
 
 ---
 
@@ -272,6 +273,52 @@ Per the strict mandate of this audit:
   - Enable `playbackRate={1}` and configure Remotion's `numberOfSharedAudioTags={4}`.
   - Wrap overlay stickers and static graphic components with `React.memo()`.
   - Add an optional "Preview Resolution" toggle (1080p, 720p, 540p) that scales the canvas render buffer down during timeline playback.
+
+### Bug ID: `BUG-FNC-009`
+- **Feature / Component:** Dashboard Project Deletion / Storage Reference Locking Deadlock
+- **Affected Files:**
+  - `src/lib/storage.ts` (Lines 239–254)
+  - `src/app/api/projects/[id]/route.ts` (Lines 127–132)
+  - `src/components/WorkspaceDashboard.tsx` (Lines 600–604, 1238–1249)
+- **Severity:** High
+- **Steps to Reproduce:**
+  1. Upload any video on the Dashboard or in AI Auto Cut (e.g. `WhatsApp Video 2026-11-07 at 21.08.21.mp4`).
+  2. The system creates the AI project (`proj_...`) and automatically links a paired workspace (`studio_proj_...`) in Video & Audio Studio.
+  3. Return to the Dashboard (`/`). Under "Our Work", click the Trash icon to delete the project card.
+  4. In the confirmation dialog ("Delete project?"), click "Delete project".
+  5. The deletion fails with the error message:
+     `"This project’s media is referenced by a linked project in Video & Audio Studio. Remove the shared media there, or delete the linked project, then retry here."`
+  6. The dialog does not delete the project, nor does it display the "Open linked project" or "Remove from Our Work" actions.
+- **Expected Behavior:**
+  Deleting a project from the Dashboard should either:
+  a. Cascade delete its own paired studio workspace (`studio_${projectId}`) if no external, independent project is referencing it; or
+  b. Prompt the user with a "Cascade Delete (Delete project & linked studio workspace)" option; and
+  c. If a conflict does exist, properly return HTTP 409 with `linkedWorkspaceId` so the dialog displays one-click navigation to remove the reference.
+- **Actual Behavior:**
+  The project's own automatically created studio workspace (`studio_proj_...`) is treated as an external blocker by `containsPathInsideProject()`. Furthermore, `err instanceof ProjectMediaReferencedError` evaluates to `false` across bundler boundaries in the API route, returning HTTP 500 instead of HTTP 409, which causes `linkedWorkspaceId` to remain `null` and prevents the UI fallback buttons from appearing.
+- **Root Cause Analysis:**
+  1. **Self-Reference Conflict:** In `src/lib/storage.ts:248`, `deleteProject()` loops over `clipping-studio/projects/*/linked-workspace.json`. The paired workspace has `sourceProjectId === projectId` and references the uploaded video inside `storage/projects/{projectId}/original/`. The loop does not ignore the project's own paired workspace or cascade-delete it.
+  2. **API Route Error Matching:** In `src/app/api/projects/[id]/route.ts:128`, error matching relies strictly on `err instanceof ProjectMediaReferencedError`. When errors are wrapped or compiled across modules, the prototype check fails, causing the route to return status 500 without `linkedWorkspaceId`.
+- **Suggested Fix for Codex:**
+  1. In `src/lib/storage.ts` (`deleteProject`):
+     Ignore or cascade delete the project's own paired workspace when `linked.sourceProjectId === projectId` or `entry.name === `studio_${projectId}`:
+     ```typescript
+     // If the linked workspace belongs to this very project, cascade delete it:
+     if (linked.sourceProjectId === projectId || entry.name === `studio_${projectId}`) {
+       await fs.promises.rm(path.join(studioRoot, entry.name), { recursive: true, force: true });
+       continue;
+     }
+     ```
+  2. In `src/app/api/projects/[id]/route.ts`:
+     Use duck-typing or name check:
+     ```typescript
+     if (err instanceof ProjectMediaReferencedError || err?.name === 'ProjectMediaReferencedError') {
+       return NextResponse.json(
+         { success: false, error: err.message, linkedWorkspaceId: err.linkedWorkspaceId },
+         { status: 409 }
+       );
+     }
+     ```
 
 ---
 *Report concluded. All issues above are purely functional/algorithmic and ready for Codex execution.*
