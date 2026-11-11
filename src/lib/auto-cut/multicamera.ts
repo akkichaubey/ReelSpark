@@ -54,6 +54,21 @@ export function switchCameraRange(clip: AutoCutClipCandidate, camera: MediaAsset
   return switchOffsetMs ? [{ ...clip, endMs: clip.startMs + switchOffsetMs, durationMs: switchOffsetMs }, replacement] : [replacement];
 }
 
+export function editCameraShot(clip: AutoCutClipCandidate, operation: 'trim' | 'split', startMs: number, endMs: number,
+  synchronized: boolean): AutoCutClipCandidate[] {
+  if (clip.locked) throw new Error('Unlock the shot before changing its range.');
+  const edges = operation === 'split' ? [clip.startMs, startMs, clip.endMs] : [startMs, endMs];
+  if (!edges.every(Number.isSafeInteger) || edges[0] < clip.startMs || edges.at(-1)! > clip.endMs ||
+      edges.slice(1).some((time, index) => time - edges[index] < 100)) {
+    throw new Error('Keep each shot inside its current source range and at least 0.1 seconds long.');
+  }
+  if (!synchronized && clip.transcriptWords?.some(word => edges.some(edge => edge > word.startMs && edge < word.endMs))) {
+    throw new Error('Move the edit point outside the spoken word or segment.');
+  }
+  return edges.slice(1).map((end, index) => ({ ...clip, id: index ? clip.id + ':split:' + edges[index] : clip.id,
+    startMs: edges[index], endMs: end, durationMs: end - edges[index] }));
+}
+
 export function recommendCamera(clip: AutoCutClipCandidate, assets: MediaAsset[], evidence: AutoCutClipCandidate[], sync: CameraSync) {
   const base = scoreAutoCutQuality(clip, { mode: 'cinematic' }).total;
   if (base === undefined) return undefined;

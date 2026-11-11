@@ -100,6 +100,7 @@ export const AutoCutClipCandidateSchema = z.object({
   locked: z.boolean().optional(),
   transitionShot: z.enum(['continuous', 'hard_cut', 'fade', 'dissolve', 'black', 'manual']).optional(),
   cameraFraming: z.enum(['wide', 'medium', 'close-up', 'macro', 'overhead', 'side-angle']).optional(),
+  storyImportance: z.enum(['essential', 'supporting', 'repetitive', 'irrelevant']).optional(),
   transitionBlack: z.array(z.object({ startMs: z.number().int(), endMs: z.number().int() })).optional(),
   repeatedTake: z.boolean().optional(),
   audioQuality: z.enum(['clear_signal', 'quiet_signal', 'clipped_signal', 'silent_signal', 'unknown']).optional(),
@@ -130,6 +131,7 @@ export const AutoCutSettingsSchema = z.object({
   recipeStyle: RecipeStyleSchema.optional(),
   quality: QualityConfigSchema.optional(),
   storyGenre: z.enum(['product', 'vlog']).optional(),
+  preserveStory: z.boolean().optional(),
 });
 
 export type AutoCutSettings = z.infer<typeof AutoCutSettingsSchema>;

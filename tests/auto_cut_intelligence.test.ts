@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { NextRequest } from 'next/server';
-import { APP_CONFIG, getFfmpegPath } from '../src/lib/config';
+import { APP_CONFIG, getFfmpegPath, getFfprobePath } from '../src/lib/config';
 import { AutoCutSettingsSchema, type AutoCutClipCandidate } from '../src/lib/auto-cut/types';
 import { analyzeSemanticMoments } from '../src/lib/auto-cut/semantic';
 import { generateWithOllama } from '../src/lib/ollama';
@@ -29,7 +29,10 @@ import { suggestBRoll, type BRollEdit } from '../src/lib/auto-cut/broll';
 import { defaultNaturalTransitions, suggestTransition, transitionKey } from '../src/lib/auto-cut/natural-transitions';
 import { setNaturalTimelineBoundary } from '../src/lib/timeline/natural-transitions';
 import { audioGain } from '../src/lib/timeline/audio';
-import { correlateCameraAudio, switchCameraRange, type CameraSync } from '../src/lib/auto-cut/multicamera';
+import { correlateCameraAudio, editCameraShot, switchCameraRange, type CameraSync } from '../src/lib/auto-cut/multicamera';
+import { planStory, rampTimeRatio, storyKey } from '../src/lib/auto-cut/story-ramp';
+import { createStoryReel } from '../src/lib/auto-cut/story-ramp-reel';
+import { POST as prepareSpeedRamp } from '../src/app/api/clipping-studio/auto-cut/story-ramp/route';
 import { POST as synchronizeCameras } from '../src/app/api/clipping-studio/auto-cut/sync/route';
 import { renderRemotionReelVideo } from '../src/lib/caption-maker/remotion-renderer';
 import { probeVideo } from '../src/lib/ffmpeg';
@@ -52,6 +55,21 @@ async function main() {
   assert.equal(optimizeDurationAndAssemble([], settings).totalDurationMs, 0);
   const pool = Array.from({ length: 30 }, (_, i) => candidate(`c${i}`, i * 5000, (i + 1) * 5000));
   const before = JSON.stringify(pool);
+  const cookingStory = Array.from({ length: 32 }, (_, index) => ({ ...candidate('story-' + index, index * 2500, (index + 1) * 2500),
+    storyImportance: ([0, 9, 16, 31].includes(index) ? 'essential' : 'supporting') as 'essential' | 'supporting',
+    ...(index === 9 ? { cookingActivity: 'washing' as const, repeatedTake: true } : {}),
+    ...(index === 16 ? { transcriptWords: [{ text: 'Stir now.', startMs: 40100, endMs: 40900 }] } : {}),
+  }));
+  const exactStory = planStory(cookingStory, 60, false);
+  assert.equal(exactStory.outputFrames, 1800);
+  assert.deepEqual(exactStory.rows.filter(row => row.included && row.importance === 'essential').map(row => row.clip.id),
+    ['story-0', 'story-9', 'story-16', 'story-31']);
+  assert.equal(exactStory.rows[16].outputFrames, exactStory.rows[16].frames);
+  assert.ok(exactStory.rows.some(row => row.included && row.outputFrames < row.frames));
+  const infeasibleStory = planStory(cookingStory, 60, true, Object.fromEntries(cookingStory.map(clip => [storyKey(clip), { importance: 'essential' }])));
+  assert.equal(infeasibleStory.outputFrames, 2400);
+  assert.equal(infeasibleStory.rows.filter(row => row.included).length, 32);
+  assert.ok(rampTimeRatio(4) < rampTimeRatio(2));
   let seed = 42;
   const signal = Array.from({ length: 700 }, () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % 41 - 60; });
   assert.equal(correlateCameraAudio(signal, signal.slice(50), 150)?.offsetMs, 1000);
@@ -552,11 +570,27 @@ async function main() {
     assert.equal(hookPlan.timeline.clips.find(clip => clip.trackId === 'audio')?.startMs, 1000);
     const secondAngle: MediaAsset = { ...asset, id: 'angle_b', filename: 'silent.mp4', localPath: silentVideo,
       metadata: { ...asset.metadata, durationMs: 12000, hasAudio: false, durationSeconds: 12 } };
+    const rampPlan = planStory([{ ...candidate('ramp-fixture', 0, 5000), visualActionScore: 20, storyImportance: 'supporting' }], 4, false);
+    assert.equal(rampPlan.outputFrames, 120);
+    const rampSource = { ...secondAngle, filename: 'pan.mp4', localPath: pan,
+      metadata: { ...secondAngle.metadata, durationMs: 6000, durationSeconds: 6 } };
+    const rampRequest = { projectId: 'qa_autocut', filePath: pan,
+      ranges: [{ id: 'ramp-fixture', startMs: 0, endMs: 5000, outputFrames: 120, cap: 2 }] };
+    const rampResponse = await prepareSpeedRamp(request(rampRequest));
+    assert.equal(rampResponse.status, 200, await rampResponse.clone().text());
+    const preparedRamp = (await rampResponse.json()).assets;
+    const storyTimeline = compileTimeline(createStoryReel(rampSource, rampPlan, preparedRamp, 'Story ramp', true));
+    assert.equal(storyTimeline.durationMs, 4000);
+    assert.equal(storyTimeline.timeline.clips[0].autoCutRamp?.sourceEndMs, 5000);
+    assert.equal((await prepareSpeedRamp(request({ ...rampRequest, filePath: video }))).status, 422);
     const offsets: CameraSync = { [asset.id]: { offsetMs: 0, confidence: 100, method: 'manual' },
       [secondAngle.id]: { offsetMs: 500, confidence: 95, method: 'waveform' } };
     const spoken = { ...candidate('switch-during-speech', 1000, 4000), sourceVideoId: asset.id,
       transcriptWords: [{ text: 'Keep stirring.', startMs: 1700, endMs: 2400 }] };
     const cameraCut = switchCameraRange(spoken, secondAngle, offsets, 1000);
+    assert.throws(() => editCameraShot(spoken, 'split', 2000, 4000, false), /spoken/);
+    assert.deepEqual(editCameraShot(spoken, 'split', 2000, 4000, true).map(clip => clip.durationMs), [1000, 2000]);
+    assert.throws(() => editCameraShot({ ...spoken, locked: true }, 'trim', 1000, 3500, true), /Unlock/);
     assert.deepEqual(cameraCut.map(clip => [clip.sourceVideoId, clip.startMs, clip.endMs]), [[asset.id, 1000, 2000], [secondAngle.id, 1500, 3500]]);
     const multicamProject = createAutoCutReel([asset, secondAngle], cameraCut, 'Multicam fixture', undefined, undefined, undefined, true,
       { masterId: asset.id, sync: offsets, transcriptClips: [spoken] });
@@ -678,7 +712,59 @@ async function main() {
     assert.equal(reopened?.project.timeline?.clips.length, 6);
     assert.equal(compileTimeline(reopened!.project).durationMs, 3500);
     assert.ok(await fs.stat(video), 'Original media survives saving');
+    if (process.argv.includes('--story-render')) {
+      const longStory = path.join(media, 'story-32-windows.mp4');
+      execFileSync(getFfmpegPath(), ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i',
+        'testsrc2=duration=80:size=96x64:rate=30', '-c:v', 'libx264', '-preset', 'ultrafast', longStory], { windowsHide: true });
+      const storyAsset = { ...secondAngle, filename: 'story-32-windows.mp4', localPath: longStory,
+        metadata: { ...secondAngle.metadata, durationMs: 80000, durationSeconds: 80, width: 96, height: 64, fps: 30 } };
+      const encoded = [];
+      const ranges = exactStory.rows.filter(row => row.included && row.outputFrames < row.frames).map(row => ({
+        id: row.clip.id, startMs: row.clip.startMs, endMs: row.clip.endMs, outputFrames: row.outputFrames, cap: row.cap,
+      }));
+      for (let index = 0; index < ranges.length; index += 4) {
+        const response = await prepareSpeedRamp(request({ projectId: 'qa_autocut', filePath: longStory, ranges: ranges.slice(index, index + 4) }));
+        assert.equal(response.status, 200, await response.clone().text());
+        encoded.push(...(await response.json()).assets);
+      }
+      const plan = compileTimeline(createStoryReel(storyAsset, exactStory, encoded, '32-window story', true));
+      assert.equal(plan.durationMs, 60000);
+      const files = new Map([['source_angle_b', longStory]]);
+      for (const source of plan.timeline.assets.filter(item => item.id !== 'source_angle_b')) {
+        files.set(source.id, await resolveTimelineAsset('usr_admin', source.fileUrl, 'http://localhost'));
+      }
+      const server = await serveTimelineAssets(files);
+      try {
+        for (const source of plan.timeline.assets) source.fileUrl = server.url(source.id);
+        const output = path.join(root, 'story-60-seconds.mp4');
+        process.env.CHROME_PATH ||= 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+        await renderRemotionReelVideo({ timelinePlan: plan, outputPath: output, groups: plan.captionGroups, words: plan.transcript,
+          style: reel.captionStyle, outputSettings: { ...reel.outputSettings, width: 144, height: 96, fps: 30, aspectRatio: '4:3' } });
+        const frames = execFileSync(getFfprobePath(), ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
+          'stream=nb_read_frames', '-of', 'json', output], { encoding: 'utf8', windowsHide: true });
+        assert.equal(Number(JSON.parse(frames).streams?.[0]?.nb_read_frames), 1800, frames);
+        const black = spawnSync(getFfmpegPath(), ['-hide_banner', '-i', output, '-vf', 'blackdetect=d=0.02', '-an', '-f', 'null', '-'],
+          { encoding: 'utf8', windowsHide: true });
+        assert.equal(black.status, 0);
+        assert.doesNotMatch(black.stderr, /black_start:/);
+        console.log('PASS real 32-window story export: 1800 frames at 30 fps, no detected black frames');
+      } finally { await server.close(); }
+    }
     if (process.argv.includes('--render')) {
+      const rampPath = await resolveTimelineAsset('usr_admin', preparedRamp[0].url, 'http://localhost');
+      const storyServer = await serveTimelineAssets(new Map([['source_angle_b', pan], ['story_ramp_0', rampPath]]));
+      try {
+        for (const source of storyTimeline.timeline.assets) source.fileUrl = storyServer.url(source.id);
+        const output = path.join(root, 'story-ramp.mp4');
+        process.env.CHROME_PATH ||= 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+        await renderRemotionReelVideo({ timelinePlan: storyTimeline, outputPath: output, groups: storyTimeline.captionGroups,
+          words: storyTimeline.transcript, style: reel.captionStyle,
+          outputSettings: { ...reel.outputSettings, width: 320, height: 240, fps: 30, aspectRatio: '4:3' } });
+        const frames = execFileSync(getFfprobePath(), ['-v', 'error', '-count_frames', '-select_streams', 'v:0',
+          '-show_entries', 'stream=nb_read_frames', '-of', 'json', output], { encoding: 'utf8', windowsHide: true });
+        assert.equal(Number(JSON.parse(frames).streams?.[0]?.nb_read_frames), 120, frames);
+        console.log('PASS real story ramp export: 120 output frames from mixed-rate source footage');
+      } finally { await storyServer.close(); }
       const transitionServer = await serveTimelineAssets(new Map([['source_media_qa', video], ['source_vfr', slowVfr]]));
       try {
         for (const source of naturalPlan.timeline.assets) source.fileUrl = transitionServer.url(source.id);

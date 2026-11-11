@@ -44,6 +44,7 @@ export interface TimelineText {
   y: number;
 }
 export interface TimelineClip {
+  autoCutRamp?: { sourceAssetId: string; sourceStartMs: number; sourceEndMs: number; peak: number; cap: number; outputFrames: number };
   naturalTransition?: { kind: 'cut' | 'crossfade' | 'fade' | 'match' | 'action'; reason: string };
   transitionEvidence?: { black: { startMs: number; endMs: number }[]; silence?: { startMs: number; endMs: number } };
   motion?: ClipMotion;
@@ -70,6 +71,7 @@ export interface TimelineClip {
   detachedFromId?: string;
 }
 export interface ReelTimeline {
+  autoCutPlatform?: { platform: 'instagram-reel' | 'youtube-short' | 'facebook-reel'; targetSeconds: number };
   version: 1;
   enabled: boolean;
   fps: number;
@@ -296,10 +298,10 @@ export function createTimelineTrack(
     video: "Main video",
     intro: "Intro / Outro",
     overlay: "Overlay",
-    audio: "Spoken voice",
+    audio: "Main audio / Voice",
     music: "Background music",
     text: "Text overlay",
-    captions: "Captions",
+    captions: "Transcript & Captions",
   };
   return {
     id: makeTimelineId("track"),
@@ -350,9 +352,10 @@ export function createTimelineClip(
 /** A legacy project stays untouched until a real multi-track edit is committed. */
 export function timelineFromProject(project: CaptionProject): ReelTimeline {
   if (project.timeline) return project.timeline;
-  const captions = { ...createTimelineTrack("captions"), id: "track_captions" };
   const video = { ...createTimelineTrack("video"), id: "track_video" };
   const voice = { ...createTimelineTrack("audio"), id: "track_voice" };
+  const overlay = { ...createTimelineTrack("overlay"), id: "track_overlay" };
+  const captions = { ...createTimelineTrack("captions"), id: "track_captions" };
   const music = { ...createTimelineTrack("music"), id: "track_music" };
   const assets = projectTimelineAssets(project);
   const sourceStart = Math.round((project.trimRange?.start || 0) * 1000);
@@ -396,6 +399,17 @@ export function timelineFromProject(project: CaptionProject): ReelTimeline {
     if (project.transcript.length || project.captionGroups.length)
       add(captions, project.audio.id, { linkId: "primary_voice" });
   }
+  let hasOverlay = false;
+  if (project.mediaAssets && project.mediaAssets.length > 0) {
+    const extraMedia = project.mediaAssets.filter((a) => a.id !== project.image?.id);
+    if (extraMedia.length > 0) {
+      add(overlay, extraMedia[0].id, {
+        muted: true,
+        loop: true,
+      });
+      hasOverlay = true;
+    }
+  }
   if (project.bgMusic)
     add(music, project.bgMusic.id, {
       sourceStartMs: Math.round(
@@ -414,11 +428,14 @@ export function timelineFromProject(project: CaptionProject): ReelTimeline {
         Math.round((project.bgMusic.fadeOutDuration || 0) * 1000),
       ),
     });
+  const tracks: TimelineTrack[] = [video, voice];
+  if (hasOverlay) tracks.push(overlay);
+  tracks.push(captions, music);
   return {
     version: 1,
     enabled: false,
     fps: project.outputSettings.fps || 30,
-    tracks: [captions, video, voice, music],
+    tracks,
     clips,
     assets,
     markers: [],

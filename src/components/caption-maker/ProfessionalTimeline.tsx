@@ -38,6 +38,9 @@ import {
   MousePointer2,
   Upload,
   Loader2,
+  Sparkles,
+  Download,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { CaptionProject, ImageAsset, AudioAsset } from "@/lib/caption-maker/types";
 import { uploadFileWithProgress, UploadCancelledError } from "@/lib/upload-with-progress";
@@ -133,6 +136,7 @@ export function ProfessionalTimeline({
   thumbnailCoverError,
   onThumbnailCoverChange,
   onEditThumbnail,
+  allowTimelineThumbnail = false,
   onOpenTrackPanel,
   trackSettingsTarget,
 }: {
@@ -158,6 +162,7 @@ export function ProfessionalTimeline({
   thumbnailCoverError?: string;
   onThumbnailCoverChange?: (cover: NonNullable<CaptionProject['thumbnailCover']>) => void;
   onEditThumbnail?: () => void;
+  allowTimelineThumbnail?: boolean;
   onOpenTrackPanel?: (kind: TrackKind) => void;
   trackSettingsTarget?: HTMLDivElement | null;
 }) {
@@ -191,6 +196,7 @@ export function ProfessionalTimeline({
   const directUploadAbort = useRef<AbortController | null>(null);
   const [isUploadingDirectMedia, setIsUploadingDirectMedia] = useState(false);
   const [directUploadProgress, setDirectUploadProgress] = useState<number | null>(null);
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
 
   useEffect(() => () => {
     directUploadAbort.current?.abort();
@@ -532,7 +538,10 @@ export function ProfessionalTimeline({
       return { ...timeline, assets: all, clips: [...timeline.clips, clip] };
     });
 
-  const handleDirectMediaUpload = async (file: File) => {
+  const handleDirectMediaUpload = async (
+    file: File,
+    mode: "default" | "video_and_audio" | "audio_only" | "video_only" = "default",
+  ) => {
     if (directUploadAbort.current) return;
     const request = new AbortController();
     directUploadAbort.current = request;
@@ -541,10 +550,15 @@ export function ProfessionalTimeline({
     setError("");
 
     try {
-      const type = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)
+      const isImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+      const isVid = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi)$/i.test(file.name);
+
+      const uploadType: "image" | "video" | "audio" = isImg
         ? "image"
-        : file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name)
-          ? "video"
+        : isVid
+          ? mode === "audio_only"
+            ? "audio"
+            : "video"
           : "audio";
 
       const result = await uploadFileWithProgress<{
@@ -552,7 +566,7 @@ export function ProfessionalTimeline({
         error?: string;
         asset?: ImageAsset | AudioAsset;
         type?: "image" | "video" | "audio";
-      }>("/api/caption-maker/upload", file, setDirectUploadProgress, type, request.signal);
+      }>("/api/caption-maker/upload", file, setDirectUploadProgress, uploadType, request.signal);
 
       if (request.signal.aborted) return;
       if (!result.success || !result.asset) {
@@ -561,28 +575,38 @@ export function ProfessionalTimeline({
 
       const source = result.asset;
       const visual = "fitMode" in source ? source : undefined;
-      const durationMs = Math.round((source.duration || (type === "image" ? 3 : 0)) * 1000);
+      const durationMs = Math.round((source.duration || (uploadType === "image" ? 3 : 0)) * 1000);
+
+      const hasAudio =
+        mode === "video_only"
+          ? false
+          : uploadType !== "image" && (source as { hasAudio?: boolean }).hasAudio !== false;
 
       const timelineAsset: TimelineAsset = {
         id: source.id,
         fileName: source.fileName,
         fileUrl: source.fileUrl,
-        mediaType: result.type || type,
+        mediaType: result.type || uploadType,
         durationMs,
         width: visual?.width,
         height: visual?.height,
         fitMode: visual?.fitMode,
         position: visual?.position,
         scale: visual?.scale,
-        hasAudio: (result.type || type) !== "image",
+        hasAudio,
       };
 
       const isTimelineEmpty = timeline.clips.length === 0;
 
       run(() => {
-        const targetKind: TrackKind = (result.type || type) === "audio" ? "audio" : "video";
+        const targetKind: TrackKind =
+          uploadType === "audio" || mode === "audio_only" ? "audio" : "video";
         let targetTrack = timeline.tracks.find(
-          (t) => !t.locked && (targetKind === "audio" ? ["audio", "music"].includes(t.kind) : ["video", "intro", "overlay"].includes(t.kind))
+          (t) =>
+            !t.locked &&
+            (targetKind === "audio"
+              ? ["audio", "music"].includes(t.kind)
+              : ["video", "intro", "overlay"].includes(t.kind)),
         );
 
         let nextTracks = [...timeline.tracks];
@@ -594,18 +618,33 @@ export function ProfessionalTimeline({
           nextTracks = [targetTrack, ...nextTracks];
         }
 
+        // When audio_only, ensure an overlay or video track also exists so user can add background visuals
+        if (mode === "audio_only") {
+          const hasVisualTrack = nextTracks.some((t) => ["video", "overlay"].includes(t.kind));
+          if (!hasVisualTrack) {
+            const bgTrack = {
+              ...createTimelineTrack("overlay"),
+              id: makeTimelineId("track_overlay"),
+            };
+            nextTracks = [bgTrack, ...nextTracks];
+          }
+        }
+
         const startMs = isTimelineEmpty ? 0 : (trackEnds.get(targetTrack.id) || 0);
         const clipDuration = Math.max(
           Math.floor(1000 / timeline.fps),
-          Math.floor((Math.floor(((durationMs || 3000) * timeline.fps) / 1000) * 1000) / timeline.fps)
+          Math.floor((Math.floor(((durationMs || 3000) * timeline.fps) / 1000) * 1000) / timeline.fps),
         );
 
-        const clip = createTimelineClip(
-          targetTrack,
-          timelineAsset,
-          frameTime(startMs, timeline.fps),
-          clipDuration
-        );
+        const clip = {
+          ...createTimelineClip(
+            targetTrack,
+            timelineAsset,
+            frameTime(startMs, timeline.fps),
+            clipDuration,
+          ),
+          muted: mode === "video_only",
+        };
 
         const nextAssets = [
           ...projectTimelineAssets(project).filter((a) => a.id !== timelineAsset.id),
@@ -659,11 +698,16 @@ export function ProfessionalTimeline({
     }));
   const button =
     "rounded-md border border-zinc-700/70 bg-zinc-900 p-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-30";
+  const selectButton =
+    "!h-auto !w-auto gap-1 !rounded-md !border-zinc-700/70 !bg-zinc-900 !px-2 !py-1.5 !text-xs !font-normal !text-zinc-300 hover:!bg-zinc-800 hover:!text-amber-300 focus-visible:!border-amber-400 focus-visible:!ring-1 focus-visible:!ring-amber-400/30 shadow-none [&>svg]:!size-3.5 [&>svg]:!text-zinc-400";
+  const trackButton =
+    "w-[22px] h-[22px] flex items-center justify-center p-0 rounded border border-zinc-700/70 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-30 shrink-0";
   const icon = (
     title: string,
     action: () => void,
     node: React.ReactNode,
     disabled = false,
+    cls = button,
   ) => (
     <Button
       type="button"
@@ -671,7 +715,7 @@ export function ProfessionalTimeline({
       aria-label={title}
       onClick={action}
       disabled={disabled}
-      className={button}
+      className={cls}
     >
       {node}
     </Button>
@@ -875,16 +919,46 @@ export function ProfessionalTimeline({
       <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap border-b border-zinc-800 px-3 py-2">
         <span className="mr-2 flex items-center gap-2 font-semibold text-amber-400">
           <Film size={15} />
-          Timeline{" "}
-          <span className="hidden sm:inline text-[10px] font-normal text-zinc-500">
-            MULTI-TRACK
-          </span>
+          Timeline
         </span>
         {icon(
           isPlaying ? "Pause" : "Play",
           onTogglePlay,
           isPlaying ? <Pause size={14} /> : <Play size={14} />,
         )}
+        <Select
+          value=""
+          onValueChange={(value) => {
+            if (allowTimelineThumbnail && value === 'thumbnail') { if (onEditThumbnail) onEditThumbnail(); else onThumbnailCoverChange?.({ enabled: true }); return; }
+            if (value === 'background-video' || value === 'background-music' || value === 'spoken-voice') {
+              setTrackEditor(null);
+              if (onOpenTrackPanel) onOpenTrackPanel(value === 'background-video' ? 'video' : value === 'background-music' ? 'music' : 'audio');
+              return;
+            }
+            const kind = value as TrackKind;
+            const track = createTimelineTrack(kind);
+            const added = run(() => ({
+              ...timeline,
+              tracks: [track, ...timeline.tracks],
+            }));
+            if (added && onOpenTrackPanel) {
+              onOpenTrackPanel(kind);
+              setTrackEditor({ track, index: 0 });
+            }
+          }}
+        >
+          <SelectTrigger aria-label="Add track" className={selectButton}><SelectValue placeholder="+ Add track" /></SelectTrigger>
+          <SelectContent>
+            {allowTimelineThumbnail && onThumbnailCoverChange && <SelectItem value="thumbnail">Thumbnail</SelectItem>}
+            <SelectItem value="video">Video</SelectItem>
+            <SelectItem value="audio">Audio</SelectItem>
+            <SelectItem value="overlay">Overlay</SelectItem>
+            <SelectItem value="captions">Captions</SelectItem>
+            <SelectItem value="music">Music</SelectItem>
+            <SelectItem value="intro">Intro</SelectItem>
+            <SelectItem value="text">Text</SelectItem>
+          </SelectContent>
+        </Select>
         <span className="mr-2 rounded bg-black/40 px-2 py-1.5 font-mono text-[10px] text-amber-100">
           {clock(currentTime * 1000)}{" "}
           <span className="text-zinc-500">
@@ -903,7 +977,6 @@ export function ProfessionalTimeline({
         <Button type="button" className={button} disabled={!onAutoSyncCaptions || isSyncingCaptions || !project.audio || lockedCaptionAssets.has(project.audio?.id)}
           title="Re-run speech recognition on the current spoken source; this may update transcript text and timing"
           onClick={onAutoSyncCaptions}>{isSyncingCaptions ? 'Syncing captions…' : 'Auto-sync speech'}</Button>
-        <Button type="button" className={button} onClick={onCaptionEffects || onEditCaptions} title="Open caption animation, highlight and typography controls">Caption effects</Button>
         <Button type="button" className={button} disabled={!timeline.clips.some(c => selected.includes(c.id) && timeline.tracks.some(t => t.id === c.trackId && !['audio', 'music'].includes(t.kind)))}
           title="Edit keyframes on the first selected visual clip" onClick={() => {
             const clip = timeline.clips.find(c => selected.includes(c.id) && timeline.tracks.some(t => t.id === c.trackId && !['audio', 'music'].includes(t.kind)));
@@ -911,7 +984,7 @@ export function ProfessionalTimeline({
           }}>Keyframes</Button>
         {icon('Duplicate selected at timeline end (Ctrl+D)', () => run(() => duplicateTimelineClips(timeline, selected)), <CopyPlus size={14} />, !selected.length)}
         <Select value={editMode} onValueChange={value => setEditMode(value as TimelineEditMode)}>
-          <SelectTrigger aria-label="Timeline edit mode"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Timeline edit mode" className={selectButton}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="move">Move / Trim</SelectItem>
             <SelectItem value="ripple">Ripple — drag edge</SelectItem>
@@ -988,50 +1061,6 @@ export function ProfessionalTimeline({
           },
           <Flag size={14} />,
         )}
-        <Select
-          value=""
-          onValueChange={(value) => {
-            if (value === 'thumbnail') { if (onEditThumbnail) onEditThumbnail(); else onThumbnailCoverChange?.({ enabled: true }); return; }
-            if (value === 'background-video' || value === 'background-music' || value === 'spoken-voice') {
-              setTrackEditor(null);
-              if (onOpenTrackPanel) onOpenTrackPanel(value === 'background-video' ? 'video' : value === 'background-music' ? 'music' : 'audio');
-              return;
-            }
-            const kind = value as TrackKind;
-            const track = createTimelineTrack(kind);
-            const added = run(() => ({
-              ...timeline,
-              tracks: [track, ...timeline.tracks],
-            }));
-            if (added && onOpenTrackPanel) {
-              onOpenTrackPanel(kind);
-              setTrackEditor({ track, index: 0 });
-            }
-          }}
-        >
-          <SelectTrigger aria-label="Add track"><SelectValue placeholder="+ Add track" /></SelectTrigger>
-          <SelectContent>
-          {onThumbnailCoverChange && <SelectItem value="thumbnail">Thumbnail</SelectItem>}
-          {onOpenTrackPanel && <SelectItem value="background-video">Background Video / Image</SelectItem>}
-          {onOpenTrackPanel && <SelectItem value="spoken-voice">Spoken Audio / Voice</SelectItem>}
-          {onOpenTrackPanel && <SelectItem value="background-music">Background Music (BGM)</SelectItem>}
-          {(
-            [
-              "video",
-              "intro",
-              "overlay",
-              "audio",
-              "music",
-              "text",
-              "captions",
-            ] as TrackKind[]
-          ).map((kind) => (
-            <SelectItem key={kind} value={kind}>
-              {kind.charAt(0).toUpperCase() + kind.slice(1)}
-            </SelectItem>
-          ))}
-          </SelectContent>
-        </Select>
         <input
           ref={directUploadRef}
           type="file"
@@ -1040,7 +1069,12 @@ export function ProfessionalTimeline({
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) {
-              void handleDirectMediaUpload(file);
+              const isVid = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi)$/i.test(file.name);
+              if (isVid) {
+                setPendingVideoFile(file);
+              } else {
+                void handleDirectMediaUpload(file, "default");
+              }
             }
             e.target.value = "";
           }}
@@ -1107,8 +1141,6 @@ export function ProfessionalTimeline({
         </div>
       </div>
       {thumbnailHover && <HoverFramePreview key={thumbnailHover.fileUrl} frame={thumbnailHover} />}
-      {onThumbnailCoverChange && <ThumbnailCoverControls enabled={project.thumbnailCover?.enabled === true}
-        url={thumbnailCoverUrl} error={thumbnailCoverError} onChange={onThumbnailCoverChange} onEdit={() => onEditThumbnail?.()} />}
       {error && (
         <div
           role="alert"
@@ -1119,6 +1151,15 @@ export function ProfessionalTimeline({
             ×
           </Button>
         </div>
+      )}
+      {allowTimelineThumbnail && onThumbnailCoverChange && (
+        <ThumbnailCoverControls
+          enabled={project.thumbnailCover?.enabled === true}
+          url={thumbnailCoverUrl}
+          error={thumbnailCoverError}
+          onChange={onThumbnailCoverChange}
+          onEdit={() => onEditThumbnail?.()}
+        />
       )}
       {simple && !project.timeline?.enabled ? (
         <CaptionTimeline
@@ -1317,16 +1358,20 @@ export function ProfessionalTimeline({
                       <Settings2 size={11} />
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2 text-zinc-400">
+                  <div className="flex items-center gap-1.5 text-zinc-400">
                     {icon(
                       `${track.locked ? "Unlock" : "Lock"} ${track.name}`,
                       () => updateTrack(track.id, { locked: !track.locked }),
                       track.locked ? <Lock size={11} /> : <Unlock size={11} />,
+                      false,
+                      trackButton,
                     )}
                     {icon(
                       `${track.hidden ? "Show" : "Hide"} ${track.name}`,
                       () => updateTrack(track.id, { hidden: !track.hidden }),
                       track.hidden ? <EyeOff size={11} /> : <Eye size={11} />,
+                      false,
+                      trackButton,
                     )}
                     {!["text", "captions"].includes(track.kind) &&
                       icon(
@@ -1337,22 +1382,36 @@ export function ProfessionalTimeline({
                         ) : (
                           <Volume2 size={11} />
                         ),
+                        false,
+                        trackButton,
                       )}
-                    {audioTrack(track) && <Button type="button" aria-label={`Solo ${track.name}`} aria-pressed={track.solo === true}
-                      title={`Solo ${track.name}`} className={`${button} ${track.solo ? '!text-amber-400 !border-amber-400' : ''}`}
-                      onClick={() => updateTrack(track.id, { solo: !track.solo })}>S</Button>}
-                    {icon(`Delete track: ${track.name}`,()=>removeTrack(track.id),<Trash2 size={11}/>,track.locked)}
+                    {audioTrack(track) && (
+                      <Button
+                        type="button"
+                        aria-label={`Solo ${track.name}`}
+                        aria-pressed={track.solo === true}
+                        title={`Solo ${track.name}`}
+                        className={`${trackButton} text-[10px] font-bold leading-none ${track.solo ? '!text-amber-400 !border-amber-400' : ''}`}
+                        onClick={() => updateTrack(track.id, { solo: !track.solo })}
+                      >
+                        S
+                      </Button>
+                    )}
                     {track.kind === "text" &&
                       icon(
                         "Add text at playhead",
                         () => addAsset(track.id),
                         <Type size={11} />,
+                        false,
+                        trackButton,
                       )}
                     {track.kind === "captions" &&
                       icon(
                         "Edit transcript",
                         onEditCaptions,
                         <Type size={11} />,
+                        false,
+                        trackButton,
                       )}
                   </div>
                 </div>
@@ -1403,6 +1462,65 @@ export function ProfessionalTimeline({
                     >
                       <Plus size={16} aria-hidden="true" />
                     </Button>
+                  )}
+                  {timeline.clips.filter((c) => c.trackId === track.id).length === 0 && (
+                    <div className="absolute inset-y-0 left-3 flex items-center gap-2 z-10 pointer-events-auto">
+                      {track.kind === "captions" && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!onAutoSyncCaptions || isSyncingCaptions}
+                            onClick={() => onAutoSyncCaptions?.()}
+                            className="h-7 px-3 text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-zinc-950 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Automatically transcribe speech and generate synchronized captions"
+                          >
+                            {isSyncingCaptions ? (
+                              <>
+                                <Loader2 size={12} className="animate-spin text-zinc-950" />
+                                <span>Transcribing Speech…</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles size={12} />
+                                <span>Generate AI Captions</span>
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => onEditCaptions?.()}
+                            className="h-7 px-2.5 text-xs font-medium border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-lg flex items-center gap-1.5"
+                          >
+                            <Type size={12} className="text-zinc-400" />
+                            <span>Manual Transcript</span>
+                          </Button>
+                        </>
+                      )}
+                      {track.kind === "music" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => onOpenTrackPanel?.("music")}
+                          className="h-7 px-3 text-xs font-semibold border border-purple-500/40 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 rounded-lg flex items-center gap-1.5"
+                        >
+                          <Volume2 size={12} />
+                          <span>Open BGM Library / Add Music</span>
+                        </Button>
+                      )}
+                      {track.kind === "overlay" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => setMediaTrackId(track.id)}
+                          className="h-7 px-3 text-xs font-semibold border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 rounded-lg flex items-center gap-1.5"
+                        >
+                          <Plus size={12} />
+                          <span>Add Background Video / Photos</span>
+                        </Button>
+                      )}
+                    </div>
                   )}
                   {timeline.clips
                     .filter((c) => c.trackId === track.id)
@@ -1965,6 +2083,127 @@ export function ProfessionalTimeline({
               </Button>
             </div>
           </form>
+        </DialogSurface>
+      )}
+      {pendingVideoFile && (
+        <DialogSurface
+          asChild
+          onClose={() => setPendingVideoFile(null)}
+          aria-describedby={undefined}
+          overlayClassName="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-950 p-6 space-y-5 shadow-2xl text-left">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle asChild>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Film className="w-4 h-4 text-amber-400" />
+                    Video Import Mode
+                  </h3>
+                </DialogTitle>
+                <p className="text-xs text-zinc-400 mt-1 truncate max-w-xs">
+                  {pendingVideoFile.name} ({(pendingVideoFile.size / (1024 * 1024)).toFixed(1)} MB)
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Close"
+                onClick={() => setPendingVideoFile(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                ✕
+              </Button>
+            </div>
+
+            <p className="text-xs text-zinc-300">
+              Choose how you want to add this video to your Reel Maker timeline:
+            </p>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const file = pendingVideoFile;
+                  setPendingVideoFile(null);
+                  void handleDirectMediaUpload(file, "video_and_audio");
+                }}
+                className="w-full p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-left transition-all cursor-pointer group flex items-start gap-3"
+              >
+                <div className="p-2 rounded-lg bg-amber-400/20 text-amber-300 shrink-0 mt-0.5">
+                  <Film size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-200">1. Video + Original Audio</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-400 text-zinc-950">Recommended</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300 mt-1 leading-relaxed">
+                    Use uploaded video for both footage visuals and original synchronized sound.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const file = pendingVideoFile;
+                  setPendingVideoFile(null);
+                  void handleDirectMediaUpload(file, "audio_only");
+                }}
+                className="w-full p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-zinc-700 text-left transition-all cursor-pointer group flex items-start gap-3"
+              >
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-300 shrink-0 mt-0.5">
+                  <Volume2 size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-zinc-100">2. Audio Only from Video</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Extract Voice</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                    Extract voice/audio to Main Audio track without video visuals. Lets you add separate background videos or photos.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const file = pendingVideoFile;
+                  setPendingVideoFile(null);
+                  void handleDirectMediaUpload(file, "video_only");
+                }}
+                className="w-full p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-zinc-700 text-left transition-all cursor-pointer group flex items-start gap-3"
+              >
+                <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-300 shrink-0 mt-0.5">
+                  <VolumeX size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-zinc-100">3. Video Only (Mute Audio)</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Silent Visuals</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                    Use video footage as visuals with sound muted. Ideal for adding voiceover or background music.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPendingVideoFile(null)}
+                className="text-xs text-zinc-400"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </DialogSurface>
       )}
     </section>

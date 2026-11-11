@@ -11,6 +11,7 @@ import { voiceVideoBackgroundUpdates } from '@/lib/caption-maker/voice-video-bac
 import { musicTime, normalizeTrimRange } from '@/lib/caption-maker/playback-time';
 import { removeReelMedia } from '@/lib/caption-maker/remove-reel-media';
 import { readCloudSaveResult } from '@/lib/caption-maker/cloud-save';
+import { uploadFileWithProgress } from '@/lib/upload-with-progress';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -51,6 +52,7 @@ import { ExportModal } from '@/components/caption-maker/ExportModal';
 import { KeyboardShortcutsDialog } from '@/components/caption-maker/KeyboardShortcutsDialog';
 import { SmartEditorModal } from '@/components/caption-maker/SmartEditorModal';
 import { ProjectHistoryModal } from '@/components/caption-maker/ProjectHistoryModal';
+import { TimelineMediaPicker } from '@/components/caption-maker/TimelineMediaPicker';
 import {
   saveProjectToLocalStorage,
   saveProjectSnapshot,
@@ -141,7 +143,7 @@ function CaptionMakerPageContent() {
   const [compactPanel, setCompactPanel] = useState<'preview' | 'media' | 'style'>('preview');
   const [trackPanel, setTrackPanel] = useState<TrackKind | null>(null);
   const [trackSettingsTarget, setTrackSettingsTarget] = useState<HTMLDivElement | null>(null);
-  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
+  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('thumbnail');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
   // Modals & History
@@ -149,6 +151,7 @@ function CaptionMakerPageContent() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isSmartEditorOpen, setIsSmartEditorOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [isThumbnailMediaPickerOpen, setIsThumbnailMediaPickerOpen] = useState<boolean>(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const [crashRecoverySnapshot, setCrashRecoverySnapshot] = useState<ProjectSnapshot | null>(null);
   const isInitialMount = useRef<boolean>(true);
@@ -206,6 +209,8 @@ function CaptionMakerPageContent() {
         setSavedReelLoadError(null);
         setProject(restored); setHistory([restored]); setHistoryIndex(0);
         setAudioDuration(restored.audio?.duration || restored.image?.duration || 0);
+        setCenterViewMode('video');
+        setRightTab('style');
       } catch (error) { if (loadSequence === projectLoadSequence.current) setSavedReelLoadError(error instanceof Error ? error.message : 'Could not open saved reel'); }
       return;
     }
@@ -880,7 +885,7 @@ function CaptionMakerPageContent() {
       setHistoryIndex(0);
       handleSeek(0);
       setAudioDuration(0);
-      setCenterViewMode('video');
+      setCenterViewMode('thumbnail');
       setRightTab('thumbnail');
       setThumbnailSubTab('position');
       setIsPlaying(false);
@@ -957,6 +962,9 @@ function CaptionMakerPageContent() {
           ...(prev.image ? [[prev.image.id, prev.image] as const] : []),
           [normalizedImage.id, normalizedImage] as const,
         ]).values()],
+        thumbnailSettings: prev.thumbnailSettings
+          ? { ...prev.thumbnailSettings, customBgUrl: normalizedImage.fileUrl }
+          : undefined,
         updatedAt: new Date().toISOString(),
       };
     });
@@ -1133,6 +1141,22 @@ function CaptionMakerPageContent() {
       thumbnailSettings,
       updatedAt: new Date().toISOString(),
     }));
+  };
+
+  const handleUploadThumbnailMedia = async (file: File) => {
+    if (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|gif)$/i.test(file.name)) return;
+    try {
+      const data = await uploadFileWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: ImageAsset;
+      }>('/api/caption-maker/upload', file, () => {}, 'image');
+      if (data.success && data.asset) {
+        handleImageUploaded(data.asset);
+      }
+    } catch (e) {
+      console.error('Thumbnail media upload error:', e);
+    }
   };
 
   const isTranscribingRef = useRef(false);
@@ -1394,6 +1418,7 @@ function CaptionMakerPageContent() {
 
     // Switch view back to main video reel mode and assets tab
     setCenterViewMode('video');
+    setRightTab('style');
 
     try {
       if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedProject));
@@ -1427,6 +1452,7 @@ function CaptionMakerPageContent() {
     setHistory([clearedTranscriptProject]);
     setHistoryIndex(0);
     setCenterViewMode('video');
+    setRightTab('style');
 
     try {
       if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(clearedTranscriptProject));
@@ -1893,24 +1919,57 @@ function CaptionMakerPageContent() {
 
   if (savedReelId && !savedReelSession) return <DashboardLayout title="Saved Reel"><div className="p-6" role={savedReelLoadError ? 'alert' : 'status'}>{savedReelLoadError || 'Loading saved reel…'} <Link href="/saved-reels" className="text-amber-400">Return to Saved Reels</Link></div></DashboardLayout>;
 
-  const renderAssetControls = (section: 'media' | 'voice') => (
+  const allImageAssets: ImageAsset[] = useMemo(() => {
+    const isImg = (item: { mediaType?: string; fileUrl?: string; fileName?: string }) => {
+      if (item.mediaType === 'image') return true;
+      if (item.mediaType === 'video') return false;
+      const url = item.fileUrl || item.fileName || '';
+      return /\.(jpe?g|png|webp|svg|gif|avif|bmp|ico|tiff?|heic)$/i.test(url);
+    };
+    const map = new Map<string, ImageAsset>();
+    for (const a of project.mediaAssets || []) {
+      if (isImg(a)) map.set(a.fileUrl || a.id, a);
+    }
+    for (const a of project.timeline?.assets || []) {
+      if (isImg(a)) {
+        map.set(a.fileUrl || a.id, {
+          id: a.id,
+          fileName: (a as any).fileName || (a as any).name || 'Image',
+          fileUrl: a.fileUrl,
+          fileSize: 0,
+          width: 1080,
+          height: 1920,
+          format: 'png',
+          mediaType: 'image',
+          fitMode: 'cover',
+          position: 'center',
+          scale: 100,
+        });
+      }
+    }
+    if (project.image && isImg(project.image)) {
+      map.set(project.image.fileUrl || project.image.id, project.image);
+    }
+    return Array.from(map.values());
+  }, [project.mediaAssets, project.timeline?.assets, project.image]);
+
+  const renderAssetControls = (section: 'media' | 'voice', allowVideo: boolean = true) => (
     <AssetUploadSection
       section={section}
+      allowVideo={allowVideo}
       image={project.image}
-      mediaAssets={project.mediaAssets || (project.image ? [project.image] : [])}
+      mediaAssets={allowVideo === false ? allImageAssets : (project.mediaAssets || (project.image ? [project.image] : []))}
+      onOpenMediaPicker={allowVideo === false ? () => setIsThumbnailMediaPickerOpen(true) : undefined}
       audio={project.audio}
       onImageChange={(img) => {
         if (img) handleImageUploaded(img);
         else {
-          const isAudioEmpty = !project.audio;
-          if (isAudioEmpty) {
-            setCenterViewMode('video');
-          }
           updateProjectWithHistory((prev) => ({
             ...prev,
             image: undefined,
-            title: isAudioEmpty ? 'Untitled Reel' : prev.title,
-            thumbnailSettings: isAudioEmpty ? undefined : prev.thumbnailSettings,
+            thumbnailSettings: prev.thumbnailSettings
+              ? { ...prev.thumbnailSettings, customBgUrl: undefined }
+              : undefined,
             updatedAt: new Date().toISOString(),
           }));
         }
@@ -1984,6 +2043,8 @@ function CaptionMakerPageContent() {
       }}
     />
   );
+
+  const isThumbnailActive = centerViewMode === 'thumbnail' || rightTab === 'thumbnail';
 
   return (
     <DashboardLayout
@@ -2332,10 +2393,10 @@ function CaptionMakerPageContent() {
 
       {/* Main 3-Column Studio Editor Workspace */}
       <div className="flex shrink-0 gap-1 border-b border-zinc-800 p-1.5 text-xs xl:hidden" role="tablist" aria-label="Editor panel">
-        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: trackPanel ? 'Track settings' : 'Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <Button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</Button>)}
+        {([{ id: 'preview', label: 'Preview' }, { id: 'media', label: trackPanel ? 'Track settings' : isThumbnailActive ? 'Cover Settings' : 'Transcript' }, { id: 'style', label: 'Styles & Cover' }] as const).map(panel => <Button key={panel.id} role="tab" aria-selected={compactPanel === panel.id} onClick={() => setCompactPanel(panel.id)} className={`flex-1 rounded-lg px-2 py-2 ${compactPanel === panel.id ? 'bg-amber-400 font-bold text-black' : 'bg-zinc-900 text-zinc-300'}`}>{panel.label}</Button>)}
       </div>
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
-        {/* LEFT COLUMN: Transcript */}
+        {/* LEFT COLUMN: Transcript / Thumbnail Cover Settings */}
         <section className={`${compactPanel === 'media' ? 'flex' : 'hidden'} xl:flex w-full xl:w-72 2xl:w-96 flex-1 xl:flex-none flex-col border-r border-zinc-800 bg-zinc-950 shrink-0 min-h-0`}>
           {trackPanel ? (
             <>
@@ -2343,7 +2404,7 @@ function CaptionMakerPageContent() {
                 <h2 className="font-semibold text-white">
                   {trackPanel === 'video' ? 'Background Video / Image' : trackPanel === 'audio' ? 'Spoken Audio / Voice' : trackPanel === 'music' ? 'Background Music' : 'Track settings'}
                 </h2>
-                <Button type="button" className="text-amber-300" onClick={() => setTrackPanel(null)}>Transcript</Button>
+                <Button type="button" className="text-amber-300" onClick={() => setTrackPanel(null)}>Close</Button>
               </div>
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                 <div ref={setTrackSettingsTarget} />
@@ -2352,11 +2413,26 @@ function CaptionMakerPageContent() {
                 {trackPanel === 'music' && <BackgroundMusicPicker bgMusic={project.bgMusic} audioAnalysis={project.audioAnalysis} onBgMusicChange={handleBgMusicChange} />}
               </div>
             </>
+          ) : isThumbnailActive ? (
+            <>
+              <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/60 p-3 text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-white">
+                  <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Thumbnail Cover Settings</span>
+                </div>
+                <span className="text-[10px] font-medium text-amber-300/80 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                  {project.image ? 'Image Loaded' : 'No Image'}
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                {renderAssetControls('media', false)}
+              </div>
+            </>
           ) : (
             <>
           <h2 className="flex items-center justify-center gap-1.5 border-b border-zinc-800 bg-zinc-900/60 p-3 text-xs font-semibold text-white">
               <FileText className="w-3.5 h-3.5 text-amber-400" />
-              Transcript
+              Transcript &amp; Captions
               {project.captionGroups.length > 0 && (
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded-full font-mono">
                   {project.captionGroups.length}
@@ -2409,22 +2485,6 @@ function CaptionMakerPageContent() {
                 <Button
                   type="button"
                   onClick={() => {
-                    setCenterViewMode('video');
-                    setRightTab('style');
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    centerViewMode === 'video'
-                      ? 'bg-amber-400 text-black font-bold shadow-sm'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                  title="Switch to Video Reel Playback Preview"
-                >
-                  <Film className="w-3.5 h-3.5" />
-                  <span>Video Reel</span>
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => {
                     setCenterViewMode('thumbnail');
                     setRightTab('thumbnail');
                   }}
@@ -2437,6 +2497,22 @@ function CaptionMakerPageContent() {
                 >
                   <ImageIcon className={`w-3.5 h-3.5 ${centerViewMode === 'thumbnail' ? 'fill-black' : 'text-amber-400'}`} />
                   <span>Thumbnail Cover</span>
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setCenterViewMode('video');
+                    setRightTab('style');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    centerViewMode === 'video'
+                      ? 'bg-amber-400 text-black font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Switch to Video Reel Playback Preview"
+                >
+                  <Film className="w-3.5 h-3.5" />
+                  <span>Video Reel</span>
                 </Button>
               </div>
 
@@ -2451,7 +2527,11 @@ function CaptionMakerPageContent() {
               <ThumbnailPreview
                 settings={currentThumbSettings}
                 image={project.image}
+                mediaAssets={allImageAssets}
                 outputSettings={project.outputSettings}
+                onUploadMedia={handleUploadThumbnailMedia}
+                onSelectMediaAsset={handleImageUploaded}
+                onOpenMediaPicker={() => setIsThumbnailMediaPickerOpen(true)}
                 onSwitchToVideo={() => {
                   setCenterViewMode('video');
                   setRightTab('style');
@@ -2515,32 +2595,32 @@ function CaptionMakerPageContent() {
           <div className="flex border-b border-zinc-800 bg-zinc-900/60 p-1.5 gap-1 shrink-0">
             <Button
               onClick={() => {
-                setRightTab('style');
-                setCenterViewMode('video');
+                setRightTab('thumbnail');
+                setCenterViewMode('thumbnail');
               }}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                rightTab === 'style'
-                  ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                rightTab === 'thumbnail'
+                  ? 'bg-amber-400 text-black shadow-sm font-bold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
               }`}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-              <span>Caption Styles</span>
+              <Palette className={`w-3.5 h-3.5 ${rightTab === 'thumbnail' ? 'text-black' : 'text-amber-400'}`} />
+              <span>Thumbnail Style</span>
             </Button>
 
             <Button
               onClick={() => {
-                setRightTab('thumbnail');
-                setCenterViewMode('thumbnail');
+                setRightTab('style');
+                setCenterViewMode('video');
               }}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                rightTab === 'thumbnail'
-                  ? 'bg-zinc-800 text-amber-300 shadow-sm border border-amber-500/30 font-bold'
-                  : 'text-zinc-400 hover:text-zinc-200'
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                rightTab === 'style'
+                  ? 'bg-amber-400 text-black shadow-sm font-bold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
               }`}
             >
-              <Palette className="w-3.5 h-3.5 text-amber-400" />
-              <span>Thumbnail Style</span>
+              <SlidersHorizontal className={`w-3.5 h-3.5 ${rightTab === 'style' ? 'text-black' : 'text-amber-400'}`} />
+              <span>Caption Styles</span>
             </Button>
           </div>
 
@@ -2598,9 +2678,9 @@ function CaptionMakerPageContent() {
           thumbnailCoverUrl={thumbnailCover.url} thumbnailCoverError={thumbnailCover.error} onEditThumbnail={handleEditThumbnailCover}
           onThumbnailCoverChange={cover => updateProjectWithHistory(previous => ({ ...previous, thumbnailCover: cover, updatedAt: new Date().toISOString() }))}
           onAutoSyncCaptions={handleTranscribe} isSyncingCaptions={isTranscribing}
-          onCaptionEffects={() => { setCompactPanel('style'); setRightTab('style'); }}
+          onCaptionEffects={() => { setCompactPanel('style'); setRightTab('style'); setCenterViewMode('video'); }}
           onCaptionSourceChange={(assetId, groups) => updateProjectWithHistory(previous => updateCaptionSource(previous, assetId, groups))}
-          onEditCaptions={() => { setTrackPanel(null); setCompactPanel('media'); }} onRemoveMedia={async assetId => {
+          onEditCaptions={() => { setTrackPanel(null); setCompactPanel('media'); setCenterViewMode('video'); setRightTab('style'); }} onRemoveMedia={async assetId => {
           const previous = editingSnapshot.current.project;
           const asset = projectTimelineAssets(previous).find(asset => asset.id === assetId);
           if (!asset) throw new Error('Media is no longer available.');
@@ -2710,6 +2790,72 @@ function CaptionMakerPageContent() {
         onRestoreProject={handleRestoreProject}
         onDuplicateProject={handleDuplicateProject}
       />
+
+      {/* Thumbnail Media Picker Popup */}
+      {isThumbnailMediaPickerOpen && (
+        <TimelineMediaPicker
+          title="Thumbnail Image"
+          subtitle="Choose an image for your thumbnail cover or upload a new one"
+          imageOnly
+          assets={allImageAssets.map((img) => ({
+            id: img.id,
+            fileName: img.fileName,
+            fileUrl: img.fileUrl,
+            mediaType: 'image',
+            durationMs: 0,
+            hasAudio: false,
+            fitMode: img.fitMode,
+            position: img.position,
+            scale: img.scale,
+          }))}
+          onAdd={(assetId) => {
+            const selected = allImageAssets.find((a) => a.id === assetId);
+            if (selected) {
+              handleImageUploaded(selected);
+            }
+            setIsThumbnailMediaPickerOpen(false);
+          }}
+          onUpload={(newAsset) => {
+            const imgAsset: ImageAsset = {
+              id: newAsset.id,
+              fileName: newAsset.fileName,
+              fileUrl: newAsset.fileUrl,
+              fileSize: 0,
+              width: newAsset.width || 1080,
+              height: newAsset.height || 1920,
+              format: 'png',
+              fitMode: 'cover',
+              position: 'center',
+              scale: 100,
+              mediaType: 'image',
+            };
+            handleImageUploaded(imgAsset);
+            setIsThumbnailMediaPickerOpen(false);
+          }}
+          onDelete={async (assetId) => {
+            const asset = allImageAssets.find((a) => a.id === assetId);
+            if (!asset) return;
+            if (project.image?.id === assetId || project.image?.fileUrl === asset.fileUrl) {
+              updateProjectWithHistory((prev) => ({
+                ...prev,
+                image: undefined,
+                thumbnailSettings: prev.thumbnailSettings
+                  ? { ...prev.thumbnailSettings, customBgUrl: undefined }
+                  : undefined,
+                updatedAt: new Date().toISOString(),
+              }));
+            }
+            try {
+              await fetch('/api/caption-maker/media', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileUrl: asset.fileUrl }),
+              });
+            } catch {}
+          }}
+          onClose={() => setIsThumbnailMediaPickerOpen(false)}
+        />
+      )}
     </div>
   </DashboardLayout>
 );

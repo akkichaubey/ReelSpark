@@ -3,7 +3,7 @@ import path from 'path';
 export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 const MEDIA_EXTENSIONS = {
-  image: new Set(['.jpg', '.jpeg', '.png', '.webp']),
+  image: new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif', '.avif', '.bmp', '.ico', '.tiff', '.tif', '.heic', '.heif']),
   video: new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']),
   audio: new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']),
 };

@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { clippingProjectAccess, requireMediaUser } from '@/lib/media-api-access';
 import { canReadMedia } from '@/lib/media-access';
 import { restorePrivateMedia } from '@/lib/cloudflare/private-media';
 import { assertSafePath } from '@/lib/storage';
 import { APP_CONFIG, getFfmpegPath } from '@/lib/config';
-import { correlateCameraAudio, type CameraSync } from '@/lib/auto-cut/multicamera';
+import { CameraSyncSchema, correlateCameraAudio, type CameraSync } from '@/lib/auto-cut/multicamera';
 
 const run = promisify(execFile);
 export const runtime = 'nodejs';
@@ -41,20 +43,32 @@ export async function POST(req: Request) {
     if (!(await canReadMedia(access.user.id, file)) && !(await restorePrivateMedia(access.user.id, file))) throw new Error('Camera unavailable.');
     return file;
   };
-  let referenceFile: string, referenceBins: number[];
+  let referenceFile: string;
   try {
     referenceFile = await authorized(reference);
-    referenceBins = await waveform(referenceFile, 0, 180, req.signal);
   } catch {
     return NextResponse.json({ error: 'The reference camera has no readable audio. Set sync points manually or use separate takes.' }, { status: 422 });
   }
   const sync: CameraSync = { [reference.id]: { offsetMs: 0, confidence: 100, method: 'manual' } };
   const unavailable: string[] = [];
+  let referenceBins: number[] | undefined;
   for (const camera of cameras) {
     if (camera.id === reference.id) continue;
     req.signal.throwIfAborted();
     try {
       const file = await authorized(camera);
+      const stats = await Promise.all([fs.stat(referenceFile), fs.stat(file)]);
+      const cacheKey = createHash('sha256').update(JSON.stringify([1, referenceFile, file,
+        reference.durationMs, camera.durationMs, stats.map(stat => [stat.size, stat.mtimeMs, stat.ctimeMs])])).digest('hex');
+      const cache = path.join(directory, '.camera-sync-' + cacheKey + '.json');
+      try {
+        const cached = CameraSyncSchema.safeParse(JSON.parse(await fs.readFile(cache, 'utf8')));
+        if (cached.success && cached.data.result?.method === 'waveform') {
+          sync[camera.id] = cached.data.result;
+          continue;
+        }
+      } catch { /* Missing or invalid cache entries are recomputed. */ }
+      referenceBins ??= await waveform(referenceFile, 0, 180, req.signal);
       const result = correlateCameraAudio(referenceBins, await waveform(file, 0, 180, req.signal));
       if (!result) { unavailable.push(camera.id); continue; }
       const later = Math.floor(Math.min(reference.durationMs, camera.durationMs + result.offsetMs) * 0.7);
@@ -66,6 +80,7 @@ export async function POST(req: Request) {
         } catch { req.signal.throwIfAborted(); }
       }
       sync[camera.id] ??= result;
+      await fs.writeFile(cache, JSON.stringify({ result: sync[camera.id] }), { flag: 'wx' }).catch(() => {});
     } catch { req.signal.throwIfAborted(); unavailable.push(camera.id); }
   }
   return NextResponse.json({ sync, unavailable }, { headers: { 'Cache-Control': 'private, no-store' } });

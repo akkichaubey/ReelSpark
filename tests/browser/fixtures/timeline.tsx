@@ -50,6 +50,7 @@ function TimelineFixture() {
       thumbnailCoverUrl={cover.url} thumbnailCoverError={cover.error}
       onThumbnailCoverChange={thumbnailCover => save({ ...project, thumbnailCover })}
       onEditThumbnail={() => { save({ ...project, thumbnailCover: { enabled: true } }); setMessage('Thumbnail design requested'); }}
+      allowTimelineThumbnail={true}
       onChange={timeline => save({ ...project, timeline })} onUndo={() => { setIndex(i => Math.max(0, i - 1)); setPlaying(false); }} onRedo={() => setIndex(i => Math.min(history.length - 1, i + 1))}
       canUndo={index > 0} canRedo={index < history.length - 1} onTrimChange={() => {}} onOpenSmartEditor={() => setMessage('Smart editor requested')}
       onEditCaptions={() => setMessage('Transcript requested')} onCaptionEffects={() => setMessage('Caption effects requested')}

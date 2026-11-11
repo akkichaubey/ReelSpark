@@ -21,6 +21,7 @@ import {
   saveBase64Image,
 } from "@/lib/caption-maker/thumbnail-merger";
 import type { CaptionProject } from "@/lib/caption-maker/types";
+import { PlatformSchema, validPlatformDuration } from '@/lib/auto-cut/platform-presets';
 
 export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
@@ -47,6 +48,10 @@ export async function POST(req: NextRequest) {
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
     project.timeline.fps = project.outputSettings.fps;
     const plan = compileTimeline(project);
+    const platform = project.timeline.autoCutPlatform;
+    if (platform && (!PlatformSchema.safeParse(platform.platform).success || !validPlatformDuration(platform.platform, platform.targetSeconds))) {
+      return NextResponse.json({ error: 'Invalid Auto Cut platform duration.' }, { status: 400 });
+    }
     if (plan.durationMs <= 0)
       throw new Error("Add media or text before exporting.");
     const directory = path.join(
@@ -148,7 +153,7 @@ export async function POST(req: NextRequest) {
             await mergeThumbnailIntoVideo({
               videoPath: output,
               thumbnailPath: cover,
-              mergeMode: [
+              mergeMode: platform ? 'poster_only' : [
                 "intro_and_poster",
                 "intro_hook",
                 "poster_only",
@@ -164,6 +169,14 @@ export async function POST(req: NextRequest) {
             thumbnailUrl = `/api/files/${path.relative(APP_CONFIG.storageRoot, cover).split(path.sep).join("/")}`;
             await backupPrivateMedia(access.user.id, cover);
           }
+          const measured = platform ? await probeVideo(output) : undefined;
+          if (measured) {
+            const fps = project.outputSettings.fps;
+            const expected = Math.max(1, Math.round(plan.durationMs * fps / 1000)) / fps;
+            if (Math.abs(measured.duration - expected) > 1 / fps + 0.001) {
+              throw new Error(`Export duration ${measured.duration.toFixed(3)} s differs from the ${expected.toFixed(3)} s timeline. Review the edit and retry.`);
+            }
+          }
           await backupPrivateMedia(access.user.id, output);
           await backupPrivateMedia(access.user.id, srt);
           const url = (file: string) =>
@@ -175,7 +188,7 @@ export async function POST(req: NextRequest) {
             videoPath: output,
             srtUrl: url(srt),
             srtPath: srt,
-            duration: result.duration,
+            duration: measured?.duration ?? result.duration,
             thumbnailMerged,
             thumbnailUrl,
           });

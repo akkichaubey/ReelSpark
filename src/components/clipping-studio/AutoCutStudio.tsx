@@ -51,7 +51,11 @@ import { AutoCutQualityReview } from './AutoCutQualityReview';
 import { AutoCutBRollReview } from './AutoCutBRollReview';
 import { AutoCutTransitionReview } from './AutoCutTransitionReview';
 import { AutoCutMulticamera } from './AutoCutMulticamera';
-import { CameraSyncSchema, recommendCamera, switchCameraRange, type CameraSync } from '@/lib/auto-cut/multicamera';
+import { AutoCutStoryReview } from './AutoCutStoryReview';
+import { planStory, StoryOverrideSchema, type StoryOverride } from '@/lib/auto-cut/story-ramp';
+import { createStoryReel, type PreparedRamp } from '@/lib/auto-cut/story-ramp-reel';
+import { z } from 'zod';
+import { CameraSyncSchema, editCameraShot, recommendCamera, switchCameraRange, type CameraSync } from '@/lib/auto-cut/multicamera';
 import { defaultNaturalTransitions, NaturalTransitionConfigSchema, naturalTransitionNames, type NaturalTransitionConfig } from '@/lib/auto-cut/natural-transitions';
 import { BRollEditSchema, type BRollEdit } from '@/lib/auto-cut/broll';
 import { defaultQualityConfig } from '@/lib/auto-cut/quality';
@@ -200,6 +204,8 @@ function readDraft(key: string | null) {
       cameraSync: CameraSyncSchema.safeParse(saved.cameraSync).data ?? {},
       masterCamera: typeof saved.masterCamera === 'string' ? saved.masterCamera : '',
       cameraEdited: saved.cameraEdited === true,
+      preserveStory: saved.preserveStory === true,
+      storyOverrides: z.record(z.string(), StoryOverrideSchema).safeParse(saved.storyOverrides).data ?? {},
       cameraSources: Array.isArray(saved.cameraSources) ? saved.cameraSources.filter((id: unknown) => typeof id === 'string').slice(0, 3) as string[] : undefined,
     };
   } catch {
@@ -302,6 +308,11 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>(savedDraft?.settings.sceneSelection ?? 'balanced');
   const transition: TransitionStyle = 'cut';
   const [showCaptions, setShowCaptions] = useState(savedDraft?.showCaptions ?? true);
+  const [preserveStory, setPreserveStory] = useState(savedDraft?.preserveStory ?? false);
+  const [storyOverrides, setStoryOverrides] = useState<Record<string, StoryOverride>>(savedDraft?.storyOverrides ?? {});
+  const [preparingStory, setPreparingStory] = useState(false);
+  const [storyError, setStoryError] = useState('');
+  const storyRequest = useRef<AbortController | null>(null);
   const [cameraMode, setCameraMode] = useState<'single' | 'sync' | 'takes'>(savedDraft?.cameraMode ?? 'single');
   const [cameraSync, setCameraSync] = useState<CameraSync>(savedDraft?.cameraSync ?? {});
   const [masterCamera, setMasterCamera] = useState(savedDraft?.masterCamera ?? '');
@@ -422,7 +433,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
     }
   };
   const requestVersion = useRef(0);
-  useEffect(() => () => { requestVersion.current++; requestRef.current?.abort(); uploadRef.current?.abort(); brollRequest.current?.abort(); syncRequest.current?.abort(); }, []);
+  useEffect(() => () => { requestVersion.current++; requestRef.current?.abort(); uploadRef.current?.abort(); brollRequest.current?.abort(); syncRequest.current?.abort(); storyRequest.current?.abort(); }, []);
   const [hasRun, setHasRun] = useState(Boolean(savedDraft));
 
   // Player Audition State
@@ -456,6 +467,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
         brollFootage,
         naturalTransitions,
         showCaptions,
+        preserveStory, storyOverrides,
         cameraMode, cameraSync, masterCamera, cameraEdited, cameraSources: additionalSources,
         settings: { analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality },
       });
@@ -463,7 +475,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
       else localStorage.removeItem(draftKey);
       sessionStorage.setItem(draftKey, draft);
     } catch { /* Draft remains available in the current editor. */ }
-  }, [draftKey, hasRun, sourceCandidates, candidates, scenes, usingScenes, analysisNotice, recipeNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality, hook, hookDuration, brollEdits, brollIgnored, brollFootage, naturalTransitions, showCaptions, cameraMode, cameraSync, masterCamera, cameraEdited, additionalSources]);
+  }, [draftKey, hasRun, sourceCandidates, candidates, scenes, usingScenes, analysisNotice, recipeNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality, hook, hookDuration, brollEdits, brollIgnored, brollFootage, naturalTransitions, showCaptions, cameraMode, cameraSync, masterCamera, cameraEdited, additionalSources, preserveStory, storyOverrides]);
 
   const previewAsset = activeProject?.mediaAssets.find(asset => asset.id === activeAuditionClip?.sourceVideoId) ?? activeAsset;
   const mediaWebUrl = previewAsset ? getMediaAssetWebUrl(previewAsset) : '';
@@ -556,12 +568,13 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
             mediaAssetId: source.id,
             settings: {
               analysisMethod: method,
+              preserveStory: preserveStory && cameraMode === 'single' && !additionalSources.length ? true : undefined,
               mode,
               storyGenre: cameraMode === 'single' ? undefined : mode === 'custom' ? 'product' : mode === 'auto_highlight' ? 'vlog' : undefined,
               targetDurationSeconds,
               intensity,
               pacing,
-              silenceRemoval,
+              silenceRemoval: preserveStory && cameraMode === 'single' && !additionalSources.length ? 'disabled' : silenceRemoval,
               sceneSelection,
               transition,
               quality,
@@ -886,7 +899,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
     setCandidates(pool.map(c => ({ ...(chosen.get(c.id) || c), selected: chosen.has(c.id) })));
   };
 
-  const useIncludedScenes = () => {
+  const applyIncludedScenes = () => {
     if (!activeAsset) return;
     const accepted = validateAutoCutScenes(scenes, activeAsset.id, activeAsset.metadata.durationMs);
     const pool = applyDuplicateDecisions([
@@ -927,6 +940,51 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
     setCandidates(draft.assembledClips);
   };
   const selectedCount = candidates.filter((c) => c.selected).length;
+  const storyPlan = useMemo(() => {
+    if (!preserveStory || !activeAsset?.metadata.hasVideo || cameraMode !== 'single' || additionalSources.length) return undefined;
+    const duplicates = new Set(duplicateClusters.flatMap(group => group.alternatives.filter(item =>
+      item.match.kind === 'Exact file match' || item.match.kind === 'Visual duplicate').map(item => item.clip.id)));
+    const locked = candidates.filter(clip => clip.locked && clip.selected);
+    const footage = sourceCandidates.filter(clip => (!clip.sourceVideoId || clip.sourceVideoId === activeAsset.id) &&
+      duplicateDecision(clip, duplicateDecisions) !== 'exclude').map(clip => ({ ...clip,
+        locked: clip.locked || locked.some(range => range.startMs < clip.endMs && range.endMs > clip.startMs),
+      }));
+    return planStory(footage, targetDurationSeconds, activeAsset.metadata.hasAudio, storyOverrides, duplicates);
+  }, [preserveStory, activeAsset, cameraMode, additionalSources, duplicateClusters, candidates, sourceCandidates,
+    duplicateDecisions, targetDurationSeconds, storyOverrides]);
+
+  const prepareStory = async (save: boolean) => {
+    if (!storyPlan || !activeProject || !activeAsset || storyRequest.current) return;
+    if (hook || brollEdits.length) { setStoryError('Disable the opening hook and remove placed B-roll before preparing this frame-budgeted story draft.'); return; }
+    if (save && storyPlan.outputFrames > storyPlan.targetFrames) return;
+    const controller = new AbortController();
+    storyRequest.current = controller;
+    setPreparingStory(true); setIsOpening(true); setStoryError('');
+    try {
+      const ranges = storyPlan.rows.filter(row => row.included && row.outputFrames < row.frames).map(row => ({
+        id: row.clip.id, startMs: row.clip.startMs, endMs: row.clip.endMs, outputFrames: row.outputFrames, cap: row.cap,
+      }));
+      const ramps: PreparedRamp[] = [];
+      for (let index = 0; index < ranges.length; index += 4) {
+        const response = await fetch('/api/clipping-studio/auto-cut/story-ramp', { method: 'POST', signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: activeProject.id,
+            filePath: activeAsset.localPath, ranges: ranges.slice(index, index + 4) }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to prepare speed ramps.');
+        ramps.push(...data.assets);
+      }
+      controller.signal.throwIfAborted();
+      const project = createStoryReel(activeAsset, storyPlan, ramps, activeProject.name + ' — Story draft', showCaptions);
+      if (save) {
+        const reel = await saveReel(project, { originProjectId: activeProject.id, originProjectName: activeProject.name });
+        if (!controller.signal.aborted) router.push('/reel-maker?savedReel=' + encodeURIComponent(reel.id));
+      } else {
+        videoRef.current?.pause(); setHookTime(0); setHookPlaying(true); setHookPreview(project);
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) setStoryError(err instanceof Error ? err.message : 'Unable to prepare this draft.');
+    } finally { storyRequest.current = null; setPreparingStory(false); setIsOpening(false); }
+  };
   const cameras = activeProject?.mediaAssets.filter(asset => asset.metadata.hasVideo && (asset.id === activeAsset?.id || additionalSources.includes(asset.id))) ?? [];
   const runCameraSync = async () => {
     if (!activeAsset || !activeProject || syncRequest.current) return;
@@ -973,7 +1031,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
     finally { setIsOpening(false); }
   };
   const rebuildWithQuality = () => {
-    if (usingScenes) { useIncludedScenes(); return; }
+    if (usingScenes) { applyIncludedScenes(); return; }
     if (mode === 'cooking_recipe') { applyRecipe(sourceCandidates); return; }
     const pool = applyDuplicateDecisions(sourceCandidates.map(clip => ({ ...clip, selected: true })), duplicateDecisions);
     const { assembledClips } = optimizeDurationAndAssemble(pool, {
@@ -1030,6 +1088,10 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
               <SelectContent><SelectItem value="single">Single Video</SelectItem><SelectItem value="sync">Multi-Camera · Synchronized</SelectItem>
                 <SelectItem value="takes">Multi-Camera · Separate Takes</SelectItem></SelectContent>
             </Select>
+            {cameraMode === 'single' && !additionalSources.length && <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" role="switch" checked={preserveStory} disabled={isAnalyzing || preparingStory}
+                onChange={event => { setPreserveStory(event.target.checked); setHookPreview(undefined); }} /> Preserve story with speed ramps
+            </label>}
             <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">1. Choose source video</h3>
             {activeAsset && activeProject ? (
               <Select
@@ -1493,6 +1555,29 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
         <div className="lg:col-span-5 space-y-6">
           {cameraMode !== 'single' && <AutoCutMulticamera assets={cameras} sync={cameraSync} master={masterCamera}
             evidence={sourceCandidates} onPreview={clip => auditionClip(clip)}
+            onEdit={(clip, operation, startMs, endMs) => {
+              try {
+                if (clip.locked) throw new Error('Unlock the shot before editing it.');
+                if (duplicateDecision(clip, duplicateDecisions) === 'keep' && operation === 'remove') {
+                  throw new Error('Reset the Keep decision in Duplicate Review before removing this shot.');
+                }
+                if (operation === 'trim' && cameraMode === 'sync' && masterCamera) {
+                  const sourceOffset = cameraSync[clip.sourceVideoId ?? '']?.offsetMs;
+                  const masterOffset = cameraSync[masterCamera]?.offsetMs;
+                  if (sourceOffset !== undefined && masterOffset !== undefined) {
+                    const edges = [startMs, endMs].map(time => time + sourceOffset - masterOffset);
+                    if (sourceCandidates.some(item => item.sourceVideoId === masterCamera && item.transcriptWords?.some(word =>
+                      edges.some(edge => edge > word.startMs && edge < word.endMs)))) {
+                      throw new Error('Move the trim point outside the master audio’s spoken word or segment.');
+                    }
+                  }
+                }
+                const replacement = operation === 'remove' ? [{ ...clip, selected: false }] :
+                  editCameraShot(clip, operation, startMs, endMs, cameraMode === 'sync');
+                setCandidates(previous => previous.flatMap(item => item.id === clip.id ? replacement : [item]));
+                setCameraEdited(true); setHookPreview(undefined); setSyncError('');
+              } catch (err) { setSyncError(err instanceof Error ? err.message : 'Unable to edit this shot.'); }
+            }}
             onRecommend={() => {
               let changed = 0;
               const draft = candidates.flatMap(clip => {
@@ -1522,6 +1607,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
             synchronized={cameraMode === 'sync'} busy={syncing || isOpening} error={syncError} onSync={() => { void runCameraSync(); }}
             onCancel={() => syncRequest.current?.abort()} onMaster={setMasterCamera}
             onManual={(id, offsetMs) => {
+              if (id === activeAsset?.id && offsetMs !== 0) { setSyncError('The reference camera defines time zero. Use the same timestamp in both fields for this camera.'); return; }
               setCameraSync(previous => ({ ...previous, ...(activeAsset ? { [activeAsset.id]: { offsetMs: 0, confidence: 100, method: 'manual' as const } } : {}),
                 [id]: { offsetMs, confidence: 100, method: 'manual' } })); setSyncError('');
             }}
@@ -1628,13 +1714,20 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
           {scenes.length > 0 && activeAsset && (
             <fieldset disabled={isAnalyzing || isOpening}>
             <AutoCutSceneReview scenes={scenes} durationMs={activeAsset.metadata.durationMs} playheadMs={Math.round(previewTime * 1000)}
-              onChange={setScenes} onApply={useIncludedScenes}
+              onChange={setScenes} onApply={applyIncludedScenes}
               onPreview={scene => {
                 const [clip] = sceneCandidates([{ ...scene, excluded: false }], []);
                 auditionClip(clip);
               }} />
             </fieldset>
           )}
+
+          {hasRun && storyPlan && <fieldset disabled={isAnalyzing || (isOpening && !preparingStory)}>
+            <AutoCutStoryReview plan={storyPlan} overrides={storyOverrides} busy={preparingStory}
+              onOverride={(key, override) => { setStoryOverrides(previous => ({ ...previous, [key]: override })); setHookPreview(undefined); }}
+              onPreview={() => { void prepareStory(false); }} onOpen={() => { void prepareStory(true); }} onCancel={() => storyRequest.current?.abort()} />
+            {storyError && <p role="alert" className="text-xs text-red-300">{storyError}</p>}
+          </fieldset>}
 
           {hasRun && cameraMode !== 'sync' && <fieldset disabled={isAnalyzing || isOpening}>
             <AutoCutTransitionReview clips={transitionTargets} config={naturalTransitions}

@@ -25,7 +25,8 @@ assert.ok(html.includes('Hover scrub'));
 assert.ok(html.includes('aria-label="Timeline playhead"'));
 console.log('PASS: hover controls, scrolling, frame bounds, playback/drag/touch guards, draggable playhead, and long portrait filmstrip aspect ratio.');
 
-assert.ok(html.includes('aria-label="Delete track: Main video"'));
+assert.ok(html.includes('aria-label="Delete selected"'));
+assert.ok(!html.includes('aria-label="Delete track: Main video"'));
 const linked = timelineFromProject({...project,timeline:undefined,audio:{id:'voice',fileUrl:'/api/files/voice.wav',fileName:'voice.wav',duration:42,fileSize:1,format:'wav'},transcript:[{id:'word',text:'Preserve',start:0,end:1}]});
 const before = JSON.stringify(linked);
 const removed = deleteTimelineTrack(linked,'track_captions');

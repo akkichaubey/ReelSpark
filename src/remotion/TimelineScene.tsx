@@ -251,8 +251,20 @@ export function TimelineScene({
                 const asset = clip.assetId
                   ? assets.get(clip.assetId)
                   : undefined;
+                const kindOrder =
+                  track.kind === "captions"
+                    ? 5000
+                    : track.kind === "text"
+                      ? 4000
+                      : track.kind === "intro"
+                        ? 2500
+                        : track.kind === "video"
+                          ? 2000
+                          : track.kind === "overlay"
+                            ? 1500
+                            : 0;
                 const zIndex =
-                  (plan.timeline.tracks.length - index) * 100 + order;
+                  kindOrder + (plan.timeline.tracks.length - index) * 10 + order;
                 if (track.kind === "captions") {
                   const groups = plan.captionGroups.filter((group) =>
                     group.id.startsWith(`${clip.id}_`),

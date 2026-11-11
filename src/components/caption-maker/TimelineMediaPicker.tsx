@@ -7,8 +7,21 @@ import { uploadFileWithProgress, UploadCancelledError } from "@/lib/upload-with-
 import type { AudioAsset, ImageAsset } from "@/lib/caption-maker/types";
 import { compatibleAsset, type TimelineAsset, type TimelineTrack } from "@/lib/timeline/model";
 
-export function TimelineMediaPicker({ track, assets, onAdd, onUpload, onDelete, onClose }: {
-  track: TimelineTrack;
+export function TimelineMediaPicker({
+  track,
+  title,
+  subtitle,
+  imageOnly = false,
+  assets,
+  onAdd,
+  onUpload,
+  onDelete,
+  onClose,
+}: {
+  track?: TimelineTrack;
+  title?: string;
+  subtitle?: string;
+  imageOnly?: boolean;
   assets: TimelineAsset[];
   onAdd: (assetId: string) => void;
   onUpload: (asset: TimelineAsset) => void;
@@ -39,8 +52,14 @@ export function TimelineMediaPicker({ track, assets, onAdd, onUpload, onDelete, 
     setProgress(0);
     setError("");
     try {
-      const type = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)
-        ? "image" : file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name) ? "video" : "audio";
+      const isImageFile = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico|tiff?|heic)$/i.test(file.name);
+      const type = imageOnly
+        ? "image"
+        : isImageFile
+          ? "image"
+          : file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name)
+            ? "video"
+            : "audio";
       const result = await uploadFileWithProgress<{
         success?: boolean; error?: string; asset?: ImageAsset | AudioAsset; type?: "image" | "video" | "audio";
       }>("/api/caption-maker/upload", file, setProgress, type, request.signal);
@@ -65,6 +84,10 @@ export function TimelineMediaPicker({ track, assets, onAdd, onUpload, onDelete, 
     }
   };
 
+  const filteredAssets = imageOnly
+    ? assets.filter(a => a.mediaType === "image" || /\.(jpe?g|png|webp|svg|gif|avif|bmp|ico|tiff?|heic)$/i.test(a.fileName || a.fileUrl))
+    : assets;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
       onClick={onClose} onKeyDown={event => {
@@ -85,15 +108,21 @@ export function TimelineMediaPicker({ track, assets, onAdd, onUpload, onDelete, 
         }}
         className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-4 rounded-2xl border border-zinc-700 bg-zinc-950 p-5 shadow-2xl outline-none">
         <div className="flex items-center justify-between gap-3">
-          <div><h2 id="timeline-media-title" className="text-base font-semibold text-amber-300">Reel media</h2>
-            <p className="mt-1 text-xs text-zinc-400">Choose media for {track.name}</p></div>
+          <div>
+            <h2 id="timeline-media-title" className="text-base font-semibold text-amber-300">
+              {title || "Reel media"}
+            </h2>
+            <p className="mt-1 text-xs text-zinc-400">
+              {subtitle || (track ? `Choose media for ${track.name}` : "Choose media")}
+            </p>
+          </div>
           <Button type="button" aria-label="Close media picker" onClick={onClose} className="rounded-md p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"><X size={18}/></Button>
         </div>
         <div className="grid min-h-0 grid-cols-2 gap-3 overflow-auto sm:grid-cols-3">
-          {assets.map(asset => {
-            const compatible = compatibleAsset(track.kind, asset);
+          {filteredAssets.map(asset => {
+            const compatible = track ? compatibleAsset(track.kind, asset) : true;
             const Icon = asset.mediaType === "audio" ? Music : asset.mediaType === "video" ? Film : ImageIcon;
-            return <div key={asset.id} className="relative min-w-0"><Button type="button" disabled={busy || track.locked || !compatible}
+            return <div key={asset.id} className="relative min-w-0"><Button type="button" disabled={busy || Boolean(track?.locked) || !compatible}
               title={compatible ? asset.fileName : `${asset.fileName} — choose a compatible track`}
               onClick={() => onAdd(asset.id)}
               className="w-full overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-left hover:border-amber-400 focus-visible:outline focus-visible:outline-amber-400 disabled:cursor-not-allowed disabled:opacity-50">
@@ -122,17 +151,17 @@ export function TimelineMediaPicker({ track, assets, onAdd, onUpload, onDelete, 
               }}><Trash2 size={14}/></Button>}
             </div>;
           })}
-          {!assets.length && <p className="col-span-full py-8 text-center text-zinc-400">No media in this reel yet. Upload a file to get started.</p>}
+          {!filteredAssets.length && <p className="col-span-full py-8 text-center text-zinc-400">{imageOnly ? "No images uploaded yet. Upload an image to get started." : "No media in this reel yet. Upload a file to get started."}</p>}
         </div>
         {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
         <div className="border-t border-zinc-800 pt-3">
-          <input ref={input} type="file" hidden accept="image/*,video/*,audio/*"
+          <input ref={input} type="file" hidden accept={imageOnly ? "image/*,.jpg,.jpeg,.png,.webp,.svg,.gif,.avif,.bmp" : "image/*,video/*,audio/*"}
             onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }}/>
-          <Button type="button" disabled={busy || track.locked} onClick={() => input.current?.click()}
+          <Button type="button" disabled={busy || Boolean(track?.locked)} onClick={() => input.current?.click()}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 font-semibold text-black hover:bg-amber-300 disabled:opacity-50"><Upload size={16}/>
-            {deleting ? "Deleting media…" : progress !== null ? progress >= 100 ? "Processing media…" : `Uploading ${progress}%…` : "Upload new media"}
+            {deleting ? "Deleting media…" : progress !== null ? progress >= 100 ? "Processing media…" : `Uploading ${progress}%…` : imageOnly ? "Upload new image" : "Upload new media"}
           </Button>
-          {progress !== null && <p role="status" className="mt-2 text-xs text-zinc-400">Your upload will appear in this reel’s media library. Close this popup to cancel.</p>}
+          {progress !== null && <p role="status" className="mt-2 text-xs text-zinc-400">{imageOnly ? "Your image will appear in this reel's media library. Close this popup to cancel." : "Your upload will appear in this reel’s media library. Close this popup to cancel."}</p>}
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   UploadCloud,
   Image as ImageIcon,
@@ -49,8 +49,10 @@ import {
 
 interface AssetUploadSectionProps {
   section?: 'media' | 'voice';
+  allowVideo?: boolean;
   image?: ImageAsset;
   mediaAssets?: ImageAsset[];
+  onOpenMediaPicker?: () => void;
   audio?: AudioAsset;
   voiceVolume?: number;
   voiceMuted?: boolean;
@@ -112,7 +114,10 @@ const CONTAIN_POSITIONS: {
 
 export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   section,
+  allowVideo = true,
   image,
+  mediaAssets = [],
+  onOpenMediaPicker,
   audio,
   voiceVolume = 1.0,
   voiceMuted = false,
@@ -201,8 +206,8 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
         if (!file) continue;
 
         const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-        const isVideoFile = ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
-        const isImageFile = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+        const isVideoFile = allowVideo !== false && ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(ext);
+        const isImageFile = ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif', '.avif', '.bmp', '.ico', '.tiff', '.tif', '.heic', '.heif'].includes(ext);
         const itemNumber = mediaQueueCompletedRef.current + 1;
         setMediaQueueStatus({ current: itemNumber, total: mediaQueueTotalRef.current, fileName: file.name });
         setUploadProgress((current) => ({ ...current, media: 0 }));
@@ -269,8 +274,11 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
     const files = Array.from(fileList);
     if (!files.length) return;
 
-    const validExtensions = ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.webp'];
+    const validExtensions = allowVideo === false
+      ? ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif', '.avif', '.bmp', '.ico', '.tiff', '.tif', '.heic', '.heif']
+      : ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.webp'];
     const validFiles = files.filter((file) => validExtensions.includes(file.name.substring(file.name.lastIndexOf('.')).toLowerCase()));
+    const finalFiles = allowVideo === false ? validFiles.slice(0, 1) : validFiles;
     const invalidCount = files.length - validFiles.length;
     if (!mediaQueueProcessingRef.current && mediaQueueRef.current.length === 0) {
       mediaQueueCompletedRef.current = 0;
@@ -279,13 +287,17 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
       setUploadError(null);
     }
     if (invalidCount) {
-      mediaQueueErrorsRef.current.push(`${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Use MP4, MOV, WEBM, MKV, AVI, JPG, PNG, or WEBP.`);
+      mediaQueueErrorsRef.current.push(
+        allowVideo === false
+          ? `${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Use PNG, JPG, WEBP, SVG, or other image formats.`
+          : `${invalidCount} unsupported file${invalidCount === 1 ? '' : 's'} skipped. Use MP4, MOV, WEBM, MKV, AVI, JPG, PNG, or WEBP.`
+      );
     }
-    if (!validFiles.length) {
+    if (!finalFiles.length) {
       setUploadError(mediaQueueErrorsRef.current.join(' • '));
       return;
     }
-    mediaQueueRef.current.push(...validFiles);
+    mediaQueueRef.current.push(...finalFiles);
     mediaQueueTotalRef.current += validFiles.length;
     setIsUploadingMedia(true);
     setMediaQueueStatus((current) => ({
@@ -349,13 +361,15 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
   };
 
   const isVideo =
-    image?.mediaType === 'video' ||
-    (image?.format && ['MP4', 'MOV', 'WEBM', 'MKV', 'AVI'].includes(image.format.toUpperCase())) ||
-    (image?.fileName && (
-      image.fileName.toLowerCase().endsWith('.mp4') ||
-      image.fileName.toLowerCase().endsWith('.mov') ||
-      image.fileName.toLowerCase().endsWith('.webm')
-    ));
+    allowVideo !== false && (
+      image?.mediaType === 'video' ||
+      (image?.format && ['MP4', 'MOV', 'WEBM', 'MKV', 'AVI'].includes(image.format.toUpperCase())) ||
+      (image?.fileName && (
+        image.fileName.toLowerCase().endsWith('.mp4') ||
+        image.fileName.toLowerCase().endsWith('.mov') ||
+        image.fileName.toLowerCase().endsWith('.webm')
+      ))
+    );
 
   const isAudioFromVideo =
     audio?.sourceType === 'video' ||
@@ -411,7 +425,7 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               {isVideo ? <Film className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
             </div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
-              Background {isVideo ? 'Video' : image ? 'Image' : 'Media (Video / Image)'}
+              Background {allowVideo === false ? 'Image' : isVideo ? 'Video' : image ? 'Image' : 'Media (Video / Image)'}
             </h4>
           </div>
           {image && (
@@ -507,9 +521,9 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
                 <Button
                   type="button"
-                  onClick={() => anyMediaInputRef.current?.click()}
+                  onClick={() => (onOpenMediaPicker ? onOpenMediaPicker() : allowVideo === false ? imageInputRef.current?.click() : anyMediaInputRef.current?.click())}
                   className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white flex items-center space-x-1 shadow-md cursor-pointer"
-                  title="Replace background media"
+                  title={allowVideo === false ? 'Choose or upload image' : 'Replace background media'}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Replace</span>
@@ -668,9 +682,11 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               <p className="text-xs font-bold text-zinc-200">
                 {isUploadingMedia
                   ? `${uploadProgress.media >= 100 ? 'Processing' : 'Uploading'} ${mediaQueueStatus?.current || 1} of ${mediaQueueStatus?.total || 1}: ${mediaQueueStatus?.fileName || 'background media'} (${uploadProgress.media}%)...`
-                  : 'Choose Background Video or Image'}
+                  : allowVideo === false ? 'Choose Background Image' : 'Choose Background Video or Image'}
               </p>
-              <p className="text-[10px] text-zinc-500 mt-0.5">Drag & drop video or image file or choose below:</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                {allowVideo === false ? 'Drag & drop image file or choose below:' : 'Drag & drop video or image file or choose below:'}
+              </p>
             </div>
 
             {isUploadingMedia && (
@@ -684,44 +700,54 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
               </Button>
             )}
 
-            {/* Quick Upload Choice Buttons: Video and Image */}
-            <div className="flex items-center gap-2 pt-1 w-full max-w-[270px]">
+            {/* Quick Upload Choice Buttons */}
+            <div className={`flex items-center gap-2 pt-1 w-full ${allowVideo === false ? 'max-w-[200px]' : 'max-w-[270px]'}`}>
+              {allowVideo !== false && (
+                <Button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  className="flex-1 py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Film className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isUploadingMedia ? 'Add Videos' : 'Upload Video'}</span>
+                </Button>
+              )}
               <Button
                 type="button"
-                onClick={() => videoInputRef.current?.click()}
-                className="flex-1 py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
-              >
-                <Film className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isUploadingMedia ? 'Add Videos' : 'Upload Video'}</span>
-              </Button>
-              <Button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="flex-1 py-1.5 px-2 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-sky-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                onClick={() => (onOpenMediaPicker ? onOpenMediaPicker() : imageInputRef.current?.click())}
+                className={`${allowVideo === false ? 'w-full py-2 text-xs' : 'flex-1 py-1.5 text-[11px]'} px-2 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 rounded-lg font-semibold flex items-center justify-center gap-1.5 border border-sky-500/30 transition-all cursor-pointer shadow-sm active:scale-95`}
               >
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
-                <span>{isUploadingMedia ? 'Add Images' : 'Upload Image'}</span>
+                <span>{isUploadingMedia ? 'Add Images' : allowVideo === false ? 'Choose / Upload Image' : 'Upload Image'}</span>
               </Button>
             </div>
-            <Button type="button" onClick={() => anyMediaInputRef.current?.click()} className="text-[10px] font-semibold text-zinc-400 underline decoration-white/20 underline-offset-2 hover:text-white">
-              Select multiple images and videos
-            </Button>
-            <p className="text-[9px] text-zinc-500 font-mono">
-              MP4, MOV, WEBM or JPG, PNG, WEBP (Reel visual background)
-            </p>
+            {allowVideo !== false ? (
+              <>
+                <Button type="button" onClick={() => anyMediaInputRef.current?.click()} className="text-[10px] font-semibold text-zinc-400 underline decoration-white/20 underline-offset-2 hover:text-white">
+                  Select multiple images and videos
+                </Button>
+                <p className="text-[9px] text-zinc-500 font-mono">
+                  MP4, MOV, WEBM or JPG, PNG, WEBP (Reel visual background)
+                </p>
+              </>
+            ) : (
+              <p className="text-[9px] text-zinc-500 font-mono">
+                PNG, JPG, WEBP, SVG, GIF (All image formats supported)
+              </p>
+            )}
           </div>
         )}
 
         <input
           ref={imageInputRef}
           type="file"
-          multiple
-          accept="image/jpeg,image/png,image/webp"
+          multiple={allowVideo !== false}
+          accept={allowVideo === false ? "image/*,.jpg,.jpeg,.png,.webp,.svg,.gif,.avif,.bmp" : "image/jpeg,image/png,image/webp"}
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
             e.target.value = '';
-            if (files?.length) handleMediaFiles(files);
+            if (files?.length) handleMediaFiles(allowVideo === false ? [files[0]] : files);
           }}
         />
         <input
@@ -748,8 +774,6 @@ export const AssetUploadSection: React.FC<AssetUploadSectionProps> = ({
             if (files?.length) handleMediaFiles(files);
           }}
         />
-
-
       </div>
 
       )}

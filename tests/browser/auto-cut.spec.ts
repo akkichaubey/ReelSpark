@@ -57,6 +57,39 @@ test('all candidates are reviewable; bulk selection, regeneration and full seque
   expect(errors).toEqual([]);
 });
 
+test('story ramps keep the target duration and preserve original source ranges on handoff', async ({ page }) => {
+  const clips = [0, 1].map(index => ({ ...candidate('story-' + index, index * 3000, (index + 1) * 3000),
+    storyImportance: 'supporting', measuredSilence: true }));
+  await page.route('**/api/clipping-studio/auto-cut', route => {
+    expect(route.request().postDataJSON().settings.preserveStory).toBe(true);
+    return route.fulfill({ json: { ...response, analysis: { candidates: clips }, assembledClips: clips } });
+  });
+  await page.route('**/api/clipping-studio/auto-cut/story-ramp', route => route.fulfill({ json: {
+    assets: route.request().postDataJSON().ranges.map((range: { id: string; outputFrames: number }) => ({
+      id: range.id, durationMs: Math.ceil(range.outputFrames * 1000 / 30), url: '/api/files/caption-maker/trimmed/fixture/ramp.mp4',
+    })),
+  } }));
+  await page.getByRole('switch', { name: 'Preserve story with speed ramps' }).check();
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
+  await page.getByRole('slider', { name: 'Custom duration in seconds' }).press('Home');
+  await page.getByRole('button', { name: 'Generate reel', exact: true }).click();
+  await page.getByText('Story preservation & speed ramps', { exact: true }).click();
+  await expect(page.getByText('2 scenes · 5.00 s planned · 5.00 s target')).toBeVisible();
+  await page.getByRole('button', { name: 'Preview story draft' }).click();
+  await expect(page.getByRole('button', { name: 'Close draft preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close draft preview' }).click();
+  let saved;
+  await page.route('**/api/saved-reels', route => {
+    saved = route.request().postDataJSON().project.timeline;
+    return route.fulfill({ json: { success: true, reel: { id: 'saved_story' } } });
+  });
+  await page.getByRole('button', { name: 'Open story draft in Reel Maker' }).click();
+  await expect.poll(() => page.locator('body').getAttribute('data-destination')).toBe('/reel-maker?savedReel=saved_story');
+  expect(saved).toMatchObject({ fps: 30, clips: expect.arrayContaining([
+    expect.objectContaining({ trackId: 'video', autoCutRamp: expect.objectContaining({ sourceAssetId: 'source_asset_qa', sourceStartMs: 0, sourceEndMs: 3000 }) }),
+  ]) });
+});
+
 test('synchronized cameras switch during speech and save a continuous master track', async ({ page }) => {
   await page.getByRole('button', { name: 'Add comparison source' }).click();
   await page.getByRole('combobox', { name: 'Auto Cut workflow' }).click();
@@ -76,6 +109,12 @@ test('synchronized cameras switch during speech and save a continuous master tra
   await page.getByRole('option', { name: 'comparison.mp4', exact: true }).click();
   await page.getByLabel('Seconds into shot').fill('0.8');
   await page.getByRole('button', { name: 'Switch angle', exact: true }).click();
+  await expect(page.getByText(/comparison\.mp4 · 0\.80/)).toBeVisible();
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+  await page.addScriptTag({ path: bundle });
+  await page.getByRole('button', { name: 'Add comparison source' }).click();
+  await expect(page.getByText(/comparison\.mp4 · 0\.80/)).toBeVisible();
   let saved;
   await page.route('**/api/saved-reels', route => {
     saved = route.request().postDataJSON().project.timeline;

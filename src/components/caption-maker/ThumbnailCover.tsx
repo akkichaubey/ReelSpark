@@ -39,27 +39,38 @@ export function ThumbnailCoverControls({ enabled, url, error, onChange, onEdit }
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState('');
-  return <div data-thumbnail-cover-slot="true" className="flex flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-900 px-3 py-2 text-xs">
-    {enabled && url && <div data-theme-media="true" className="h-10 w-8 overflow-hidden rounded bg-black">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="Opening thumbnail" className="h-full w-full object-contain" />
-    </div>}
-    <div className="mr-auto"><strong>Thumbnail</strong><p className="text-[10px] text-zinc-400">{enabled ? '0.01s cover · before playback · tracks stay synchronized' : 'Add a cover before your video'}</p></div>
-    {enabled && !url && !error && <span role="status">Preparing thumbnail…</span>}
-    <Button type="button" variant="default" size="sm" onClick={onEdit}>{enabled ? 'Edit thumbnail' : 'Add thumbnail'}</Button>
-    <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()}>Replace thumbnail</Button>
-    {enabled && <Button type="button" variant="ghost" size="sm" aria-label="Remove thumbnail" onClick={() => onChange({ enabled: false })}>Remove</Button>}
-    <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Replace thumbnail image" onChange={async event => {
-      const file = event.currentTarget.files?.[0]; event.currentTarget.value = '';
-      if (!file) return;
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { setUploadError('Choose a PNG, JPG or WebP image up to 5 MB.'); return; }
-      try {
-        const imageUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Could not read thumbnail.')); reader.readAsDataURL(file); });
-        // Decode before committing: invalid image bytes must not replace the current cover.
-        const image = new Image(); image.src = imageUrl; await image.decode();
-        onChange({ enabled: true, customBgUrl: imageUrl }); setUploadError('');
-      } catch { setUploadError('Could not read thumbnail image.'); }
-    }} />
-    {(uploadError || error) && <p role="alert" className="w-full text-red-400">{uploadError || error}</p>}
-  </div>;
+  return (
+    <>
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Replace thumbnail image" onChange={async event => {
+        const file = event.currentTarget.files?.[0]; event.currentTarget.value = '';
+        if (!file) return;
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { setUploadError('Choose a PNG, JPG or WebP image up to 5 MB.'); return; }
+        try {
+          const imageUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Could not read thumbnail.')); reader.readAsDataURL(file); });
+          // Decode before committing: invalid image bytes must not replace the current cover.
+          const image = new Image(); image.src = imageUrl; await image.decode();
+          onChange({ enabled: true, customBgUrl: imageUrl }); setUploadError('');
+        } catch { setUploadError('Could not read thumbnail image.'); }
+      }} />
+      {(uploadError || error) && <p role="alert" className={enabled ? "w-full text-red-400 px-3 py-1 text-xs" : "text-red-400 px-3 py-1 text-xs"}>{uploadError || error}</p>}
+      {enabled && (
+        <div data-thumbnail-cover-slot="true" className="flex flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-900/90 px-3 py-1.5 text-xs">
+          {url && (
+            <div data-theme-media="true" className="h-8 w-6 overflow-hidden rounded bg-black border border-amber-500/30">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="Opening thumbnail" className="h-full w-full object-contain" />
+            </div>
+          )}
+          <div className="mr-auto flex items-center gap-1.5">
+            <span className="font-semibold text-amber-300 text-xs">Cover Poster</span>
+            <span className="text-[10px] text-zinc-400">0.01s cover · before playback</span>
+          </div>
+          {!url && !error && <span role="status" className="text-zinc-500 text-xs">Preparing thumbnail…</span>}
+          <Button type="button" variant="default" size="sm" onClick={onEdit} className="h-6 text-[10px] px-2 bg-amber-400 text-zinc-950 font-bold">Edit thumbnail</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()} className="h-6 text-[10px] px-2 text-zinc-300">Replace thumbnail</Button>
+          <Button type="button" variant="ghost" size="sm" aria-label="Remove thumbnail" onClick={() => onChange({ enabled: false })} className="h-6 text-[10px] px-2 text-zinc-400 hover:text-rose-400">Remove</Button>
+        </div>
+      )}
+    </>
+  );
 }

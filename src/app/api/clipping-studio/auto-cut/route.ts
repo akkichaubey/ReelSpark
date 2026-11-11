@@ -20,6 +20,7 @@ import {
 import { optimizeDurationAndAssemble } from '@/lib/auto-cut/optimizer';
 import { fingerprintDuplicateScenes } from '@/lib/auto-cut/duplicate-fingerprints';
 import { annotateTransitionScenes } from '@/lib/auto-cut/natural-transitions';
+import { sourceAnalysisSettings } from '@/lib/auto-cut/platform-presets';
 
 export const runtime = 'nodejs';
 
@@ -87,8 +88,8 @@ export async function POST(req: NextRequest) {
     const stat = await fs.promises.stat(/*turbopackIgnore: true*/ targetFilePath);
     const sourceVideoId = mediaAssetId || createHash('sha256').update(targetFilePath).digest('hex');
     const identity = semanticProviderIdentity();
-    const key = createHash('sha256').update(JSON.stringify({ version: 9, file: targetFilePath, size: stat.size, modified: stat.mtimeMs,
-      settings: { ...settings, quality: undefined }, identity })).digest('hex');
+    const key = createHash('sha256').update(JSON.stringify({ version: 10, file: targetFilePath, size: stat.size, modified: stat.mtimeMs,
+      settings: sourceAnalysisSettings(settings), identity })).digest('hex');
     const cacheDir = assertSafePath(path.join(directory, '.autocut-cache'), directory);
     const visualDir = path.join(cacheDir, key + '-visual');
     const visualChunkSchema = z.object({
@@ -134,7 +135,8 @@ export async function POST(req: NextRequest) {
       let semantic: z.infer<typeof cacheSchema> | undefined;
       try {
         const cached = cacheSchema.parse(JSON.parse(await fs.promises.readFile(/*turbopackIgnore: true*/ cacheFile, 'utf8')));
-        if (cached.candidates.length === Math.min(96, analysis.candidates.length) && new Set(cached.candidates.map(c => c.id)).size === cached.candidates.length && cached.candidates.every(c => c.analysisMethod === 'semantic' && c.durationMs === c.endMs - c.startMs && (c.transcriptWords || []).every(w => w.startMs >= c.startMs && w.endMs <= c.endMs && w.endMs > w.startMs) && analysis.candidates.some(original => original.id === c.id && original.startMs === c.startMs && original.endMs === c.endMs))) semantic = cached;
+        const expected = settings.preserveStory ? analysis.candidates.length : Math.min(96, analysis.candidates.length);
+        if (cached.candidates.length === expected && new Set(cached.candidates.map(c => c.id)).size === cached.candidates.length && cached.candidates.every(c => (settings.preserveStory || c.analysisMethod === 'semantic') && c.durationMs === c.endMs - c.startMs && (c.transcriptWords || []).every(w => w.startMs >= c.startMs && w.endMs <= c.endMs && w.endMs > w.startMs) && analysis.candidates.some(original => original.id === c.id && original.startMs === c.startMs && original.endMs === c.endMs))) semantic = cached;
       } catch { /* Missing/invalid cache never substitutes invented analysis. */ }
       if (!semantic) {
         semantic = await analyzeSemanticMoments(targetFilePath, analysis.candidates, settings, { hasVideo: analysis.hasVideo, hasAudio: analysis.hasAudio }, req.signal);

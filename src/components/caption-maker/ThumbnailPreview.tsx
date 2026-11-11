@@ -2,7 +2,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   ThumbnailSettings,
   renderThumbnailToCanvas,
@@ -10,7 +10,7 @@ import {
 } from '@/lib/caption-maker/thumbnail-presets';
 import { ImageAsset, ImagePosition, OutputSettings } from '@/lib/caption-maker/types';
 import { loadGoogleFontInDocument } from '@/lib/caption-maker/google-fonts';
-import { Download, ImagePlus } from 'lucide-react';
+import { Download, ImageIcon, ImagePlus, Upload } from 'lucide-react';
 import { SafeAreaOverlay } from './SafeAreaOverlay';
 import { normalizeHookWord } from '@/lib/caption-maker/hook-quality';
 
@@ -30,12 +30,16 @@ const posAlignment: Record<ImagePosition, { justifyContent: string; alignItems: 
 interface ThumbnailPreviewProps {
   settings: ThumbnailSettings;
   image?: ImageAsset;
+  mediaAssets?: ImageAsset[];
   outputSettings: OutputSettings;
   onSwitchToVideo: () => void;
   onDownload?: (format: 'png' | 'jpeg') => void;
   onApplyAsReelImage?: () => void;
   onToggleSafeArea?: () => void;
   onUpdateSettings?: (updates: Partial<ThumbnailSettings>) => void;
+  onUploadMedia?: (file: File) => void;
+  onSelectMediaAsset?: (asset: ImageAsset) => void;
+  onOpenMediaPicker?: () => void;
   onEditBadge?: () => void;
   onEditTitle?: () => void;
 }
@@ -43,18 +47,42 @@ interface ThumbnailPreviewProps {
 export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   settings,
   image,
+  mediaAssets = [],
   outputSettings,
   onDownload,
   onApplyAsReelImage,
   onToggleSafeArea,
   onUpdateSettings,
+  onUploadMedia,
+  onSelectMediaAsset,
+  onOpenMediaPicker,
   onEditBadge,
   onEditTitle,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(360);
   const [loadedBackground, setLoadedBackground] = useState<{ url: string; image: HTMLImageElement } | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|svg|gif|avif|bmp|ico|tiff?|heic)$/i.test(file.name);
+    if (!isImage) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      onUpdateSettings?.({
+        customBgUrl: dataUrl,
+        backgroundType: 'project',
+      });
+    };
+    reader.readAsDataURL(file);
+    onUploadMedia?.(file);
+  };
 
   const isVideo =
     image?.mediaType === 'video' ||
@@ -64,6 +92,12 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
       image.fileName.toLowerCase().endsWith('.mov') ||
       image.fileName.toLowerCase().endsWith('.webm')
     ));
+
+  const hasBackground = Boolean(
+    settings.customBgUrl ||
+    image?.fileUrl ||
+    settings.backgroundType === 'gradient'
+  );
 
   // Responsive container width measurement matching CaptionPreview
   useEffect(() => {
@@ -241,6 +275,13 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
         data-theme-media="true"
         className={`relative rounded-2xl overflow-hidden border border-white/15 bg-black shadow-2xl flex items-center justify-center select-none ${getAspectRatioClasses()} w-full max-w-sm sm:max-w-md mx-auto group`}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.jpg,.jpeg,.png,.webp,.svg,.gif,.avif,.bmp"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         {/* 1. Background Media Layer (100% pixel-perfect identical DOM layer to Video Reel) */}
         {settings.backgroundType === 'gradient' ? (
           <div
@@ -252,7 +293,42 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             }}
           />
         ) : (settings.customBgUrl || image?.fileUrl) ? (
-          image?.fitMode === 'contain' ? (
+          (image?.fitMode || 'cover') === 'blur' ? (
+            <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
+              {isVideo && !settings.customBgUrl ? (
+                <video
+                  src={image?.fileUrl}
+                  playsInline
+                  muted
+                  loop
+                  className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-70"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={settings.customBgUrl || image?.fileUrl}
+                  alt="blur-thumbnail-bg"
+                  className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-70"
+                />
+              )}
+              {isVideo && !settings.customBgUrl ? (
+                <video
+                  src={image?.fileUrl}
+                  playsInline
+                  muted
+                  loop
+                  className="relative z-10 w-full h-full object-contain drop-shadow-2xl"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={settings.customBgUrl || image?.fileUrl}
+                  alt="contained-thumbnail-fg"
+                  className="relative z-10 w-full h-full object-contain drop-shadow-2xl"
+                />
+              )}
+            </div>
+          ) : image?.fitMode === 'contain' ? (
             <div
               className="absolute inset-0 flex p-3 overflow-hidden"
               style={{
@@ -310,10 +386,23 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
             )
           )
         ) : (
-          <div className="text-center p-6 text-zinc-500 flex flex-col items-center space-y-2">
-            <ImagePlus className="w-8 h-8 text-zinc-600" aria-hidden="true" />
-            <p className="text-xs font-semibold text-zinc-400">Upload background video or image</p>
-            <p className="text-[10px] text-zinc-600">Thumbnail cover will render here</p>
+          <div className="text-center p-6 text-zinc-500 flex flex-col items-center space-y-3 z-10">
+            <div className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-400 shadow-md">
+              <ImagePlus className="w-6 h-6" aria-hidden="true" />
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs font-semibold text-zinc-300">Upload background image</p>
+              <p className="text-[10px] text-zinc-500">Thumbnail cover will render here</p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => (onOpenMediaPicker ? onOpenMediaPicker() : fileInputRef.current?.click())}
+              className="bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs px-4 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md transition-all cursor-pointer mt-1"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Choose / Upload Image</span>
+            </Button>
           </div>
         )}
 
@@ -523,6 +612,17 @@ export const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
         </span>
 
         <div className="flex items-center gap-2">
+          {hasBackground && (
+            <Button
+              type="button"
+              onClick={() => (onOpenMediaPicker ? onOpenMediaPicker() : fileInputRef.current?.click())}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-[10px] font-medium transition-colors cursor-pointer"
+              title="Choose or upload thumbnail image"
+            >
+              <Upload className="w-3 h-3 text-amber-400" />
+              <span>Change Image</span>
+            </Button>
+          )}
           {onToggleSafeArea && (
             <Button
               type="button"

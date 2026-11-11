@@ -402,8 +402,51 @@ export async function renderThumbnailToCanvas(
       const imgH = (bgImageElement as HTMLVideoElement).videoHeight || bgImageElement.height;
       if (imgW && imgH) {
         const isContain = imageAsset?.fitMode === 'contain';
+        const isBlur = imageAsset?.fitMode === 'blur';
 
-        if (isContain) {
+        if (isBlur) {
+          // 1. Draw blurred background
+          ctx.save();
+          const imgRatio = imgW / imgH;
+          const canvasRatio = width / height;
+          let bgW: number;
+          let bgH: number;
+          if (imgRatio > canvasRatio) {
+            bgH = height * 1.25;
+            bgW = bgH * imgRatio;
+          } else {
+            bgW = width * 1.25;
+            bgH = bgW / imgRatio;
+          }
+          const bgX = (width - bgW) / 2;
+          const bgY = (height - bgH) / 2;
+
+          ctx.filter = 'blur(45px)';
+          ctx.globalAlpha = 0.75;
+          ctx.drawImage(bgImageElement, bgX, bgY, bgW, bgH);
+          ctx.restore();
+
+          // 2. Draw contained sharp foreground
+          let fgW: number;
+          let fgH: number;
+          if (imgRatio > canvasRatio) {
+            fgW = width;
+            fgH = width / imgRatio;
+          } else {
+            fgH = height;
+            fgW = height * imgRatio;
+          }
+          const fgX = (width - fgW) / 2;
+          const fgY = (height - fgH) / 2;
+
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+          ctx.shadowBlur = 32;
+          ctx.drawImage(bgImageElement, fgX, fgY, fgW, fgH);
+          ctx.restore();
+
+          hasImageDrawn = true;
+        } else if (isContain) {
           // Sync 1:1 with Video Reel Contain Mode (Position, Scale & Padding)
           const scalePercent = imageAsset?.scale ?? 85;
           const scaleMultiplier = Math.min(Math.max(scalePercent, 30), 200) / 100;

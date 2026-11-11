@@ -8,7 +8,7 @@ import type { CameraSync } from '@/lib/auto-cut/multicamera';
 import { recommendCamera, switchCameraRange } from '@/lib/auto-cut/multicamera';
 import type { AutoCutClipCandidate } from '@/lib/auto-cut/types';
 
-export function AutoCutMulticamera({ assets, sync, master, clips, evidence, synchronized, busy, error, onSync, onCancel, onManual, onMaster, onSwitch, onMove, onLock, onPreview, onPreviewDraft, onRecommend }: {
+export function AutoCutMulticamera({ assets, sync, master, clips, evidence, synchronized, busy, error, onSync, onCancel, onManual, onMaster, onSwitch, onMove, onLock, onPreview, onPreviewDraft, onRecommend, onEdit }: {
   assets: MediaAsset[]; sync: CameraSync; master: string; clips: AutoCutClipCandidate[]; synchronized: boolean;
   busy: boolean; error: string; onSync: () => void; onCancel: () => void; onManual: (id: string, offset: number) => void;
   onMaster: (id: string) => void; onSwitch: (clip: AutoCutClipCandidate, asset: MediaAsset, offset: number) => void;
@@ -16,6 +16,7 @@ export function AutoCutMulticamera({ assets, sync, master, clips, evidence, sync
   evidence: AutoCutClipCandidate[]; onPreview: (clip: AutoCutClipCandidate) => void;
   onPreviewDraft: () => void;
   onRecommend: () => void;
+  onEdit: (clip: AutoCutClipCandidate, operation: 'trim' | 'split' | 'remove', startMs: number, endMs: number) => void;
 }) {
   const [shotId, setShotId] = useState('');
   const [alternateId, setAlternateId] = useState('');
@@ -70,6 +71,23 @@ export function AutoCutMulticamera({ assets, sync, master, clips, evidence, sync
         <Button type="button" size="sm" variant="ghost" onClick={() => onLock(clip.id)}>{clip.locked ? 'Unlock' : 'Lock'} shot</Button>
       </li>)}
     </ol>}
+    {shot && <form key={shot.id + ':' + shot.startMs + ':' + shot.endMs} className="space-y-2 rounded border border-zinc-800 p-2"
+      onSubmit={event => {
+        event.preventDefault();
+        const operation = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value');
+        if (operation !== 'trim' && operation !== 'split') return;
+        const values = new FormData(event.currentTarget);
+        onEdit(shot, operation, Math.round(Number(values.get('start')) * 1000), Math.round(Number(values.get('end')) * 1000));
+      }}>
+      <p>Edit {shot.category}</p>
+      <label>Source in / split point (s) <input name="start" type="number" required step="0.001" min={0}
+        defaultValue={shot.startMs / 1000} className="w-20 rounded bg-zinc-950 p-1" /></label>
+      <label>Source out (s) <input name="end" type="number" required step="0.001" min={0}
+        defaultValue={shot.endMs / 1000} className="w-20 rounded bg-zinc-950 p-1" /></label>
+      <Button type="submit" size="sm" value="trim" disabled={shot.locked || busy}>Trim shot</Button>
+      <Button type="submit" size="sm" value="split" disabled={shot.locked || busy}>Split shot</Button>
+      <Button type="button" size="sm" variant="ghost" disabled={shot.locked || busy} onClick={() => onEdit(shot, 'remove', 0, 0)}>Remove from edit</Button>
+    </form>}
     {synchronized && shot && <form className="space-y-2" onSubmit={event => {
       event.preventDefault();
       if (alternate) onSwitch(shot, alternate, Math.round(Number(new FormData(event.currentTarget).get('position')) * 1000));

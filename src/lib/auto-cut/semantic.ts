@@ -22,6 +22,7 @@ const answerSchema = z.object({ clips: z.array(z.object({
   repeatedTake: z.boolean().optional(),
   semanticQuality: SemanticQualitySchema.optional(),
   cameraFraming: z.enum(['wide', 'medium', 'close-up', 'macro', 'overhead', 'side-angle']).optional(),
+  storyImportance: z.enum(['essential', 'supporting', 'repetitive', 'irrelevant']).optional(),
   hookFrames: z.object({ result: z.number().int().min(1).max(4).optional(),
     before: z.number().int().min(1).max(4).optional(), after: z.number().int().min(1).max(4).optional() }).optional(),
   speechLanguage: z.enum(['english', 'hindi', 'hinglish', 'mixed', 'unknown']).optional(),
@@ -114,10 +115,11 @@ Return JSON ONLY: {"clips":[{"id":"exact input id","title":"observed content","r
     const framingInstruction = 'If visible evidence clearly establishes the framing, return cameraFraming as wide, medium, close-up, macro, overhead, or side-angle. Omit it if uncertain.' +
       (settings.storyGenre === 'product' ? ' For this product story, prioritize observed context, demonstration, useful detail, and visible results.' :
         settings.storyGenre === 'vlog' ? ' For this vlog, prioritize observed story progression, reactions, and meaningful changes in place or action.' : '');
+    const storyInstruction = settings.preserveStory ? 'Classify storyImportance using the supplied evidence. Essential footage includes preparation needed to understand the process, key actions, transformations, and verified results. Necessary repeated preparation may still be essential. Omit the classification when uncertain.' : '';
     let text: string | undefined;
     if (identity.provider === 'gemini') {
       try {
-        text = await generateWithGemini({ parts: [{ text: [instruction, hookInstruction, qualityInstruction, framingInstruction].join('\n') }, ...parts], model: identity.model, responseMimeType: 'application/json', responseJsonSchema: z.toJSONSchema(answerSchema), temperature: 0.1, signal, retryRateLimit: false });
+        text = await generateWithGemini({ parts: [{ text: [instruction, hookInstruction, qualityInstruction, framingInstruction, storyInstruction].join('\n') }, ...parts], model: identity.model, responseMimeType: 'application/json', responseJsonSchema: z.toJSONSchema(answerSchema), temperature: 0.1, signal, retryRateLimit: false });
       } catch (error) {
         signal?.throwIfAborted();
         if (analyzed.length && isTemporaryGeminiError(error) &&
@@ -157,7 +159,7 @@ Return JSON ONLY: {"clips":[{"id":"exact input id","title":"observed content","r
         }
       }
       promptParts.push('Only use supplied recognized speech. Return an empty transcript. Use speechScore 0 for windows without recognized speech.');
-      text = await generateWithOllama({ prompt: [instruction, hookInstruction, qualityInstruction, framingInstruction, ...promptParts].join('\n'), images, model: identity.model, format: 'json', temperature: 0.1, signal });
+      text = await generateWithOllama({ prompt: [instruction, hookInstruction, qualityInstruction, framingInstruction, storyInstruction, ...promptParts].join('\n'), images, model: identity.model, format: 'json', temperature: 0.1, signal });
     }
     const parsed = parseSemanticAnswer(text);
     if (parsed.clips.length !== batch.length || new Set(parsed.clips.map(c=>c.id)).size !== batch.length || parsed.clips.some(c=>!batch.some(b=>b.id===c.id))) throw new Error('AI returned an incomplete or invalid set of video windows. Retry analysis.');
@@ -190,12 +192,13 @@ Return JSON ONLY: {"clips":[{"id":"exact input id","title":"observed content","r
         actionTags: media.hasVideo ? answer.actionTags : undefined, repeatedTake: frames.length ? answer.repeatedTake : undefined,
         semanticQuality: frames.length || words.length ? answer.semanticQuality : undefined,
         cameraFraming: frames.length ? answer.cameraFraming : undefined,
+        storyImportance: frames.length || words.length ? answer.storyImportance : undefined,
         objects: media.hasVideo ? answer.objects : undefined,
         visionProvider: media.hasVideo ? `${identity.provider}/${identity.model}` : undefined, transcriptWords: words });
     }
   }
   const completed = new Set(analyzed.map(clip => clip.id));
-  return { candidates: partialSpeech ? [...analyzed, ...candidates.filter(clip => !completed.has(clip.id))] : analyzed,
+  return { candidates: partialSpeech || settings.preserveStory ? [...analyzed, ...candidates.filter(clip => !completed.has(clip.id))] : analyzed,
     partialSpeech, provider: identity.provider, model: identity.model,
     sampledWindows: analyzed.length, totalWindows: candidates.length, speechAuthorizationFailed,
     warning: `${partialSpeech ? 'Speech analysis stopped early. Completed results were kept and the remaining footage uses local estimates. ' : ''}${switchedProvider ? "Gemini quota exhausted. Ollama Cloud (Gemma 4) finished the remaining analysis. " : ""}AI suggestions and speech timings need review. ${sampled.length < candidates.length ? `Sampled ${sampled.length} of ${candidates.length} windows across the source. ` : ''}${media.hasAudio && identity.provider === 'ollama-cloud' && !cloudflareSpeech ? (speechAuthorizationFailed ? 'Cloudflare rejected speech recognition credentials. Ollama continued using video frames for windows without speech results.' : 'Ollama batches use visual analysis only because Cloudflare speech recognition is unconfigured.') : ''}` };

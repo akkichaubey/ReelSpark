@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const ext = path.extname(safeName).toLowerCase();
 
     // Check allowed extensions
-    const imageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+    const imageExts = ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif', '.avif', '.bmp', '.ico', '.tiff', '.tif', '.heic', '.heif'];
     const videoExts = ['.mp4', '.mov', '.webm', '.mkv', '.avi'];
     const audioExts = ['.mp3', '.wav', '.m4a', '.aac', '.ogg'];
 
