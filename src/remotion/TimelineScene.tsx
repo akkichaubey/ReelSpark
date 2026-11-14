@@ -104,8 +104,11 @@ function ClipMedia({
       : Math.round((clip.sourceStartMs * fps) / 1000);
   const visual = !["audio", "music"].includes(track.kind);
   const speaking = track.kind === 'music' && clip.ducking !== false && hasAudibleSpeech(plan, absoluteTime);
+  const isVideoTrackAudio = track.kind === 'video' && (!track.mainVideoMode || track.mainVideoMode === 'video_and_audio');
+  const hasSeparateVoiceTrack = plan.timeline.tracks.some(t => t.kind === 'audio' && !t.hidden && !t.muted && trackAudible(plan.timeline, t));
+  const effectiveMuted = clip.muted && (!isVideoTrackAudio || hasSeparateVoiceTrack);
   const volume =
-    !trackAudible(plan.timeline, track) || clip.muted
+    !trackAudible(plan.timeline, track) || effectiveMuted
       ? 0
       : audioGain(clip, absoluteTime, asset.durationMs) *
         (track.kind === "music" && clip.ducking !== false && speaking
@@ -190,7 +193,7 @@ function ClipMedia({
       {!warmingUp && asset.mediaType !== "image" &&
         asset.hasAudio !== false &&
         !track.muted &&
-        !clip.muted && (
+        !effectiveMuted && (
           <SourceMedia clip={clip} asset={asset}>
             <Audio src={asset.fileUrl} startFrom={startFrom} volume={volume} />
           </SourceMedia>

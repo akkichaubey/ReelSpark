@@ -193,6 +193,8 @@ export function ProfessionalTimeline({
   );
   const [height, setHeight] = useState(220);
   const directUploadRef = useRef<HTMLInputElement>(null);
+  const bgUploadInputRef = useRef<HTMLInputElement>(null);
+  const [bgUploadTrackId, setBgUploadTrackId] = useState<string | null>(null);
   const directUploadAbort = useRef<AbortController | null>(null);
   const [isUploadingDirectMedia, setIsUploadingDirectMedia] = useState(false);
   const [directUploadProgress, setDirectUploadProgress] = useState<number | null>(null);
@@ -646,6 +648,33 @@ export function ProfessionalTimeline({
           muted: mode === "video_only",
         };
 
+        const nextClips = [...timeline.clips, clip];
+        if (targetKind === "video" && hasAudio && mode !== "video_only") {
+          let audioTrack = nextTracks.find((t) => t.kind === "audio" && !t.locked);
+          if (!audioTrack) {
+            audioTrack = {
+              ...createTimelineTrack("audio", "Main audio / Voice"),
+              id: makeTimelineId("track_audio"),
+            };
+            nextTracks = [...nextTracks, audioTrack];
+          }
+          const hasAudioClip = nextClips.some((c) => c.trackId === audioTrack!.id);
+          if (!hasAudioClip) {
+            const voiceClip = {
+              ...createTimelineClip(
+                audioTrack,
+                timelineAsset,
+                frameTime(startMs, timeline.fps),
+                clipDuration,
+              ),
+              name: `${timelineAsset.fileName} (Audio)`,
+              muted: false,
+              volume: 1,
+            };
+            nextClips.push(voiceClip);
+          }
+        }
+
         const nextAssets = [
           ...projectTimelineAssets(project).filter((a) => a.id !== timelineAsset.id),
           timelineAsset,
@@ -655,7 +684,7 @@ export function ProfessionalTimeline({
           ...timeline,
           tracks: nextTracks,
           assets: nextAssets,
-          clips: [...timeline.clips, clip],
+          clips: nextClips,
         };
       });
 
@@ -696,10 +725,331 @@ export function ProfessionalTimeline({
         t.id === id ? { ...t, ...changes } : t,
       ),
     }));
+  const originalVideoAsset = useMemo(() => {
+    if (project.audio?.sourceVideo) {
+      return (
+        timeline.assets.find((a) => a.id === project.audio?.sourceVideo?.id) || {
+          id: project.audio.sourceVideo.id,
+          fileUrl: project.audio.sourceVideo.fileUrl,
+          fileName: project.audio.sourceVideo.fileName,
+          mediaType: "video" as const,
+          durationMs: Math.round(
+            (project.audio.sourceVideo.duration || project.audio.duration || 30) * 1000,
+          ),
+          hasAudio: true,
+          width: project.audio.sourceVideo.width,
+          height: project.audio.sourceVideo.height,
+          fitMode: project.audio.sourceVideo.fitMode,
+          position: project.audio.sourceVideo.position,
+          scale: project.audio.sourceVideo.scale,
+        }
+      );
+    }
+    if (project.image?.mediaType === "video" && project.image.id) {
+      const found = timeline.assets.find((a) => a.id === project.image!.id);
+      if (found) return found;
+    }
+    return (
+      timeline.assets.find((a) => a.mediaType === "video" && a.hasAudio !== false) ||
+      timeline.assets.find((a) => a.mediaType === "video")
+    );
+  }, [project.audio, project.image, timeline.assets]);
+
+  const getMainVideoMode = (track: TimelineTrack): "video_and_audio" | "audio_only" => {
+    if (track.mainVideoMode) return track.mainVideoMode;
+    const clips = timeline.clips.filter((c) => c.trackId === track.id);
+    const hasCustomBg = clips.some((c) => {
+      const a = timeline.assets.find((asset) => asset.id === c.assetId);
+      return (
+        a?.mediaType === "image" ||
+        (originalVideoAsset && a?.id !== originalVideoAsset.id && a?.mediaType === "video")
+      );
+    });
+    return hasCustomBg ? "audio_only" : "video_and_audio";
+  };
+
+  const handleSwitchMainVideoMode = (
+    trackId: string,
+    targetMode: "video_and_audio" | "audio_only",
+  ) => {
+    run(() => {
+      const track = timeline.tracks.find((t) => t.id === trackId);
+      if (!track) return timeline;
+
+      let nextTracks = timeline.tracks.map((t) =>
+        t.id === trackId ? { ...t, mainVideoMode: targetMode } : t,
+      );
+
+      let nextAssets = [...timeline.assets];
+      if (originalVideoAsset && !nextAssets.some((a) => a.id === originalVideoAsset.id)) {
+        nextAssets.push(originalVideoAsset);
+      }
+
+      // 1. Ensure the original voice audio is preserved and synchronized on an audio track
+      let audioTrack = nextTracks.find((t) => t.kind === "audio" && !t.locked);
+      if (!audioTrack) {
+        audioTrack = {
+          ...createTimelineTrack("audio", "Main audio / Voice"),
+          id: makeTimelineId("track_audio"),
+        };
+        nextTracks = [...nextTracks, audioTrack];
+      }
+
+      let nextClips = [...timeline.clips];
+      const audioAssetId = project.audio?.id || (originalVideoAsset ? originalVideoAsset.id : undefined);
+
+      if (audioAssetId) {
+        const hasAudioClip = nextClips.some((c) => {
+          const t = nextTracks.find((tr) => tr.id === c.trackId);
+          return (
+            t?.kind === "audio" &&
+            (c.assetId === audioAssetId || c.assetId === project.audio?.id)
+          );
+        });
+
+        if (!hasAudioClip) {
+          const duration = Math.max(
+            1000,
+            Math.round(
+              (project.audio?.duration ||
+                (originalVideoAsset?.durationMs ? originalVideoAsset.durationMs / 1000 : 30)) * 1000,
+            ),
+          );
+          const audioClip = {
+            ...createTimelineClip(
+              audioTrack,
+              timeline.assets.find((a) => a.id === audioAssetId) || originalVideoAsset,
+              0,
+              duration,
+            ),
+            name: project.audio?.fileName || `${originalVideoAsset?.fileName || "Video"} (Audio)`,
+            muted: false,
+            volume: project.voiceVolume ?? 1,
+            linkId: "primary_voice",
+          };
+          nextClips.push(audioClip);
+        }
+      }
+
+      // 2. Adjust clips on the main video track based on targetMode
+      const videoClips = nextClips.filter((c) => c.trackId === trackId);
+
+      if (targetMode === "video_and_audio") {
+        if (originalVideoAsset) {
+          if (videoClips.length > 0) {
+            nextClips = nextClips.map((c) =>
+              c.trackId === trackId
+                ? {
+                    ...c,
+                    assetId: originalVideoAsset.id,
+                    name: originalVideoAsset.fileName,
+                    loop: false,
+                    muted: false,
+                  }
+                : c,
+            );
+          } else {
+            const duration = Math.max(
+              1000,
+              originalVideoAsset.durationMs ||
+                Math.round((project.audio?.duration || 30) * 1000),
+            );
+            nextClips.push({
+              ...createTimelineClip(track, originalVideoAsset, 0, duration),
+              loop: false,
+              muted: false,
+            });
+          }
+        }
+      } else {
+        // targetMode === 'audio_only'
+        // If a custom background asset already exists in assets, use it
+        const customBg = nextAssets.find(
+          (a) =>
+            a.id !== originalVideoAsset?.id &&
+            (a.mediaType === "image" || a.mediaType === "video"),
+        );
+        if (customBg && videoClips.length > 0) {
+          nextClips = nextClips.map((c) =>
+            c.trackId === trackId
+              ? {
+                  ...c,
+                  assetId: customBg.id,
+                  name: customBg.fileName,
+                  loop: customBg.mediaType === "image",
+                  muted: true, // background video visuals are muted so original audio plays
+                }
+              : c,
+          );
+        }
+      }
+
+      return {
+        ...timeline,
+        tracks: nextTracks,
+        assets: nextAssets,
+        clips: nextClips,
+      };
+    });
+  };
+
+  const triggerBackgroundMediaUpload = (trackId: string) => {
+    setBgUploadTrackId(trackId);
+    if (bgUploadInputRef.current) {
+      bgUploadInputRef.current.value = "";
+      bgUploadInputRef.current.click();
+    }
+  };
+
+  const handleBackgroundMediaUpload = async (file: File) => {
+    const trackId = bgUploadTrackId || timeline.tracks.find((t) => t.kind === "video")?.id;
+    if (!trackId || directUploadAbort.current) return;
+    const request = new AbortController();
+    directUploadAbort.current = request;
+    setIsUploadingDirectMedia(true);
+    setDirectUploadProgress(0);
+    setError("");
+
+    try {
+      const isImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico|tiff|tif|heic|heif)$/i.test(file.name);
+      const isVid = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi)$/i.test(file.name);
+      const uploadType: "image" | "video" = isImg ? "image" : "video";
+
+      const result = await uploadFileWithProgress<{
+        success?: boolean;
+        error?: string;
+        asset?: ImageAsset;
+        type?: "image" | "video";
+      }>("/api/caption-maker/upload", file, setDirectUploadProgress, uploadType, request.signal);
+
+      if (request.signal.aborted) return;
+      if (!result.success || !result.asset) {
+        throw new Error(result.error || "Background media upload failed.");
+      }
+
+      const source = result.asset;
+      const durationMs = Math.round((source.duration || (uploadType === "image" ? 30 : 0)) * 1000);
+
+      const bgAsset: TimelineAsset = {
+        id: source.id,
+        fileName: source.fileName,
+        fileUrl: source.fileUrl,
+        mediaType: uploadType,
+        durationMs,
+        width: source.width,
+        height: source.height,
+        fitMode: source.fitMode || "cover",
+        position: source.position || "center",
+        scale: source.scale ?? 100,
+        hasAudio: false, // background visuals stay muted
+      };
+
+      run(() => {
+        const track = timeline.tracks.find((t) => t.id === trackId);
+        if (!track) return timeline;
+
+        let nextTracks = timeline.tracks.map((t) =>
+          t.id === trackId ? { ...t, mainVideoMode: "audio_only" as const } : t,
+        );
+
+        // Ensure original voice audio is on an audio track and in sync
+        let audioTrack = nextTracks.find((t) => t.kind === "audio" && !t.locked);
+        if (!audioTrack) {
+          audioTrack = {
+            ...createTimelineTrack("audio", "Main audio / Voice"),
+            id: makeTimelineId("track_audio"),
+          };
+          nextTracks = [...nextTracks, audioTrack];
+        }
+
+        const nextAssets = [
+          ...timeline.assets.filter((a) => a.id !== bgAsset.id),
+          bgAsset,
+        ];
+        if (originalVideoAsset && !nextAssets.some((a) => a.id === originalVideoAsset.id)) {
+          nextAssets.push(originalVideoAsset);
+        }
+
+        // Determine target duration from timeline audio or project
+        const targetDuration = Math.max(
+          1000,
+          timelineEnd(timeline),
+          Math.round((project.audio?.duration || 30) * 1000),
+        );
+
+        let nextClips = [...timeline.clips];
+
+        // Ensure audio clip exists
+        const audioAssetId = project.audio?.id || (originalVideoAsset ? originalVideoAsset.id : undefined);
+        if (audioAssetId) {
+          const hasAudioClip = nextClips.some((c) => {
+            const t = nextTracks.find((tr) => tr.id === c.trackId);
+            return (
+              t?.kind === "audio" &&
+              (c.assetId === audioAssetId || c.assetId === project.audio?.id)
+            );
+          });
+          if (!hasAudioClip) {
+            const audioClip = {
+              ...createTimelineClip(
+                audioTrack,
+                nextAssets.find((a) => a.id === audioAssetId) || originalVideoAsset,
+                0,
+                targetDuration,
+              ),
+              name: project.audio?.fileName || `${originalVideoAsset?.fileName || "Video"} (Audio)`,
+              muted: false,
+              volume: project.voiceVolume ?? 1,
+              linkId: "primary_voice",
+            };
+            nextClips.push(audioClip);
+          }
+        }
+
+        const existingVideoClips = nextClips.filter((c) => c.trackId === trackId);
+
+        if (existingVideoClips.length > 0) {
+          nextClips = nextClips.map((c) =>
+            c.trackId === trackId
+              ? {
+                  ...c,
+                  assetId: bgAsset.id,
+                  name: bgAsset.fileName,
+                  loop: uploadType === "image",
+                  muted: true, // background video visuals stay muted
+                }
+              : c,
+          );
+        } else {
+          nextClips.push({
+            ...createTimelineClip(track, bgAsset, 0, targetDuration),
+            loop: uploadType === "image",
+            muted: true,
+          });
+        }
+
+        return {
+          ...timeline,
+          tracks: nextTracks,
+          assets: nextAssets,
+          clips: nextClips,
+        };
+      });
+    } catch (err) {
+      if (err instanceof UploadCancelledError) return;
+      setError(err instanceof Error ? err.message : "Failed to upload background media");
+    } finally {
+      if (directUploadAbort.current === request) directUploadAbort.current = null;
+      setIsUploadingDirectMedia(false);
+      setDirectUploadProgress(null);
+      setBgUploadTrackId(null);
+    }
+  };
+
   const button =
     "rounded-md border border-zinc-700/70 bg-zinc-900 p-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-30";
   const selectButton =
-    "!h-auto !w-auto gap-1 !rounded-md !border-zinc-700/70 !bg-zinc-900 !px-2 !py-1.5 !text-xs !font-normal !text-zinc-300 hover:!bg-zinc-800 hover:!text-amber-300 focus-visible:!border-amber-400 focus-visible:!ring-1 focus-visible:!ring-amber-400/30 shadow-none [&>svg]:!size-3.5 [&>svg]:!text-zinc-400";
+    "!h-7 !w-auto gap-1.5 !rounded-md !border-zinc-700/70 !bg-zinc-900 !px-2.5 !py-0 !text-xs !font-normal !text-zinc-300 hover:!bg-zinc-800 hover:!text-amber-300 focus-visible:!border-amber-400 focus-visible:!ring-1 focus-visible:!ring-amber-400/30 shadow-none [&>svg]:!size-3.5 [&>svg]:!text-zinc-400";
   const trackButton =
     "w-[22px] h-[22px] flex items-center justify-center p-0 rounded border border-zinc-700/70 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-30 shrink-0";
   const icon = (
@@ -739,8 +1089,21 @@ export function ProfessionalTimeline({
             const current = timeline.tracks.find(t => t.id === trackEditor.track.id);
             if (!current) throw new Error("This track is no longer available.");
             const tracks = timeline.tracks.filter(t => t.id !== current.id);
-            tracks.splice(trackEditor.index, 0, { ...current, name: trackEditor.track.name, height: trackEditor.track.height });
-            onChange(commitTimeline({ ...timeline, tracks }));
+            tracks.splice(trackEditor.index, 0, {
+              ...current,
+              name: trackEditor.track.name,
+              height: trackEditor.track.height,
+              mainVideoMode: trackEditor.track.mainVideoMode,
+            });
+            const modeChanged =
+              current.kind === "video" &&
+              trackEditor.track.mainVideoMode &&
+              trackEditor.track.mainVideoMode !== current.mainVideoMode;
+            if (modeChanged) {
+              handleSwitchMainVideoMode(current.id, trackEditor.track.mainVideoMode!);
+            } else {
+              onChange(commitTimeline({ ...timeline, tracks }));
+            }
             setTrackEditor(null);
             setError("");
           } catch (e) {
@@ -803,6 +1166,61 @@ export function ProfessionalTimeline({
             ))}
           </select>
         </label>
+        {trackEditor.track.kind === "video" && (
+          <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+            <span className="block text-xs font-bold text-amber-300">Main Video Playback Mode</span>
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-200">
+                <input
+                  type="radio"
+                  name="trackMainVideoMode"
+                  checked={trackEditor.track.mainVideoMode !== "audio_only"}
+                  onChange={() =>
+                    setTrackEditor({
+                      ...trackEditor,
+                      track: { ...trackEditor.track, mainVideoMode: "video_and_audio" },
+                    })
+                  }
+                  className="accent-amber-400"
+                />
+                <span>🎬 Video + Audio (Original video visuals & audio)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-200">
+                <input
+                  type="radio"
+                  name="trackMainVideoMode"
+                  checked={trackEditor.track.mainVideoMode === "audio_only"}
+                  onChange={() =>
+                    setTrackEditor({
+                      ...trackEditor,
+                      track: { ...trackEditor.track, mainVideoMode: "audio_only" },
+                    })
+                  }
+                  className="accent-cyan-400"
+                />
+                <span>🎵 Audio Only (Custom background video/image + voice)</span>
+              </label>
+            </div>
+            {trackEditor.track.mainVideoMode === "audio_only" && (
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label="Upload background video or image"
+                  onClick={() => {
+                    const id = trackEditor.track.id;
+                    setTrackEditor(null);
+                    triggerBackgroundMediaUpload(id);
+                  }}
+                  className="text-xs bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold"
+                >
+                  <Upload size={12} className="mr-1" />
+                  Upload Background (Video / Image)
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         <p className="text-[10px] text-zinc-500">
           Upper visual tracks appear in front. Remove clips before deleting
           their track; Undo restores edits.
@@ -1079,6 +1497,17 @@ export function ProfessionalTimeline({
             e.target.value = "";
           }}
         />
+        <input
+          ref={bgUploadInputRef}
+          type="file"
+          hidden
+          accept="video/*,image/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleBackgroundMediaUpload(file);
+            e.target.value = "";
+          }}
+        />
         <Button
           type="button"
           disabled={isUploadingDirectMedia}
@@ -1325,14 +1754,19 @@ export function ProfessionalTimeline({
                 </span>
               </div>
             </div>
-            {timeline.tracks.map((track, index) => (
+            {timeline.tracks.map((track, index) => {
+              const trackHeight = track.kind === "video" ? Math.max(track.height || 52, 74) : (track.height || 52);
+              return (
               <div
                 key={track.id}
                 data-track-id={track.id}
                 className={`relative flex border-b border-zinc-800 ${track.hidden ? "opacity-50" : ""}`}
-                style={{ height: track.height }}
+                style={{ height: trackHeight }}
               >
-                <div className="sticky left-0 z-20 flex w-40 shrink-0 flex-col justify-center gap-1 border-r border-zinc-700 bg-[#191b1f] px-2">
+                <div
+                  className="sticky left-0 z-20 flex w-40 shrink-0 flex-col justify-between py-2 border-r border-zinc-700 bg-[#191b1f] px-2"
+                  style={{ height: trackHeight }}
+                >
                   <div className="flex items-center gap-1">
                     <GripVertical size={11} className="text-zinc-600" />
                     <Button
@@ -1358,6 +1792,61 @@ export function ProfessionalTimeline({
                       <Settings2 size={11} />
                     </Button>
                   </div>
+                  {track.kind === "video" && (
+                    <div className="flex items-center w-full my-0.5">
+                      <Select
+                        value={getMainVideoMode(track)}
+                        onValueChange={(val: "video_and_audio" | "audio_only") =>
+                          handleSwitchMainVideoMode(track.id, val)
+                        }
+                      >
+                        <SelectTrigger
+                          className="!h-5 !w-full !rounded-md !border-zinc-700/80 !bg-zinc-900/90 !px-1.5 !py-0 text-[10px] text-zinc-200 hover:!border-amber-400/50 shadow-none cursor-pointer [&>svg]:!size-3"
+                          aria-label={`Main video track mode: ${getMainVideoMode(track) === 'audio_only' ? 'Audio Only' : 'Video + Audio'}`}
+                        >
+                          <span className="flex items-center gap-1 truncate font-medium">
+                            {getMainVideoMode(track) === "audio_only" ? (
+                              <>
+                                <Volume2 size={11} className="text-cyan-400 shrink-0" />
+                                <span className="text-cyan-200 truncate text-[10px]">Audio Only</span>
+                              </>
+                            ) : (
+                              <>
+                                <Film size={11} className="text-amber-400 shrink-0" />
+                                <span className="text-amber-200 truncate text-[10px]">Video + Audio</span>
+                              </>
+                            )}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-950 border border-zinc-700 text-xs text-zinc-100 z-50 shadow-2xl">
+                          <SelectItem
+                            value="video_and_audio"
+                            className="cursor-pointer focus:bg-amber-400/20 focus:text-amber-200"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Film size={12} className="text-amber-400 shrink-0" />
+                              <div className="text-left">
+                                <div className="font-semibold text-xs text-amber-200">Video + Audio</div>
+                                <div className="text-[10px] text-zinc-400">Original video visuals & audio</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem
+                            value="audio_only"
+                            className="cursor-pointer focus:bg-cyan-400/20 focus:text-cyan-200"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Volume2 size={12} className="text-cyan-400 shrink-0" />
+                              <div className="text-left">
+                                <div className="font-semibold text-xs text-cyan-200">Audio Only</div>
+                                <div className="text-[10px] text-zinc-400">Custom background (video/image) + voice</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1.5 text-zinc-400">
                     {icon(
                       `${track.locked ? "Unlock" : "Lock"} ${track.name}`,
@@ -1376,7 +1865,21 @@ export function ProfessionalTimeline({
                     {!["text", "captions"].includes(track.kind) &&
                       icon(
                         `${track.muted ? "Unmute" : "Mute"} ${track.name}`,
-                        () => updateTrack(track.id, { muted: !track.muted }),
+                        () => {
+                          const nextMuted = !track.muted;
+                          if (track.kind === "video" && getMainVideoMode(track) === "video_and_audio") {
+                            run(() => ({
+                              ...timeline,
+                              tracks: timeline.tracks.map((t) =>
+                                t.id === track.id || t.kind === "audio"
+                                  ? { ...t, muted: nextMuted }
+                                  : t,
+                              ),
+                            }));
+                          } else {
+                            updateTrack(track.id, { muted: nextMuted });
+                          }
+                        },
                         track.muted ? (
                           <VolumeX size={11} />
                         ) : (
@@ -1392,7 +1895,23 @@ export function ProfessionalTimeline({
                         aria-pressed={track.solo === true}
                         title={`Solo ${track.name}`}
                         className={`${trackButton} text-[10px] font-bold leading-none ${track.solo ? '!text-amber-400 !border-amber-400' : ''}`}
-                        onClick={() => updateTrack(track.id, { solo: !track.solo })}
+                        onClick={() => {
+                          const nextSolo = !track.solo;
+                          if (track.kind === "video" && getMainVideoMode(track) === "video_and_audio") {
+                            run(() => ({
+                              ...timeline,
+                              tracks: timeline.tracks.map((t) => {
+                                if (t.id === track.id) return { ...t, solo: nextSolo };
+                                if (t.kind === "audio") {
+                                  return { ...t, solo: nextSolo, hidden: false, muted: false };
+                                }
+                                return t;
+                              }),
+                            }));
+                          } else {
+                            updateTrack(track.id, { solo: nextSolo });
+                          }
+                        }}
                       >
                         S
                       </Button>
@@ -1444,7 +1963,7 @@ export function ProfessionalTimeline({
                     );
                   }}
                 >
-                  {(
+                  {timeline.clips.filter((c) => c.trackId === track.id).length > 0 && (
                     <Button
                       type="button"
                       aria-label={`${track.kind === "text" ? "Add text" : track.kind === "captions" ? "Add captions" : "Add media"} to ${track.name}`}
@@ -1465,6 +1984,91 @@ export function ProfessionalTimeline({
                   )}
                   {timeline.clips.filter((c) => c.trackId === track.id).length === 0 && (
                     <div className="absolute inset-y-0 left-3 flex items-center gap-2 z-10 pointer-events-auto">
+                      {track.kind === "video" && getMainVideoMode(track) === "audio_only" && (
+                        <div className="flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-zinc-900/90 px-3 py-1 shadow-lg backdrop-blur-sm">
+                          <Volume2 size={13} className="text-cyan-400 shrink-0" />
+                          <span className="text-[11px] font-medium text-cyan-200">
+                            Audio Only Active (Original Audio Synchronized)
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label="Upload Background Video or Image"
+                            onClick={() => triggerBackgroundMediaUpload(track.id)}
+                            className="flex items-center gap-1.5 rounded bg-cyan-500 hover:bg-cyan-400 px-2.5 py-1 text-[10px] font-bold text-zinc-950 transition-colors cursor-pointer shadow"
+                          >
+                            <Upload size={11} />
+                            Upload Background Video or Image
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            aria-label="Choose background from media library"
+                            onClick={() => setMediaTrackId(track.id)}
+                            className="rounded border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-200 transition-colors"
+                          >
+                            Choose Media
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            aria-label="Restore Original Video"
+                            onClick={() => handleSwitchMainVideoMode(track.id, "video_and_audio")}
+                            className="text-[10px] text-zinc-400 hover:text-amber-300"
+                          >
+                            Restore Original Video
+                          </Button>
+                        </div>
+                      )}
+                      {track.kind === "video" && getMainVideoMode(track) === "video_and_audio" && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label="Upload Video"
+                            onClick={() => directUploadRef.current?.click()}
+                            className="h-7 px-3 text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-zinc-950 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Film size={12} />
+                            <span>Upload Main Video</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label="Choose Video"
+                            onClick={() => setMediaTrackId(track.id)}
+                            className="h-7 px-2.5 text-xs font-medium border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-lg flex items-center gap-1.5"
+                          >
+                            <span>Choose Media</span>
+                          </Button>
+                          {originalVideoAsset && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              aria-label="Switch to Audio Only"
+                              onClick={() => handleSwitchMainVideoMode(track.id, "audio_only")}
+                              className="text-[11px] text-zinc-400 hover:text-cyan-300"
+                            >
+                              Use Audio Only
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                      {track.kind === "audio" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          aria-label="Add Audio"
+                          onClick={() => setMediaTrackId(track.id)}
+                          className="h-7 px-2.5 text-xs font-medium border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-lg flex items-center gap-1.5"
+                        >
+                          <Plus size={12} />
+                          <span>Add Audio</span>
+                        </Button>
+                      )}
                       {track.kind === "captions" && (
                         <>
                           <Button
@@ -1582,7 +2186,7 @@ export function ProfessionalTimeline({
                               }}
                             />
                           ) : asset?.mediaType === 'video' && !['audio', 'music', 'captions'].includes(track.kind) && preview ? (
-                            <VideoThumbnailStrip clip={clip} preview={preview} pixelsPerMs={px} height={track.height}
+                            <VideoThumbnailStrip clip={clip} preview={preview} pixelsPerMs={px} height={trackHeight}
                               visibleStartMs={(viewport.left - 160) / px} visibleEndMs={(viewport.left + viewport.width) / px} />
                           ) : null}
                           {preview?.peaks.length &&
@@ -1623,11 +2227,49 @@ export function ProfessionalTimeline({
                           )}
                           <span data-timeline-clip-label="true" className={`${track.kind === 'captions' ? 'hidden' : ''} pointer-events-none relative block truncate bg-black/30 px-2 py-1 text-[10px] font-medium text-white`}>
                             {clip.linkId ? "↔ " : ""}
+                            {track.kind === "video" && getMainVideoMode(track) === "audio_only" ? "🎵 [Audio Only BG] " : ""}
                             {clip.text?.value || clip.name}
                             {clip.transitionIn === "crossfade" && (track.kind === "video" || track.kind === "intro") && (
                               <span className="ml-1 text-amber-200">· Dissolve {clip.fadeInMs} ms</span>
                             )}
                           </span>
+                          {selectedClip && track.kind === "video" && (
+                            <div className="absolute top-1 right-2 z-20 flex items-center gap-1 pointer-events-auto">
+                              {getMainVideoMode(track) === "audio_only" ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  aria-label="Change Background (Video / Image)"
+                                  title="Upload or choose a different background video or image"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    triggerBackgroundMediaUpload(track.id);
+                                  }}
+                                  className="h-5 px-2 text-[9px] font-semibold bg-cyan-500/30 hover:bg-cyan-500/50 text-cyan-200 border border-cyan-500/60 rounded flex items-center gap-1 shadow cursor-pointer"
+                                >
+                                  <Upload size={10} />
+                                  <span>Change Background</span>
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  aria-label="Switch to Audio Only"
+                                  title="Switch to Audio Only to use a different video or image background"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSwitchMainVideoMode(track.id, "audio_only");
+                                  }}
+                                  className="h-5 px-2 text-[9px] font-semibold bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-cyan-300 border border-zinc-700 rounded flex items-center gap-1 shadow cursor-pointer"
+                                >
+                                  <Volume2 size={10} />
+                                  <span>Audio Only</span>
+                                </Button>
+                              )}
+                            </div>
+                          )}
                           {selectedClip && audioTrack(track) && asset?.mediaType !== 'image' && preview?.hasAudio && (
                             <AudioClipControls clip={clip} disabled={track.locked}
                               onBegin={() => { cancelHover(); clearThumbnailHover(); audioGesture.current = { base: timeline }; }}
@@ -1662,7 +2304,8 @@ export function ProfessionalTimeline({
                     })}
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         </div>
       )}

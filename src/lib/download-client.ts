@@ -14,6 +14,39 @@ export function triggerBrowserDownload(url: string, filename: string) {
 }
 
 /**
+ * Reliably downloads a file in modern browsers using Blob URL or attachment endpoint.
+ */
+export async function downloadFileReliably(fileUrl: string, filename: string): Promise<boolean> {
+  if (!fileUrl) return false;
+  const safeFilename = filename.replace(/["\r\n]/g, '').trim();
+  try {
+    const res = await fetch(fileUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = safeFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    return true;
+  } catch (err) {
+    console.warn('Blob download fallback to direct attachment URL:', err);
+    const separator = fileUrl.includes('?') ? '&' : '?';
+    const downloadUrl = `${fileUrl}${separator}download=1&filename=${encodeURIComponent(safeFilename)}`;
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = safeFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return true;
+  }
+}
+
+/**
  * Generates relative-synced SRT content and prompts immediate browser download.
  */
 export function downloadSrtDirectly(

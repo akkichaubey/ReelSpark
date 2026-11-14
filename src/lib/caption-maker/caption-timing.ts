@@ -235,3 +235,52 @@ export function getEmojiBounceOffset(time: number, wordStart: number): number {
   const elapsed = Math.max(0, time - wordStart);
   return Math.round(Math.abs(Math.sin(elapsed * Math.PI * 5)) * 8);
 }
+
+/**
+ * Calculate the target scale factor for an active caption word.
+ * Guarantees strict 1.0x flat text when zoomScale <= 1.0, or when flat highlight actions
+ * (color-change, none, underline) are selected, preventing vocal intensity enlargement
+ * from distorting flat captions.
+ */
+export function getCaptionWordTargetScale(
+  style: {
+    zoomScale?: number;
+    highlightAnimation?: string;
+  },
+  intensity?: 'normal' | 'punch' | 'climax' | 'whisper'
+): number {
+  const highlightAnim = style.highlightAnimation || 'pop';
+  const isFlatMode =
+    (style.zoomScale !== undefined && style.zoomScale <= 1.0) ||
+    highlightAnim === 'color-change' ||
+    highlightAnim === 'none' ||
+    highlightAnim === 'underline';
+
+  if (isFlatMode) {
+    return 1.0;
+  }
+
+  let baseZoom = 1.0;
+  if (highlightAnim === 'pop' || highlightAnim === 'scale') {
+    baseZoom = style.zoomScale ?? 1.15;
+  } else if (highlightAnim === 'background') {
+    baseZoom = Math.min(1.04, style.zoomScale ?? 1.04);
+  }
+
+  if (baseZoom <= 1.0) {
+    return 1.0;
+  }
+
+  // Vocal intensity nuance only applies when zoom mode is explicitly enabled:
+  if (intensity === 'punch') {
+    return Math.min(1.35, baseZoom * 1.08);
+  }
+  if (intensity === 'climax') {
+    return Math.min(1.40, baseZoom * 1.15);
+  }
+  if (intensity === 'whisper') {
+    return Math.max(1.0, baseZoom * 0.92);
+  }
+
+  return baseZoom;
+}

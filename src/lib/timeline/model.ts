@@ -33,6 +33,7 @@ export interface TimelineTrack {
   muted: boolean;
   solo?: boolean;
   height: number;
+  mainVideoMode?: "video_and_audio" | "audio_only";
 }
 export interface TimelineText {
   value: string;
@@ -123,6 +124,7 @@ export function projectTimelineAssets(
   for (const image of [
     ...(project.mediaAssets || []),
     ...(project.image ? [project.image] : []),
+    ...(project.audio?.sourceVideo ? [project.audio.sourceVideo] : []),
   ]) {
     assets.set(image.id, {
       id: image.id,
@@ -140,15 +142,23 @@ export function projectTimelineAssets(
       hasAudio: image.mediaType === "video",
     });
   }
-  if (project.audio)
-    assets.set(project.audio.id, {
-      id: project.audio.id,
+  if (project.audio) {
+    const existing = assets.get(project.audio.id);
+    const audioId =
+      existing && existing.mediaType !== "audio"
+        ? project.audio.id.startsWith("aud_")
+          ? project.audio.id
+          : `aud_${project.audio.id}`
+        : project.audio.id;
+    assets.set(audioId, {
+      id: audioId,
       fileUrl: project.audio.fileUrl,
       fileName: project.audio.fileName,
       mediaType: "audio",
       durationMs: Math.round(project.audio.duration * 1000),
       hasAudio: true,
     });
+  }
   if (project.bgMusic)
     assets.set(project.bgMusic.id, {
       id: project.bgMusic.id,
@@ -199,6 +209,23 @@ export function synchronizeTimelineSources(
             },
           ]
         : [];
+    if (
+      kind === "video" &&
+      previous.image &&
+      next.image &&
+      previous.image.id !== next.image.id &&
+      clip.assetId === previous.image.id
+    ) {
+      return [
+        {
+          ...clip,
+          assetId: next.image.id,
+          name: next.image.fileName,
+          loop: next.image.mediaType === "image",
+          muted: next.image.mediaType === "video" ? true : clip.muted,
+        },
+      ];
+    }
     if (next.audio && clip.assetId === next.audio.id && kind === "audio")
       return [
         {
@@ -278,6 +305,32 @@ export function synchronizeTimelineSources(
       });
     }
   }
+  if (
+    next.audio &&
+    (next.transcript.length > 0 || next.captionGroups.length > 0)
+  ) {
+    captionSources[next.audio.id] = {
+      transcript: next.transcript,
+      captionGroups: next.captionGroups,
+      sfxCues: next.sfxCues,
+    };
+    let captionsTrack = tracks.find((track) => track.kind === "captions" && !track.locked);
+    if (!captionsTrack && tracks.length < 32) {
+      captionsTrack = createTimelineTrack("captions");
+      tracks = [...tracks, captionsTrack];
+    }
+    if (captionsTrack && !clips.some((clip) => clip.trackId === captionsTrack!.id)) {
+      const dur = timelineEnd(next.timeline) || Math.round((next.audio.duration || next.image?.duration || 30) * 1000);
+      if (dur > 0) {
+        clips.push({
+          ...createTimelineClip(captionsTrack, undefined, 0, dur),
+          id: `clip_${captionsTrack.id}`,
+          assetId: next.audio.id,
+          linkId: "primary_voice",
+        });
+      }
+    }
+  }
   return {
     ...next,
     timeline: {
@@ -310,7 +363,8 @@ export function createTimelineTrack(
     locked: false,
     hidden: false,
     muted: false,
-    height: 52,
+    height: kind === "video" ? 74 : 52,
+    ...(kind === "video" ? { mainVideoMode: "video_and_audio" as const } : {}),
   };
 }
 export function createTimelineClip(
@@ -351,8 +405,42 @@ export function createTimelineClip(
 
 /** A legacy project stays untouched until a real multi-track edit is committed. */
 export function timelineFromProject(project: CaptionProject): ReelTimeline {
-  if (project.timeline) return project.timeline;
-  const video = { ...createTimelineTrack("video"), id: "track_video" };
+  if (project.timeline) {
+    // Heal any legacy/persisted assets where a video or image file was accidentally tagged as "audio"
+    const healedAssets = project.timeline.assets.map((asset) => {
+      const isVideoFile = /\.(mp4|mov|webm|mkv|avi)$/i.test(asset.fileUrl);
+      const isImageFile = /\.(png|jpe?g|webp|gif|svg)$/i.test(asset.fileUrl);
+      if (asset.mediaType === "audio" && (isVideoFile || isImageFile)) {
+        return {
+          ...asset,
+          mediaType: isVideoFile ? ("video" as const) : ("image" as const),
+        };
+      }
+      return asset;
+    });
+
+    const projectAssets = projectTimelineAssets(project);
+    const assetMap = new Map(healedAssets.map((a) => [a.id, a]));
+    for (const pa of projectAssets) {
+      if (!assetMap.has(pa.id)) {
+        assetMap.set(pa.id, pa);
+      }
+    }
+
+    return {
+      ...project.timeline,
+      assets: [...assetMap.values()],
+    };
+  }
+  const isAudioOnly = Boolean(
+    (project.audio?.sourceVideo && project.image && project.image.id !== project.audio.sourceVideo.id) ||
+    (project.image?.mediaType === "image" && project.audio)
+  );
+  const video = {
+    ...createTimelineTrack("video"),
+    id: "track_video",
+    mainVideoMode: isAudioOnly ? ("audio_only" as const) : ("video_and_audio" as const),
+  };
   const voice = { ...createTimelineTrack("audio"), id: "track_voice" };
   const overlay = { ...createTimelineTrack("overlay"), id: "track_overlay" };
   const captions = { ...createTimelineTrack("captions"), id: "track_captions" };
@@ -428,9 +516,11 @@ export function timelineFromProject(project: CaptionProject): ReelTimeline {
         Math.round((project.bgMusic.fadeOutDuration || 0) * 1000),
       ),
     });
-  const tracks: TimelineTrack[] = [video, voice];
+  const tracks: TimelineTrack[] = [video];
+  if (project.audio) tracks.push(voice);
   if (hasOverlay) tracks.push(overlay);
-  tracks.push(captions, music);
+  if (project.transcript.length || project.captionGroups.length) tracks.push(captions);
+  if (project.bgMusic) tracks.push(music);
   return {
     version: 1,
     enabled: false,
@@ -493,6 +583,8 @@ export function validateTimeline(timeline: ReelTimeline): string[] {
     return ["Invalid track or clip settings."];
   if (timeline.tracks.some(track => track.solo !== undefined && typeof track.solo !== 'boolean'))
     errors.push('Invalid track solo setting.');
+  if (timeline.tracks.some(track => track.mainVideoMode !== undefined && !['video_and_audio', 'audio_only'].includes(track.mainVideoMode)))
+    errors.push('Invalid track mainVideoMode.');
   for (const clip of timeline.clips) {
     if (clip.motion !== undefined && !validMotion(clip.motion)) errors.push('Invalid clip animation keyframes.');
     if ((clip.audioFadeInMs !== undefined && (!Number.isSafeInteger(clip.audioFadeInMs) || clip.audioFadeInMs < 0)) ||
@@ -618,8 +710,30 @@ export function validateTimeline(timeline: ReelTimeline): string[] {
         clip.text.y > 100
       )
         errors.push("Invalid text overlay.");
-    } else if (!asset || !compatibleAsset(track.kind, asset))
-      errors.push(`Media is not compatible with the ${track.kind} track.`);
+    } else if (track.kind === "captions") {
+      // Captions clips represent spoken text intervals and do not require image/video assets
+    } else {
+      let effectiveAsset = asset;
+      if (
+        effectiveAsset &&
+        effectiveAsset.mediaType === "audio" &&
+        ["video", "intro", "overlay"].includes(track.kind) &&
+        /\.(mp4|mov|webm|mkv|avi|png|jpe?g|webp)$/i.test(effectiveAsset.fileUrl)
+      ) {
+        effectiveAsset = {
+          ...effectiveAsset,
+          mediaType: /\.(mp4|mov|webm|mkv|avi)$/i.test(effectiveAsset.fileUrl) ? "video" : "image",
+        };
+      }
+      if (!effectiveAsset && ["video", "intro", "overlay"].includes(track.kind)) {
+        effectiveAsset = [...assets.values()].find(
+          (a) => a.id === clip.assetId || a.mediaType !== "audio"
+        );
+      }
+      if (!effectiveAsset || !compatibleAsset(track.kind, effectiveAsset)) {
+        errors.push(`Media is not compatible with the ${track.kind} track.`);
+      }
+    }
     if (
       asset &&
       !clip.loop &&

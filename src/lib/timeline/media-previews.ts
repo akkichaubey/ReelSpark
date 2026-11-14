@@ -137,30 +137,42 @@ export async function timelineMediaPreview(
       const thumbnailTimesMs = metadata.videoCodec && metadata.width && metadata.height ? thumbnailSampleTimes(Math.round(metadata.duration * 1000)) : [];
       if (metadata.videoCodec && metadata.width && metadata.height)
         for (let index = 0; index < thumbnailTimesMs.length; index++) {
-          const sampleTime = thumbnailTimesMs[index] / 1000;
+          const sampleTime = Math.max(
+            0,
+            Math.min(thumbnailTimesMs[index] / 1000, Math.max(0, metadata.duration - 0.25)),
+          );
           const target = path.join(directory, `frame_${index}.jpg`);
-          await execute(
-            getFfmpegPath(),
-            [
-              "-v",
-              "error",
-              "-y",
-              "-ss",
-              String(sampleTime),
-              "-i",
-              source,
-              "-frames:v",
-              "1",
-              "-vf",
-              "scale=240:136:force_original_aspect_ratio=decrease,pad=240:136:(ow-iw)/2:(oh-ih)/2",
-              "-an",
-              target,
-            ],
-            { windowsHide: true, signal },
-          );
-          thumbnails.push(
-            `/api/files/${path.relative(APP_CONFIG.storageRoot, target).split(path.sep).join("/")}`,
-          );
+          try {
+            await execute(
+              getFfmpegPath(),
+              [
+                "-v",
+                "error",
+                "-y",
+                "-ss",
+                String(sampleTime),
+                "-i",
+                source,
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=240:136:force_original_aspect_ratio=decrease,pad=240:136:(ow-iw)/2:(oh-ih)/2",
+                "-an",
+                target,
+              ],
+              { windowsHide: true, signal },
+            );
+          } catch {
+            if (index > 0) {
+              const prevTarget = path.join(directory, `frame_${index - 1}.jpg`);
+              await fs.copyFile(prevTarget, target).catch(() => {});
+            }
+          }
+          if (await fs.stat(target).then(() => true).catch(() => false)) {
+            thumbnails.push(
+              `/api/files/${path.relative(APP_CONFIG.storageRoot, target).split(path.sep).join("/")}`,
+            );
+          }
         }
       const result = {
         durationMs: Math.round(metadata.duration * 1000),

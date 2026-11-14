@@ -103,6 +103,11 @@ export async function GET(
       });
     }
 
+    const isDownload = req.nextUrl.searchParams.get('download') === '1' || req.nextUrl.searchParams.get('download') === 'true' || req.nextUrl.searchParams.has('filename');
+    const rawFilename = req.nextUrl.searchParams.get('filename') || path.basename(safePath);
+    const cleanFilename = rawFilename.replace(/["\r\n]/g, '').trim();
+    const contentDisposition = isDownload ? `attachment; filename="${cleanFilename}"` : undefined;
+
     const fileStream = fs.createReadStream(safePath);
     return new Response(fileStream as any, {
       headers: {
@@ -110,6 +115,7 @@ export async function GET(
         'Cache-Control': 'private, no-store',
         'Content-Length': stat.size.toString(),
         'Accept-Ranges': 'bytes',
+        ...(contentDisposition ? { 'Content-Disposition': contentDisposition } : {}),
       },
     });
   } catch (err: any) {

@@ -1,7 +1,7 @@
 import { CaptionGroup, CaptionStyle, OutputSettings, TranscriptWord } from './types';
 import { getNinePositionCoordinates, applyWordTransform } from './text-transform';
 import { getContrastingTextColor } from './sample-data';
-import { getCaptionTimingSegments, getWordAnimationWindow } from './caption-timing';
+import { getCaptionTimingSegments, getCaptionWordTargetScale, getWordAnimationWindow } from './caption-timing';
 
 /**
  * Convert Hex/CSS color to ASS color format: &HBBGGRR& or &HAABBGGRR&
@@ -184,15 +184,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       let animTag = `\\an${alignment}\\pos(${posX},${posY})`;
       // In solo-word mode every dialogue is the active spoken word.
       animTag += `\\c${activeWordColor}`;
-      const highlightScale = style.highlightAnimation === 'background'
-        ? 1.04
-        : ['pop', 'scale'].includes(style.highlightAnimation)
-          ? style.zoomScale ?? 1.15
-          : 1;
-      const intensityScale = word.intensity === 'climax' ? 1.35
-        : word.intensity === 'punch' ? 1.22
-          : word.intensity === 'whisper' ? 0.9 : 1;
-      animTag += getAssWordMotionTags(style, word.end - word.start, highlightScale * intensityScale);
+      const effectiveScale = getCaptionWordTargetScale(style, word.intensity);
+      animTag += getAssWordMotionTags(style, word.end - word.start, effectiveScale);
 
       ass += `Dialogue: 0,${startAss},${endAss},${styleName},,0,0,0,,{${animTag}}${text}\n`;
     }
@@ -234,12 +227,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
               : isSpeaker2
                 ? style.speaker2Color || '#06B6D4'
                 : style.importantColor;
-          const scale = highlight === 'background' ? 1.04
-            : ['pop', 'scale'].includes(highlight) ? style.zoomScale ?? 1.15 : 1;
-          const intensityScale = word.intensity === 'climax' ? 1.35
-            : word.intensity === 'punch' ? 1.22
-              : word.intensity === 'whisper' ? 0.9 : 1;
-          const currentScale = Math.min(1.4, scale * intensityScale);
+          const currentScale = getCaptionWordTargetScale(style, word.intensity);
           const wordWindow = getWordAnimationWindow(segment.start, segment.end, 0.06, 0.07);
           const totalMs = toAssMilliseconds(wordWindow.duration);
           const enterMs = Math.min(totalMs, toAssMilliseconds(wordWindow.entryDuration));

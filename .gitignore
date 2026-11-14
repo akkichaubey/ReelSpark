@@ -64,7 +64,7 @@ whisper-models/
 /bin/*
 !/bin/.gitkeep
 
-# Testing & Coverage
+# Zing & Coverage
 /coverage/
 
 # Logs & Debugging

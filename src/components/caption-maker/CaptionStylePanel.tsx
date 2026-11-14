@@ -1282,7 +1282,7 @@ export const CaptionStylePanel: React.FC<CaptionStylePanelProps> = ({
                 <span>1.15x (Balanced)</span>
                 <span>1.35x (Max Zoom)</span>
               </div>
-              {(style.highlightAnimation === 'color-change' || style.highlightAnimation === 'none') ? (
+              {(style.highlightAnimation === 'color-change' || style.highlightAnimation === 'none' || style.highlightAnimation === 'underline' || (style.zoomScale ?? 1.15) <= 1.0) ? (
                 <div className="text-[10px] text-amber-300/90 bg-amber-950/30 border border-amber-500/20 px-2 py-1.5 rounded-lg flex items-center gap-1.5">
                   <span>Normal text mode: text is strictly flat at 1.0x to prevent any overlapping.</span>
                 </div>

@@ -39,7 +39,8 @@ import { ProfessionalTimeline } from '@/components/caption-maker/ProfessionalTim
 import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
 import { ThumbnailPoster, useThumbnailCover } from '@/components/caption-maker/ThumbnailCover';
 import { createThumbnailCoverDataUrl, THUMBNAIL_COVER_SECONDS } from '@/lib/caption-maker/thumbnail-cover';
-import { commitTimeline, projectTimelineAssets, synchronizeTimelineSources, timelineEnd, type TrackKind } from '@/lib/timeline/model';
+import { commitTimeline, createTimelineTrack, projectTimelineAssets, synchronizeTimelineSources, timelineEnd, type TrackKind } from '@/lib/timeline/model';
+import { downloadFileReliably } from '@/lib/download-client';
 import { BackgroundMusicPicker } from '@/components/caption-maker/BackgroundMusicPicker';
 import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
 import type { SavedReel } from '@/lib/saved-reels/types';
@@ -139,11 +140,11 @@ function CaptionMakerPageContent() {
   const [audioDuration, setAudioDuration] = useState<number>(0);
 
   // UI Panels & Tabs
-  const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('thumbnail');
+  const [rightTab, setRightTab] = useState<'style' | 'thumbnail' | 'canvas'>('style');
   const [compactPanel, setCompactPanel] = useState<'preview' | 'media' | 'style'>('preview');
   const [trackPanel, setTrackPanel] = useState<TrackKind | null>(null);
   const [trackSettingsTarget, setTrackSettingsTarget] = useState<HTMLDivElement | null>(null);
-  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('thumbnail');
+  const [centerViewMode, setCenterViewMode] = useState<'video' | 'thumbnail'>('video');
   const [thumbnailSubTab, setThumbnailSubTab] = useState<ThumbnailSubTab>('position');
 
   // Modals & History
@@ -237,6 +238,54 @@ function CaptionMakerPageContent() {
           } else if (parsed.image) {
             if (!parsed.image.fitMode) {
               parsed.image.fitMode = 'cover';
+            }
+          }
+          if (parsed.timeline?.assets) {
+            parsed.timeline.assets = parsed.timeline.assets.map((asset: any) => {
+              const isVideoFile = /\.(mp4|mov|webm|mkv|avi)$/i.test(asset.fileUrl || '');
+              const isImageFile = /\.(png|jpe?g|webp|gif|svg)$/i.test(asset.fileUrl || '');
+              if (asset.mediaType === 'audio' && (isVideoFile || isImageFile)) {
+                return {
+                  ...asset,
+                  mediaType: isVideoFile ? 'video' : 'image',
+                };
+              }
+              return asset;
+            });
+          }
+          if (!parsed.audio || parsed.audio.fileUrl === '/sample-audio.mp3') {
+            const candidate = parsed.timeline?.assets?.find(
+              (a: any) => a.mediaType === 'audio' || (a.mediaType === 'video' && a.hasAudio !== false)
+            ) || (parsed.image?.mediaType === 'video' ? parsed.image : undefined);
+            if (candidate) {
+              const candidateDuration = 'durationMs' in candidate && typeof candidate.durationMs === 'number'
+                ? candidate.durationMs / 1000
+                : (candidate as { duration?: number }).duration || 30;
+              const audioId = candidate.id.startsWith('aud_') ? candidate.id : `aud_${candidate.id}`;
+              parsed.audio = {
+                id: audioId,
+                fileUrl: candidate.fileUrl,
+                storagePath: candidate.fileUrl,
+                fileName: candidate.fileName || 'Voice Audio',
+                fileSize: (candidate as any).fileSize || 0,
+                duration: candidateDuration,
+                format: 'MP3',
+                sourceType: candidate.mediaType === 'video' ? 'video' : 'audio',
+                sourceVideo: candidate.mediaType === 'video' ? {
+                  id: candidate.id,
+                  fileUrl: candidate.fileUrl,
+                  fileName: candidate.fileName,
+                  fileSize: 0,
+                  width: (candidate as any).width || 1080,
+                  height: (candidate as any).height || 1920,
+                  format: candidate.fileUrl.split('.').pop()?.toUpperCase() || 'MP4',
+                  fitMode: (candidate as any).fitMode || 'cover',
+                  position: (candidate as any).position || 'center',
+                  scale: (candidate as any).scale ?? 100,
+                  mediaType: 'video',
+                  duration: candidateDuration,
+                } : undefined,
+              };
             }
           }
           if (!parsed.audio) {
@@ -342,6 +391,41 @@ function CaptionMakerPageContent() {
       try {
         if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(restoredParsed));
       } catch {}
+      if (!restoredParsed.audio || restoredParsed.audio.fileUrl === '/sample-audio.mp3') {
+        const candidate = restoredParsed.timeline?.assets.find(
+          (a) => a.mediaType === 'audio' || (a.mediaType === 'video' && a.hasAudio !== false)
+        ) || (restoredParsed.image?.mediaType === 'video' ? restoredParsed.image : undefined);
+        if (candidate) {
+          const candidateDuration = 'durationMs' in candidate && typeof candidate.durationMs === 'number'
+            ? candidate.durationMs / 1000
+            : (candidate as { duration?: number }).duration || 30;
+          const audioId = candidate.id.startsWith('aud_') ? candidate.id : `aud_${candidate.id}`;
+          restoredParsed.audio = {
+            id: audioId,
+            fileUrl: candidate.fileUrl,
+            storagePath: candidate.fileUrl,
+            fileName: candidate.fileName || 'Voice Audio',
+            fileSize: (candidate as any).fileSize || 0,
+            duration: candidateDuration,
+            format: 'MP3',
+            sourceType: candidate.mediaType === 'video' ? 'video' : 'audio',
+            sourceVideo: candidate.mediaType === 'video' ? {
+              id: candidate.id,
+              fileUrl: candidate.fileUrl,
+              fileName: candidate.fileName,
+              fileSize: 0,
+              width: (candidate as any).width || 1080,
+              height: (candidate as any).height || 1920,
+              format: candidate.fileUrl.split('.').pop()?.toUpperCase() || 'MP4',
+              fitMode: (candidate as any).fitMode || 'cover',
+              position: (candidate as any).position || 'center',
+              scale: (candidate as any).scale ?? 100,
+              mediaType: 'video',
+              duration: candidateDuration,
+            } : undefined,
+          };
+        }
+      }
       setProject(restoredParsed);
       setHistory([restoredParsed]);
       setHistoryIndex(0);
@@ -553,6 +637,10 @@ function CaptionMakerPageContent() {
 
   // Audio Playback Sync
   const togglePlay = useCallback(() => {
+    if (centerViewMode === 'thumbnail') {
+      setCenterViewMode('video');
+      setRightTab('style');
+    }
     if (project.timeline?.enabled) { setIsPlaying(value => !value); return; }
     if (!audioRef.current) return;
     if (isPlaying) {
@@ -599,7 +687,7 @@ function CaptionMakerPageContent() {
       }
       setIsPlaying(true);
     }
-  }, [isPlaying, project.bgMusic, project.trimRange, project.timeline, currentTime, audioDuration]);
+  }, [isPlaying, project.bgMusic, project.trimRange, project.timeline, currentTime, audioDuration, centerViewMode]);
 
   // Handle trim range change from timeline drag handles
   const handleTrimChange = useCallback(
@@ -863,41 +951,68 @@ function CaptionMakerPageContent() {
     if (!savedReelId) saveProjectToLocalStorage(duplicated);
   };
 
-  const handleResetProject = () => {
-    if (savedReelId && savedReelSession) {
-      if (window.confirm('Discard unsaved edits and restore the last saved version of this reel?')) {
-        const restored = structuredClone(savedReelSession.project);
-        setProject(restored); setHistory([restored]); setHistoryIndex(0); setAudioDuration(restored.audio?.duration || 0); setCurrentTime(0); setIsPlaying(false); setRenderResult(null);
-      }
-      return;
-    }
-    if (
-      window.confirm(
-        'Reset current project and clear history? Any unsaved edits will be lost.'
-      )
-    ) {
-      if (typeof window !== 'undefined' && window.location.search) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-      const fresh = createEmptyCaptionProject();
-      setProject(fresh);
-      setHistory([fresh]);
-      setHistoryIndex(0);
-      handleSeek(0);
-      setAudioDuration(0);
-      setCenterViewMode('thumbnail');
-      setRightTab('thumbnail');
-      setThumbnailSubTab('position');
-      setIsPlaying(false);
-      setRenderResult(null);
-      setTranscriptionError(null);
-      setCrashRecoverySnapshot(null);
+  const handleCompleteReset = () => {
+    const message = savedReelId
+      ? 'Completely reset this reel? This will clear all tracks, video, audio, and captions, and start a fresh new reel.'
+      : 'Completely reset this reel and clear all tracks, video, audio, and captions? Any unsaved edits will be lost.';
+    if (!window.confirm(message)) return;
+
+    if (audioRef.current) {
       try {
-        if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
-        accountCache.removeItem('reel_caption_project_v1');
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
       } catch {}
     }
+    if (bgMusicRef.current) {
+      try {
+        bgMusicRef.current.pause();
+        bgMusicRef.current.currentTime = 0;
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const fresh = createEmptyCaptionProject();
+    fresh.timeline = {
+      version: 1,
+      enabled: false,
+      fps: fresh.outputSettings.fps || 30,
+      tracks: [{ ...createTimelineTrack('video', 'Main video'), id: 'track_video' }],
+      clips: [],
+      assets: [],
+      markers: [],
+      captionSources: {},
+    };
+    setTrackPanel(null);
+    setSavedReelSession(null);
+    setProject(fresh);
+    setHistory([fresh]);
+    setHistoryIndex(0);
+    setCurrentTime(0);
+    setAudioDuration(0);
+    setIsPlaying(false);
+    setCenterViewMode('video');
+    setRightTab('style');
+    setRenderResult(null);
+    setTranscriptionError(null);
+    setCrashRecoverySnapshot(null);
+    setTimelineSeekVersion((v) => v + 1);
+
+    try {
+      accountCache.setItem('reel_caption_project_v2', JSON.stringify(fresh));
+      accountCache.removeItem('reel_caption_project_v1');
+    } catch {}
+
+    if (savedReelId) {
+      router.push('/reel-maker');
+    }
   };
+
+  const handleResetProject = handleCompleteReset;
 
   // Keyboard Shortcuts handler
   useEffect(() => {
@@ -1063,6 +1178,40 @@ function CaptionMakerPageContent() {
     });
   };
 
+  const allImageAssets: ImageAsset[] = useMemo(() => {
+    const isImg = (item: { mediaType?: string; fileUrl?: string; fileName?: string }) => {
+      if (item.mediaType === 'image') return true;
+      if (item.mediaType === 'video') return false;
+      const url = item.fileUrl || item.fileName || '';
+      return /\.(jpe?g|png|webp|svg|gif|avif|bmp|ico|tiff?|heic)$/i.test(url);
+    };
+    const map = new Map<string, ImageAsset>();
+    for (const a of project.mediaAssets || []) {
+      if (isImg(a)) map.set(a.fileUrl || a.id, a);
+    }
+    for (const a of project.timeline?.assets || []) {
+      if (isImg(a)) {
+        map.set(a.fileUrl || a.id, {
+          id: a.id,
+          fileName: (a as any).fileName || (a as any).name || 'Image',
+          fileUrl: a.fileUrl,
+          fileSize: 0,
+          width: 1080,
+          height: 1920,
+          format: 'png',
+          mediaType: 'image',
+          fitMode: 'cover',
+          position: 'center',
+          scale: 100,
+        });
+      }
+    }
+    if (project.image && isImg(project.image)) {
+      map.set(project.image.fileUrl || project.image.id, project.image);
+    }
+    return Array.from(map.values());
+  }, [project.mediaAssets, project.timeline?.assets, project.image]);
+
   const thumbnailCover = useThumbnailCover(project, currentThumbSettings);
   const handleEditThumbnailCover = () => {
     updateProjectWithHistory(previous => ({ ...previous, thumbnailCover: { enabled: true },
@@ -1163,7 +1312,49 @@ function CaptionMakerPageContent() {
 
   const syncAudioWithTranscript = useCallback(
     async (targetProj: CaptionProject, silent = false): Promise<CaptionProject | null> => {
-      if (!targetProj.audio || isTranscribingRef.current) return null;
+      let resolvedAudio = targetProj.audio;
+      if (!resolvedAudio || resolvedAudio.fileUrl === '/sample-audio.mp3') {
+        const candidate = targetProj.timeline?.assets.find(
+          (a) => a.mediaType === 'audio' || (a.mediaType === 'video' && a.hasAudio !== false)
+        ) || (targetProj.image?.mediaType === 'video' ? targetProj.image : undefined);
+        if (candidate) {
+          const candidateDuration = 'durationMs' in candidate && typeof candidate.durationMs === 'number'
+            ? candidate.durationMs / 1000
+            : (candidate as { duration?: number }).duration || 30;
+          const audioId = candidate.id.startsWith('aud_') ? candidate.id : `aud_${candidate.id}`;
+          resolvedAudio = {
+            id: audioId,
+            fileUrl: candidate.fileUrl,
+            storagePath: candidate.fileUrl,
+            fileName: candidate.fileName || 'Voice Audio',
+            fileSize: (candidate as any).fileSize || 0,
+            duration: candidateDuration,
+            format: 'MP3',
+            sourceType: candidate.mediaType === 'video' ? 'video' : 'audio',
+            sourceVideo: candidate.mediaType === 'video' ? {
+              id: candidate.id,
+              fileUrl: candidate.fileUrl,
+              fileName: candidate.fileName,
+              fileSize: 0,
+              width: (candidate as any).width || 1080,
+              height: (candidate as any).height || 1920,
+              format: candidate.fileUrl.split('.').pop()?.toUpperCase() || 'MP4',
+              fitMode: (candidate as any).fitMode || 'cover',
+              position: (candidate as any).position || 'center',
+              scale: (candidate as any).scale ?? 100,
+              mediaType: 'video',
+              duration: candidateDuration,
+            } : undefined,
+          };
+          targetProj = { ...targetProj, audio: resolvedAudio };
+        }
+      }
+      if (!resolvedAudio || isTranscribingRef.current) {
+        if (!silent && !resolvedAudio) {
+          alert('Please upload a video or audio file first before generating AI captions.');
+        }
+        return null;
+      }
       isTranscribingRef.current = true;
       setIsTranscribing(true);
       setTranscriptionError(null);
@@ -1176,17 +1367,17 @@ function CaptionMakerPageContent() {
                 t.includes('girte wahi hain jo'))
           );
 
-        const isCustomAudio = targetProj.audio.fileUrl !== '/sample-audio.mp3';
+        const isCustomAudio = resolvedAudio.fileUrl !== '/sample-audio.mp3';
 
         const res = await fetch('/api/caption-maker/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            storagePath: targetProj.audio.storagePath,
-            fileUrl: targetProj.audio.fileUrl,
+            storagePath: resolvedAudio.storagePath,
+            fileUrl: resolvedAudio.fileUrl,
             preferredLanguage: targetProj.preferredLanguage || 'en',
             clipId: targetProj.sourceClipId,
-            audioTitle: targetProj.audio.fileName || targetProj.title,
+            audioTitle: resolvedAudio.fileName || targetProj.title,
             forceRefresh: true,
             fallbackHint: {
               textHindi: isCustomAudio && isSampleQuote(targetProj.rawTranscriptHindi) ? undefined : targetProj.rawTranscriptHindi,
@@ -1221,6 +1412,7 @@ function CaptionMakerPageContent() {
 
         const preValidated: CaptionProject = {
           ...targetProj,
+          audio: resolvedAudio,
           title: resolvedTitle,
           transcript: data.transcript,
           captionGroups: data.captionGroups,
@@ -1243,16 +1435,22 @@ function CaptionMakerPageContent() {
 
         const healed = validateAndHealReelProject(
           preValidated,
-          targetProj.audio?.duration || audioDuration
+          resolvedAudio.duration || audioDuration
         ).healedProject;
 
-        setProject(healed);
+        const synchronized = synchronizeTimelineSources(targetProj, healed);
+
+        if (resolvedAudio?.duration) {
+          setAudioDuration(resolvedAudio.duration);
+        }
+
+        setProject(synchronized);
         try {
-          if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(healed));
+          if (!savedReelId) accountCache.setItem('reel_caption_project_v2', JSON.stringify(synchronized));
         } catch {}
-        setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), healed]);
+        setHistory((prevHist) => [...prevHist.slice(0, historyIndex + 1), synchronized]);
         setHistoryIndex((prevIdx) => prevIdx + 1);
-        return healed;
+        return synchronized;
       } catch (err: any) {
         setTranscriptionError(err.message || 'Failed to re-analyze audio. Please retry.');
         setProject((current) => ({ ...current, isAudioSynced: false }));
@@ -1515,7 +1713,7 @@ function CaptionMakerPageContent() {
   useEffect(() => {
     if (
       !savedReelId &&
-      !project.timeline?.enabled &&
+      (!project.timeline?.enabled || project.transcript.length === 0) &&
       project.audio?.fileUrl &&
       project.audio.fileUrl !== '/sample-audio.mp3' &&
       (!project.isAudioSynced || ![4, 5].includes(project.syncVersion || 0) || project.transcript.length === 0) &&
@@ -1798,7 +1996,7 @@ function CaptionMakerPageContent() {
                   );
                 } else if (event.type === 'complete') {
                   setRenderProgress(100);
-                  setRenderStatusText('Remotion video rendering completed!');
+                  setRenderStatusText('Remotion video rendering completed! Starting download...');
                   setRenderResult({
                     videoUrl: event.videoUrl,
                     srtUrl: event.srtUrl,
@@ -1811,6 +2009,11 @@ function CaptionMakerPageContent() {
                     renderedVideoPath: event.videoPath,
                     renderedSrtPath: event.srtPath,
                   }));
+                  // Auto-download video immediately upon process completion!
+                  const safeFilename = `${(activeProj.title || project.title || 'reel').replace(/[^a-zA-Z0-9_-]/g, '_')}_final.mp4`;
+                  void downloadFileReliably(event.videoUrl, safeFilename).then(() => {
+                    setRenderStatusText('Remotion video rendered and downloaded successfully!');
+                  });
                   return;
                 } else if (event.type === 'error') {
                   throw new Error(event.error || 'Rendering pipeline error');
@@ -1841,7 +2044,7 @@ function CaptionMakerPageContent() {
         }
 
         setRenderProgress(100);
-        setRenderStatusText('FFmpeg rendering finished!');
+        setRenderStatusText('FFmpeg rendering finished! Starting download...');
         setRenderResult({
           videoUrl: data.videoUrl,
           srtUrl: data.srtUrl,
@@ -1855,6 +2058,12 @@ function CaptionMakerPageContent() {
           renderedVideoPath: data.videoPath,
           renderedSrtPath: data.srtPath,
         }));
+
+        // Auto-download video immediately upon process completion!
+        const safeFilename = `${(activeProj.title || project.title || 'reel').replace(/[^a-zA-Z0-9_-]/g, '_')}_final.mp4`;
+        void downloadFileReliably(data.videoUrl, safeFilename).then(() => {
+          setRenderStatusText('FFmpeg video rendered and downloaded successfully!');
+        });
       }
     } catch (err) {
       console.error('Render error:', err);
@@ -1918,40 +2127,6 @@ function CaptionMakerPageContent() {
   }
 
   if (savedReelId && !savedReelSession) return <DashboardLayout title="Saved Reel"><div className="p-6" role={savedReelLoadError ? 'alert' : 'status'}>{savedReelLoadError || 'Loading saved reel…'} <Link href="/saved-reels" className="text-amber-400">Return to Saved Reels</Link></div></DashboardLayout>;
-
-  const allImageAssets: ImageAsset[] = useMemo(() => {
-    const isImg = (item: { mediaType?: string; fileUrl?: string; fileName?: string }) => {
-      if (item.mediaType === 'image') return true;
-      if (item.mediaType === 'video') return false;
-      const url = item.fileUrl || item.fileName || '';
-      return /\.(jpe?g|png|webp|svg|gif|avif|bmp|ico|tiff?|heic)$/i.test(url);
-    };
-    const map = new Map<string, ImageAsset>();
-    for (const a of project.mediaAssets || []) {
-      if (isImg(a)) map.set(a.fileUrl || a.id, a);
-    }
-    for (const a of project.timeline?.assets || []) {
-      if (isImg(a)) {
-        map.set(a.fileUrl || a.id, {
-          id: a.id,
-          fileName: (a as any).fileName || (a as any).name || 'Image',
-          fileUrl: a.fileUrl,
-          fileSize: 0,
-          width: 1080,
-          height: 1920,
-          format: 'png',
-          mediaType: 'image',
-          fitMode: 'cover',
-          position: 'center',
-          scale: 100,
-        });
-      }
-    }
-    if (project.image && isImg(project.image)) {
-      map.set(project.image.fileUrl || project.image.id, project.image);
-    }
-    return Array.from(map.values());
-  }, [project.mediaAssets, project.timeline?.assets, project.image]);
 
   const renderAssetControls = (section: 'media' | 'voice', allowVideo: boolean = true) => (
     <AssetUploadSection
@@ -2380,6 +2555,17 @@ function CaptionMakerPageContent() {
               </span>
             </Button>
 
+            {/* Complete Reset Reel Button */}
+            <Button
+              type="button"
+              onClick={handleCompleteReset}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
+              title="Reset Reel (clears all media, timeline tracks, and captions to start fresh)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+              <span>Reset Reel</span>
+            </Button>
+
             {/* Render / Export Modal Trigger */}
             <Button
               onClick={() => setIsExportOpen(true)}
@@ -2477,10 +2663,10 @@ function CaptionMakerPageContent() {
         </section>
 
         {/* CENTER COLUMN: Real-Time Canvas Video Preview OR Live Thumbnail Cover Output */}
-        <main className={`${compactPanel === 'preview' ? 'flex' : 'hidden'} xl:flex flex-1 min-w-0 min-h-0 flex-col bg-zinc-950 items-center justify-center p-3 sm:p-4 overflow-hidden relative`}>
-          <div className="flex flex-col items-center justify-center w-full h-full relative">
+        <main className={`${compactPanel === 'preview' ? 'flex' : 'hidden'} xl:flex flex-1 min-w-0 min-h-0 flex-col bg-zinc-950 items-center justify-start p-2 sm:p-3 overflow-hidden relative`}>
+          <div className="flex flex-col items-center w-full h-full min-h-0 relative">
             {/* Center Mode Switcher Tabs */}
-            <div className="flex items-center justify-between w-full max-w-sm sm:max-w-md mb-2 px-1 text-xs">
+            <div className="shrink-0 flex items-center justify-between w-full max-w-sm sm:max-w-md mb-2 px-1 text-xs z-20">
               <div className="flex items-center gap-1.5 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 shadow-sm">
                 <Button
                   type="button"
@@ -2706,7 +2892,76 @@ function CaptionMakerPageContent() {
         }} onChange={timeline => {
           audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false);
           if (!project.timeline?.enabled) setCurrentTime(0);
-          updateProjectWithHistory(previous => ({ ...previous, timeline: commitTimeline({ ...timeline, fps: previous.outputSettings.fps, captionSources: { ...timeline.captionSources, ...(previous.audio ? { [previous.audio.id]: { transcript: previous.transcript, captionGroups: previous.captionGroups, sfxCues: previous.sfxCues } } : {}) } }), trimRange: undefined, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtUrl: undefined, renderedSrtPath: undefined, updatedAt: new Date().toISOString() }));
+          const videoTrack = timeline.tracks.find(t => t.kind === 'video');
+          const videoClip = videoTrack ? timeline.clips.find(c => c.trackId === videoTrack.id) : undefined;
+          const videoAsset = videoClip ? timeline.assets.find(a => a.id === videoClip.assetId) : undefined;
+          const syncImage: ImageAsset | undefined = videoAsset ? {
+            id: videoAsset.id,
+            fileUrl: videoAsset.fileUrl,
+            fileName: videoAsset.fileName,
+            fileSize: 0,
+            width: videoAsset.width || 1080,
+            height: videoAsset.height || 1920,
+            format: videoAsset.fileUrl.split('.').pop()?.toUpperCase() || 'MP4',
+            fitMode: videoAsset.fitMode || 'cover',
+            position: videoAsset.position || 'center',
+            scale: videoAsset.scale ?? 100,
+            mediaType: videoAsset.mediaType === 'image' ? ('image' as const) : ('video' as const),
+            duration: videoAsset.durationMs ? videoAsset.durationMs / 1000 : undefined,
+          } : undefined;
+
+          // Resolve primary voice / audio asset from timeline (audio track clip or video clip)
+          const audioTrack = timeline.tracks.find(t => t.kind === 'audio');
+          const audioClip = audioTrack ? timeline.clips.find(c => c.trackId === audioTrack.id) : undefined;
+          const audioAsset = audioClip ? timeline.assets.find(a => a.id === audioClip.assetId) : undefined;
+          const voiceAsset = audioAsset || (videoAsset?.mediaType === 'video' && videoAsset.hasAudio !== false ? videoAsset : undefined);
+
+          updateProjectWithHistory(previous => {
+            let nextAudio = previous.audio;
+            if (voiceAsset && (!previous.audio || previous.audio.fileUrl === '/sample-audio.mp3' || previous.audio.id !== voiceAsset.id)) {
+              const audioId = voiceAsset.id.startsWith('aud_') ? voiceAsset.id : `aud_${voiceAsset.id}`;
+              nextAudio = {
+                id: audioId,
+                fileUrl: voiceAsset.fileUrl,
+                storagePath: voiceAsset.fileUrl,
+                fileName: voiceAsset.fileName || 'Voice Audio',
+                fileSize: (voiceAsset as any).fileSize || 0,
+                duration: voiceAsset.durationMs ? voiceAsset.durationMs / 1000 : (previous.audio?.duration || 30),
+                format: 'MP3',
+                sourceType: voiceAsset.mediaType === 'video' ? 'video' : 'audio',
+                sourceVideo: videoAsset && videoAsset.mediaType === 'video' ? {
+                  id: videoAsset.id,
+                  fileUrl: videoAsset.fileUrl,
+                  fileName: videoAsset.fileName,
+                  fileSize: 0,
+                  width: videoAsset.width || 1080,
+                  height: videoAsset.height || 1920,
+                  format: videoAsset.fileUrl.split('.').pop()?.toUpperCase() || 'MP4',
+                  fitMode: videoAsset.fitMode || 'cover',
+                  position: videoAsset.position || 'center',
+                  scale: videoAsset.scale ?? 100,
+                  mediaType: 'video',
+                  duration: videoAsset.durationMs ? videoAsset.durationMs / 1000 : undefined,
+                } : undefined,
+              };
+            }
+            if (nextAudio?.duration && Math.abs((audioDuration || 0) - nextAudio.duration) > 0.05) {
+              setAudioDuration(nextAudio.duration);
+            }
+            return {
+              ...previous,
+              audio: nextAudio || previous.audio,
+              image: syncImage || previous.image,
+              mediaAssets: syncImage ? [...new Map([...(previous.mediaAssets || []).map(a => [a.id, a] as const), [syncImage.id, syncImage] as const]).values()] : previous.mediaAssets,
+              timeline: commitTimeline({ ...timeline, fps: previous.outputSettings.fps, captionSources: { ...timeline.captionSources, ...(nextAudio ? { [nextAudio.id]: { transcript: previous.transcript, captionGroups: previous.captionGroups, sfxCues: previous.sfxCues } } : {}) } }),
+              trimRange: undefined,
+              renderedVideoUrl: undefined,
+              renderedVideoPath: undefined,
+              renderedSrtUrl: undefined,
+              renderedSrtPath: undefined,
+              updatedAt: new Date().toISOString()
+            };
+          });
         }} />
       </footer>
 

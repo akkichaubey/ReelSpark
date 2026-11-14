@@ -2,8 +2,17 @@ import { commitTimeline, createTimelineTrack, frameTime, linkedSelection, makeTi
 
 export const audioTrack = (track: TimelineTrack) => !['text', 'captions'].includes(track.kind);
 export function trackAudible(timeline: ReelTimeline, track: TimelineTrack) {
-  const solo = timeline.tracks.some(t => t.solo && !t.hidden && audioTrack(t));
-  return audioTrack(track) && !track.hidden && !track.muted && (!solo || track.solo === true);
+  const soloTracks = timeline.tracks.filter(t => t.solo && !t.hidden && audioTrack(t));
+  if (!audioTrack(track) || track.hidden || track.muted) return false;
+  if (soloTracks.length === 0 || track.solo === true) return true;
+  // If an audio track has a soloed video track in video_and_audio mode, keep it audible:
+  if (track.kind === 'audio') {
+    const videoTrack = timeline.tracks.find(t => t.kind === 'video' && t.solo && !t.hidden);
+    if (videoTrack && (!videoTrack.mainVideoMode || videoTrack.mainVideoMode === 'video_and_audio')) {
+      return true;
+    }
+  }
+  return false;
 }
 export function hasAudibleSpeech(plan: TimelinePlan, absoluteMs: number) {
   if (!plan.transcript.some(word => absoluteMs / 1000 >= word.start - 0.1 && absoluteMs / 1000 < word.end + 0.15)) return false;

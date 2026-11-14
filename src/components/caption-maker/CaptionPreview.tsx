@@ -20,6 +20,7 @@ import {
   easeInPower1,
   easeOutPower2,
   getActiveTranscriptWordAtTime,
+  getCaptionWordTargetScale,
   getEmojiBounceOffset,
   getStaggeredAnimationTiming,
   getUnitProgress,
@@ -567,21 +568,17 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
               const soloOpacity = currentTime >= soloWindow.exitStart
                 ? 1 - soloExitEased
                 : soloEntryOpacity;
-              const soloTextScale = Math.min(
-                1.4,
-                (captionStyle.highlightAnimation === 'color-change' || captionStyle.highlightAnimation === 'none'
-                  ? 1
-                  : captionStyle.highlightAnimation === 'background'
-                    ? 1.04
-                    : captionStyle.zoomScale ?? 1.15) *
-                  (displayWord.intensity === 'climax' ? 1.35 : displayWord.intensity === 'punch' ? 1.22 : displayWord.intensity === 'whisper' ? 0.90 : 1.0)
-              );
+              const soloTargetScale = getCaptionWordTargetScale(captionStyle, displayWord.intensity);
+              const isFlatMode = soloTargetScale <= 1.0;
+              const soloTextScale = soloTargetScale;
               const hasNativeEntryMotion = isLetterPreset || animPreset === 'words-slide-up' || animPreset === 'words-rotate-in';
-              const soloScale = hasNativeEntryMotion
-                ? soloTextScale
-                : currentTime >= soloWindow.exitStart
-                  ? soloTextScale + (0.9 - soloTextScale) * soloExitEased
-                  : 0.85 + (soloTextScale - 0.85) * soloEasedProgress;
+              const soloScale = isFlatMode
+                ? 1.0
+                : hasNativeEntryMotion
+                  ? soloTextScale
+                  : currentTime >= soloWindow.exitStart
+                    ? soloTextScale + (0.9 - soloTextScale) * soloExitEased
+                    : 0.85 + (soloTextScale - 0.85) * soloEasedProgress;
               const soloTranslate = animPreset === 'words-slide-up'
                 ? currentTime >= soloWindow.exitStart
                   ? `translateY(${-40 * soloExitEased}%)`
@@ -735,15 +732,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                   const isUnderline = isCurrent && highlightAnim === 'underline';
 
                   // Determine active word zoom:
-                  let targetScale = 1.0;
-                  if (highlightAnim === 'pop' || highlightAnim === 'scale') {
-                    targetScale = captionStyle.zoomScale ?? 1.15;
-                  } else if (highlightAnim === 'background') {
-                    targetScale = 1.04;
-                  }
-                  if (w.intensity === 'punch') targetScale *= 1.22;
-                  else if (w.intensity === 'climax') targetScale *= 1.35;
-                  else if (w.intensity === 'whisper') targetScale *= 0.90;
+                  const targetScale = getCaptionWordTargetScale(captionStyle, w.intensity);
 
                   const highlightProgress = getWordHighlightProgress(
                     w.start,
@@ -751,9 +740,11 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     currentTime,
                     0.06,
                     0.07,
-                    targetScale > 1 ? 'power2' : 'linear'
+                    targetScale > 1.0 ? 'power2' : 'linear'
                   );
-                  const effectiveScale = 1 + (targetScale - 1) * highlightProgress;
+                  const effectiveScale = targetScale > 1.0
+                    ? 1 + (targetScale - 1) * highlightProgress
+                    : 1.0;
 
                   // Active word horizontal margin buffer to prevent ANY text overlap:
                   const extraMargin = effectiveScale > 1.0
@@ -809,7 +800,7 @@ export const CaptionPreview: React.FC<CaptionPreviewProps> = ({
                     : animPreset === 'words-rotate-in'
                       ? `perspective(1000px) rotateX(${-90 * (1 - motionEase)}deg)`
                       : '';
-                  const scaledWordTransform = effectiveScale !== 1.0
+                  const scaledWordTransform = effectiveScale > 1.001
                     ? `scale(${effectiveScale})`
                     : '';
                   const normalOpacity = captionStyle.textOpacity ?? 1.0;

@@ -1014,6 +1014,41 @@ async function runAllTests() {
     // In flat mode, there should NOT be scale tags like \fscx115 or \fscx120
     assert.ok(!flatAss.includes('\\fscx115'), 'Flat normal text must not include zoom scale tags in ASS');
     assert.ok(!flatAss.includes('\\fscx120'), 'Flat normal text must not include zoom scale tags in ASS');
+
+    // 6. Verify getCaptionWordTargetScale helper directly
+    const { getCaptionWordTargetScale } = await import(
+      '../src/lib/caption-maker/caption-timing'
+    );
+    // When zoomScale is 1.0 (flat), vocal intensity MUST NOT enlarge word:
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.0, highlightAnimation: 'pop' }, 'climax'), 1.0);
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.0, highlightAnimation: 'pop' }, 'punch'), 1.0);
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.0, highlightAnimation: 'color-change' }, 'punch'), 1.0);
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.15, highlightAnimation: 'color-change' }, 'climax'), 1.0);
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.15, highlightAnimation: 'none' }, 'punch'), 1.0);
+    assert.strictEqual(getCaptionWordTargetScale({ zoomScale: 1.15, highlightAnimation: 'underline' }, 'climax'), 1.0);
+
+    // When zoom is enabled, it properly applies zoom scale:
+    const normalZoom = getCaptionWordTargetScale({ zoomScale: 1.15, highlightAnimation: 'pop' }, 'normal');
+    assert.strictEqual(normalZoom, 1.15);
+    const punchZoom = getCaptionWordTargetScale({ zoomScale: 1.15, highlightAnimation: 'pop' }, 'punch');
+    assert.ok(punchZoom > 1.15 && punchZoom <= 1.35, 'Punch zoom should be proportional and bounded');
+
+    // 7. ASS Subtitle immunity to vocal intensity punch in flat mode:
+    const punchWords = [
+      { id: '1', text: 'agar', start: 0.0, end: 0.5, isImportant: false, intensity: 'punch' as const },
+      { id: '2', text: 'paas', start: 0.5, end: 1.0, isImportant: true, intensity: 'climax' as const },
+    ];
+    const punchGroups = [{ id: 'g1', words: punchWords, start: 0.0, end: 1.0, text: 'agar paas' }];
+    const flatPunchAss = generateAssSubtitles(punchGroups, punchWords, flatStyle, {
+      preset: 'instagram-reel',
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+      quality: 'standard',
+      fps: 30,
+    });
+    assert.ok(!flatPunchAss.includes('\\fscx122'), 'Punch intensity must NOT create scale tags in flat mode');
+    assert.ok(!flatPunchAss.includes('\\fscx135'), 'Climax intensity must NOT create scale tags in flat mode');
   });
 
   // 26. Google Fonts Integration and Dynamic Font URL Generation

@@ -27,7 +27,9 @@ import {
   Share2,
   Code2,
   Combine,
+  Loader2,
 } from 'lucide-react';
+import { downloadFileReliably } from '@/lib/download-client';
 import { ProgressCircle } from '@/components/ProgressCircle';
 import { compileTimeline, timelineEnd } from '@/lib/timeline/model';
 import { getAssRenderCompatibility } from '@/lib/caption-maker/render-compatibility';
@@ -87,14 +89,27 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     'intro_and_poster' | 'intro_hook' | 'poster_only'
   >('intro_and_poster');
   const [thumbnailIntroDuration, setThumbnailIntroDuration] = useState<number>(THUMBNAIL_COVER_SECONDS);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   const advanced = Boolean(project.timeline?.enabled);
   const selectedEngine = advanced ? 'remotion' : engine;
-  const exportGroups = useMemo(() => advanced ? compileTimeline(project).captionGroups : project.captionGroups, [project, advanced]);
+  const exportGroups = useMemo(() => {
+    if (!advanced) return project.captionGroups;
+    try {
+      return compileTimeline(project).captionGroups;
+    } catch {
+      return project.captionGroups;
+    }
+  }, [project, advanced]);
   const preFlight = useMemo(() => {
     if (!advanced) return validateAndHealReelProject(project);
-    const plan = compileTimeline(project);
-    return { ready: plan.durationMs > 0, needsServerAudioSync: false, autoFixedCount: 0, healedProject: project, checks: [{ id: 'media_assets' as const, label: 'Timeline composition', status: 'passed' as const, detail: `${plan.timeline.clips.length} clips · ${(plan.durationMs / 1000).toFixed(2)} seconds · source media checked again on export` }] };
+    try {
+      const plan = compileTimeline(project);
+      return { ready: plan.durationMs > 0, needsServerAudioSync: false, autoFixedCount: 0, healedProject: project, checks: [{ id: 'media_assets' as const, label: 'Timeline composition', status: 'passed' as const, detail: `${plan.timeline.clips.length} clips · ${(plan.durationMs / 1000).toFixed(2)} seconds · source media checked again on export` }] };
+    } catch {
+      return validateAndHealReelProject(project);
+    }
   }, [project, advanced]);
   const assCompatibility = useMemo(
     () => getAssRenderCompatibility(project.captionStyle),
@@ -170,14 +185,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     });
   };
 
-  const handleDownloadVideo = () => {
-    if (!renderResult?.videoUrl) return;
-    const a = document.createElement('a');
-    a.href = renderResult.videoUrl;
-    a.download = `${project.title || 'reel'}_final.mp4`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownloadVideo = async () => {
+    if (!renderResult?.videoUrl || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadSuccess(false);
+    const cleanTitle = (project.title || 'reel').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${cleanTitle}_final.mp4`;
+    const success = await downloadFileReliably(renderResult.videoUrl, filename);
+    setIsDownloading(false);
+    if (success) {
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 5000);
+    }
   };
 
   return (
@@ -287,11 +306,31 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div className="space-y-3 pt-2">
                 <Button
                   onClick={handleDownloadVideo}
-                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98] cursor-pointer"
+                  disabled={isDownloading}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98] cursor-pointer disabled:opacity-75"
                 >
-                  <Download className="w-4 h-4 stroke-[2.5]" />
-                  Download Final MP4 Video
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-black" />
+                      <span>Downloading Video File...</span>
+                    </>
+                  ) : downloadSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      <span>Video Downloaded! Click to Download Again</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 stroke-[2.5]" />
+                      <span>Download Final MP4 Video</span>
+                    </>
+                  )}
                 </Button>
+                {downloadSuccess && (
+                  <p className="text-center text-xs text-emerald-400 font-medium animate-in fade-in">
+                    ✓ Video saved to your Downloads folder!
+                  </p>
+                )}
 
                 {/* Subtitle / Transcript Multi-Format Export Card */}
                 <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">

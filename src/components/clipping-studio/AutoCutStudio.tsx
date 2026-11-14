@@ -54,6 +54,7 @@ import { AutoCutMulticamera } from './AutoCutMulticamera';
 import { AutoCutStoryReview } from './AutoCutStoryReview';
 import { planStory, StoryOverrideSchema, type StoryOverride } from '@/lib/auto-cut/story-ramp';
 import { createStoryReel, type PreparedRamp } from '@/lib/auto-cut/story-ramp-reel';
+import { platforms, PlatformDraftSchema, PlatformSchema, validPlatformDuration, platformOutput, planPlatformStory, type AutoCutPlatform } from '@/lib/auto-cut/platform-presets';
 import { z } from 'zod';
 import { CameraSyncSchema, editCameraShot, recommendCamera, switchCameraRange, type CameraSync } from '@/lib/auto-cut/multicamera';
 import { defaultNaturalTransitions, NaturalTransitionConfigSchema, naturalTransitionNames, type NaturalTransitionConfig } from '@/lib/auto-cut/natural-transitions';
@@ -205,6 +206,7 @@ function readDraft(key: string | null) {
       masterCamera: typeof saved.masterCamera === 'string' ? saved.masterCamera : '',
       cameraEdited: saved.cameraEdited === true,
       preserveStory: saved.preserveStory === true,
+      analysisFingerprint: typeof saved.analysisFingerprint === 'string' ? saved.analysisFingerprint : '',
       storyOverrides: z.record(z.string(), StoryOverrideSchema).safeParse(saved.storyOverrides).data ?? {},
       cameraSources: Array.isArray(saved.cameraSources) ? saved.cameraSources.filter((id: unknown) => typeof id === 'string').slice(0, 3) as string[] : undefined,
     };
@@ -309,6 +311,16 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   const transition: TransitionStyle = 'cut';
   const [showCaptions, setShowCaptions] = useState(savedDraft?.showCaptions ?? true);
   const [preserveStory, setPreserveStory] = useState(savedDraft?.preserveStory ?? false);
+  const platformKey = draftKey ? draftKey + ':platforms' : null;
+  const [platformDraft, setPlatformDraft] = useState<z.infer<typeof PlatformDraftSchema>>(() => {
+    try { if (platformKey) return PlatformDraftSchema.parse(JSON.parse(localStorage.getItem(platformKey) ?? 'null')); } catch { /* Use the legacy workflow. */ }
+    return { platform: null, durations: {}, versions: [] };
+  });
+  const platform = platformDraft.platform;
+  const [analysisFingerprint, setAnalysisFingerprint] = useState(savedDraft?.analysisFingerprint ?? '');
+  useEffect(() => {
+    try { if (platformKey) localStorage.setItem(platformKey, JSON.stringify(platformDraft)); } catch { /* The current editor still has its settings. */ }
+  }, [platformKey, platformDraft]);
   const [storyOverrides, setStoryOverrides] = useState<Record<string, StoryOverride>>(savedDraft?.storyOverrides ?? {});
   const [preparingStory, setPreparingStory] = useState(false);
   const [storyError, setStoryError] = useState('');
@@ -447,8 +459,10 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   const [previewMuted, setPreviewMuted] = useState(false);
   const [activeAuditionClip, setActiveAuditionClip] = useState<AutoCutClipCandidate | null>(null);
 
-  const targetDurationSeconds =
+  const platformDuration = platform ? platformDraft.durations[platform] ?? 60 : 60;
+  const targetDurationSeconds = platform ? (validPlatformDuration(platform, platformDuration) ? platformDuration : 60) :
     durationPreset === 'custom' ? customDuration : Number(durationPreset);
+  const storyEnabled = Boolean(platform) || preserveStory;
 
   useEffect(() => {
     if (!draftKey || !hasRun) return;
@@ -468,14 +482,16 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
         naturalTransitions,
         showCaptions,
         preserveStory, storyOverrides,
+        analysisFingerprint,
         cameraMode, cameraSync, masterCamera, cameraEdited, cameraSources: additionalSources,
-        settings: { analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality },
+        settings: { analysisMethod, mode, targetDurationSeconds: platform ? (durationPreset === 'custom' ? customDuration : Number(durationPreset)) : targetDurationSeconds,
+          intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality },
       });
       if (cameraMode !== 'single') localStorage.setItem(draftKey, draft);
       else localStorage.removeItem(draftKey);
       sessionStorage.setItem(draftKey, draft);
     } catch { /* Draft remains available in the current editor. */ }
-  }, [draftKey, hasRun, sourceCandidates, candidates, scenes, usingScenes, analysisNotice, recipeNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality, hook, hookDuration, brollEdits, brollIgnored, brollFootage, naturalTransitions, showCaptions, cameraMode, cameraSync, masterCamera, cameraEdited, additionalSources, preserveStory, storyOverrides]);
+  }, [draftKey, hasRun, sourceCandidates, candidates, scenes, usingScenes, analysisNotice, recipeNotice, analysisMethod, mode, targetDurationSeconds, intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality, hook, hookDuration, brollEdits, brollIgnored, brollFootage, naturalTransitions, showCaptions, cameraMode, cameraSync, masterCamera, cameraEdited, additionalSources, preserveStory, storyOverrides, analysisFingerprint, platform, durationPreset, customDuration]);
 
   const previewAsset = activeProject?.mediaAssets.find(asset => asset.id === activeAuditionClip?.sourceVideoId) ?? activeAsset;
   const mediaWebUrl = previewAsset ? getMediaAssetWebUrl(previewAsset) : '';

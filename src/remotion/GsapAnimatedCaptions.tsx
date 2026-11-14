@@ -7,6 +7,7 @@ import { getGoogleFontUrl } from '../lib/caption-maker/google-fonts';
 import { getKeywordEmoji } from '../lib/caption-maker/hinglish-and-emoji';
 import {
   getActiveTranscriptWordAtTime,
+  getCaptionWordTargetScale,
   getEmojiBounceOffset,
   getStaggeredAnimationTiming,
   getWordAnimationWindow,
@@ -215,13 +216,10 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
 
       if (style.captionMode === 'word-by-word') {
         // Mode 1: Individual word animations
-        const targetScale =
-          style.highlightAnimation === 'color-change' || style.highlightAnimation === 'none'
-            ? 1.0
-            : Math.min(1.2, style.zoomScale ?? 1.15);
-
         words.forEach((w) => {
           const target = `.w-item-${w.id}`;
+          const targetScale = getCaptionWordTargetScale(style, w.intensity);
+          const isFlatMode = targetScale <= 1.0;
           const isSpeaker2 =
             w.speakerId === 'Speaker 2' ||
             w.speakerId?.toLowerCase().includes('speaker 2') ||
@@ -280,10 +278,10 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
             }
           } else {
             // Default appearance
-            gsap.set(target, { autoAlpha: 0, scale: 0.85 });
+            gsap.set(target, { autoAlpha: 0, scale: isFlatMode ? 1.0 : 0.85 });
             if (wordDuration > 0) {
-              tl.to(target, { autoAlpha: 1, scale: targetScale, color: activeColor, duration: Math.min(0.06, wordWindow.entryDuration), ease: 'power2.out' }, wordWindow.start);
-              if (exitDuration > 0) tl.to(target, { autoAlpha: 0, scale: 0.9, duration: exitDuration, ease: 'power1.in' }, wordWindow.exitStart);
+              tl.to(target, { autoAlpha: 1, scale: targetScale, color: activeColor, duration: Math.min(0.06, wordWindow.entryDuration), ease: targetScale > 1.0 ? 'power2.out' : 'none' }, wordWindow.start);
+              if (exitDuration > 0) tl.to(target, { autoAlpha: 0, scale: isFlatMode ? 1.0 : 0.9, duration: exitDuration, ease: 'power1.in' }, wordWindow.exitStart);
             }
           }
         });
@@ -431,24 +429,8 @@ export const GsapAnimatedCaptions: React.FC<GsapAnimatedCaptionsProps> = ({
             const isWordBadge = highlightAnim === 'background' || Boolean(style.activeWordBgColor && highlightAnim !== 'color-change' && highlightAnim !== 'none');
             const wordBadgeColor = style.activeWordBgColor || style.importantColor;
 
-            // Target zoom scale: Base scale + AI Vocal Intensity punch
-            let targetScale = 1.0;
-            if (highlightAnim === 'pop' || highlightAnim === 'scale') {
-              targetScale = style.zoomScale ?? 1.15;
-            } else if (highlightAnim === 'background') {
-              targetScale = 1.04;
-            } else {
-              targetScale = 1.0; // Flat text for color-change, none, underline!
-            }
-
-            // AI Kinetic Vocal Intensity punch
-            if (w.intensity === 'punch') {
-              targetScale *= 1.22;
-            } else if (w.intensity === 'climax') {
-              targetScale *= 1.35;
-            } else if (w.intensity === 'whisper') {
-              targetScale *= 0.90;
-            }
+            // Target zoom scale: Single source of truth helper
+            const targetScale = getCaptionWordTargetScale(style, w.intensity);
 
             const extraMargin = targetScale > 1.0
               ? Math.round((targetScale - 1) * 0.45 * fontSize)
