@@ -54,7 +54,7 @@ remain at their original rate, preserving caption timing, waveform alignment and
 linked audio sync. A separate media-retiming implementation is still required
 for slow/fast-motion video with corresponding audio/caption mapping.
 
-PASS: typecheck, `npm run test:timeline-motion`, advanced-edit/audio/caption
+PASS: typecheck, `npx tsx tests/timeline_motion.test.ts`, advanced-edit/audio/caption
 regressions, timeline scrubbing, caption motion/highlight combinations and all
 63 main tests. The motion suite checks interpolation, Bezier curves, velocity
 integration, presets, trim/split/roll/slide continuity, copy isolation, JSON

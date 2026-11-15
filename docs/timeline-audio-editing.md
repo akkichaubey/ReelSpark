@@ -54,7 +54,7 @@ Existing source, track, timing and clip limits continue to apply.
 
 ## Verification — 2026-10-31
 
-`npm run test:timeline-audio` checks interpolation, source clocks after
+`npx tsx tests/timeline_audio_editing.test.ts` checks interpolation, source clocks after
 trim/split/slip/loop, independent/legacy fades, gain limits, mute/solo, detachment,
 idempotency, locks, no-audio guards, linked movement, resync, reference remapping,
 immutable data and accessible native handles. See the timeline verification

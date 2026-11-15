@@ -12,6 +12,12 @@ import { measureSpeechSignal } from './speech';
 import { SemanticQualitySchema } from './quality';
 
 const run = promisify(execFile);
+// Keep provider grammar small. The full response contract is validated locally.
+const geminiAnswerShape = {
+  type: 'object',
+  properties: { clips: { type: 'array', items: { type: 'object' } } },
+  required: ['clips'],
+};
 const answerSchema = z.object({ clips: z.array(z.object({
   id: z.string(), title: z.string().min(1).max(160), reason: z.string().min(1).max(1500),
   visualScore: z.number().min(0).max(100), speechScore: z.number().min(0).max(100),
@@ -119,7 +125,7 @@ Return JSON ONLY: {"clips":[{"id":"exact input id","title":"observed content","r
     let text: string | undefined;
     if (identity.provider === 'gemini') {
       try {
-        text = await generateWithGemini({ parts: [{ text: [instruction, hookInstruction, qualityInstruction, framingInstruction, storyInstruction].join('\n') }, ...parts], model: identity.model, responseMimeType: 'application/json', responseJsonSchema: z.toJSONSchema(answerSchema), temperature: 0.1, signal, retryRateLimit: false });
+        text = await generateWithGemini({ parts: [{ text: [instruction, hookInstruction, qualityInstruction, framingInstruction, storyInstruction].join('\n') }, ...parts], model: identity.model, responseMimeType: 'application/json', responseJsonSchema: geminiAnswerShape, temperature: 0.1, signal, retryRateLimit: false });
       } catch (error) {
         signal?.throwIfAborted();
         if (analyzed.length && isTemporaryGeminiError(error) &&

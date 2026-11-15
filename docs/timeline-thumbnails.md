@@ -43,7 +43,7 @@ It shows source footage, not the composited motion/caption/effects output.
 ## Verification
 
 PASS: typecheck, shared thumbnail module/component lint,
-`npm run test:timeline-thumbnails`, `npm run test:timeline` and timeline scrubbing
+`npx tsx tests/timeline_thumbnails.test.ts`, `npx tsx tests/professional_timeline.test.ts` and timeline scrubbing
 regressions. Checks cover sample density/timestamps, source bounds and loops,
 viewport bounds, tiles beyond index 100, lazy placeholders, real FFmpeg frame
 generation, waveform/cache/access/cancellation behavior and Saved Reels retention.

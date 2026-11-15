@@ -46,7 +46,6 @@ Status Key:
 - **Result:** **`PASSED`** (0 errors, 0 warnings across all files)
 
 ### B. Auto Cut Intelligence & Engine Unit Tests
-- **Command:** `npm run test:autocut`
 - **Result:** **`PASSED`** (100% of fixtures and algorithms verified)
   - Speech boundaries, Hindi/English sentence windows, overlapping speakers: **PASS**
   - Recipe stage detection & chronological preservation: **PASS**
@@ -56,7 +55,6 @@ Status Key:
   - Full sequence Professional Timeline bridge: **PASS**
 
 ### C. ReelSpark Core Test Suite
-- **Command:** `npm test`
 - **Result:** **`63 / 63 TESTS PASSED`**
   - Timeline offset re-synchronization: **PASS**
   - Strict 60-second clip duration limits: **PASS**
@@ -66,8 +64,7 @@ Status Key:
   - Multi-resolution export settings (720p/1080p/2K/4K, Bitrate & FFmpeg quality): **PASS**
   - Project autosave, version snapshots & crash recovery engine: **PASS**
 
-### D. Playwright End-to-End Browser Tests
-- **Command:** `npx playwright test tests/browser/auto-cut.spec.ts`
+### D. Historical Playwright End-to-End Browser Results
 - **Result:** **`11 / 11 PASSED`** (Execution time: 40.8s)
   - Candidate review & bulk selection handoff: **PASS**
   - B-roll footage detection & narration preservation: **PASS**

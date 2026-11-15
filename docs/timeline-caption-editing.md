@@ -46,7 +46,7 @@ Reels and portable JSON retain the existing source/group data structure.
 
 ## Verification
 
-`npm run test:timeline-captions` checks spelling/timing edits, frame/neighbor/clip
+`npx tsx tests/timeline_caption_editing.test.ts` checks spelling/timing edits, frame/neighbor/clip
 bounds, locks, source immutability, archived-source isolation, source-to-timeline
 render mapping, import roundtrip, silence/end-boundary highlighting and slider
 markup. Caption preview regression tests cover nine motion presets × seven

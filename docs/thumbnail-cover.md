@@ -47,7 +47,7 @@ the existing safe custom-background image retention path for Saved Reels.
 - Two browser cases passed: add/remove/undo/save/reopen and initial playback;
   invalid/valid image replacement; export option payloads; real JPG/PNG download
   file signatures.
-- `npm run test:thumbnail-cover` exercised actual FFmpeg output at 25 and 60 FPS,
+- `npx tsx tests/thumbnail_cover_render.test.ts` exercised actual FFmpeg output at 25 and 60 FPS,
   including frame-only, frame-plus-artwork and artwork-only modes. It measured
   first/next-frame pixels, unchanged frame counts/start times/duration, and
   identical copied audio hashes. Original no-cover sources remained unchanged.

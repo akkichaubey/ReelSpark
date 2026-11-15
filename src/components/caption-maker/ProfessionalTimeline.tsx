@@ -39,8 +39,6 @@ import {
   Upload,
   Loader2,
   Sparkles,
-  Download,
-  Image as ImageIcon,
 } from "lucide-react";
 import type { CaptionProject, ImageAsset, AudioAsset } from "@/lib/caption-maker/types";
 import { uploadFileWithProgress, UploadCancelledError } from "@/lib/upload-with-progress";
@@ -131,7 +129,6 @@ export function ProfessionalTimeline({
   onCaptionSourceChange,
   onAutoSyncCaptions,
   isSyncingCaptions = false,
-  onCaptionEffects,
   thumbnailCoverUrl,
   thumbnailCoverError,
   onThumbnailCoverChange,
@@ -780,7 +777,7 @@ export function ProfessionalTimeline({
         t.id === trackId ? { ...t, mainVideoMode: targetMode } : t,
       );
 
-      let nextAssets = [...timeline.assets];
+      const nextAssets = [...timeline.assets];
       if (originalVideoAsset && !nextAssets.some((a) => a.id === originalVideoAsset.id)) {
         nextAssets.push(originalVideoAsset);
       }
@@ -912,7 +909,6 @@ export function ProfessionalTimeline({
 
     try {
       const isImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico|tiff|tif|heic|heif)$/i.test(file.name);
-      const isVid = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi)$/i.test(file.name);
       const uploadType: "image" | "video" = isImg ? "image" : "video";
 
       const result = await uploadFileWithProgress<{

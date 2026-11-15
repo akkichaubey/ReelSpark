@@ -32,7 +32,6 @@ import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -54,7 +53,7 @@ import { AutoCutMulticamera } from './AutoCutMulticamera';
 import { AutoCutStoryReview } from './AutoCutStoryReview';
 import { planStory, StoryOverrideSchema, type StoryOverride } from '@/lib/auto-cut/story-ramp';
 import { createStoryReel, type PreparedRamp } from '@/lib/auto-cut/story-ramp-reel';
-import { platforms, PlatformDraftSchema, PlatformSchema, validPlatformDuration, platformOutput, planPlatformStory, type AutoCutPlatform } from '@/lib/auto-cut/platform-presets';
+import { platforms, PlatformDraftSchema, PlatformSchema, validPlatformDuration, planPlatformStory } from '@/lib/auto-cut/platform-presets';
 import { z } from 'zod';
 import { CameraSyncSchema, editCameraShot, recommendCamera, switchCameraRange, type CameraSync } from '@/lib/auto-cut/multicamera';
 import { defaultNaturalTransitions, NaturalTransitionConfigSchema, naturalTransitionNames, type NaturalTransitionConfig } from '@/lib/auto-cut/natural-transitions';
@@ -463,6 +462,12 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   const targetDurationSeconds = platform ? (validPlatformDuration(platform, platformDuration) ? platformDuration : 60) :
     durationPreset === 'custom' ? customDuration : Number(durationPreset);
   const storyEnabled = Boolean(platform) || preserveStory;
+  const platformAvailable = cameraMode === 'single' && !additionalSources.length && activeAsset?.metadata.hasVideo;
+  const fingerprintFor = (method: typeof analysisMethod) => JSON.stringify([
+    activeAsset?.id, activeAsset?.localPath, activeAsset?.fileSizeBytes, activeAsset?.metadata.durationMs,
+    method, mode, intensity, pacing, sceneSelection,
+  ]);
+  const currentPlatformFingerprint = fingerprintFor(analysisMethod);
 
   useEffect(() => {
     if (!draftKey || !hasRun) return;
@@ -487,7 +492,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
         settings: { analysisMethod, mode, targetDurationSeconds: platform ? (durationPreset === 'custom' ? customDuration : Number(durationPreset)) : targetDurationSeconds,
           intensity, pacing, silenceRemoval, sceneSelection, transition, recipeStyle, quality },
       });
-      if (cameraMode !== 'single') localStorage.setItem(draftKey, draft);
+      if (cameraMode !== 'single' || platform) localStorage.setItem(draftKey, draft);
       else localStorage.removeItem(draftKey);
       sessionStorage.setItem(draftKey, draft);
     } catch { /* Draft remains available in the current editor. */ }
@@ -550,6 +555,13 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   // Run AI Auto Cut
   const runAutoCut = async (method = analysisMethod) => {
     if (!activeProject || !activeAsset) return;
+    if (platform && !platformAvailable) { setError('Choose one source video in Single Video mode for a platform draft.'); return; }
+    if (platform && analysisFingerprint === fingerprintFor(method) && sourceCandidates.length) {
+      setError(null);
+      setAnalysisNotice('Reused source analysis for this platform draft.');
+      setHookPreview(undefined);
+      return;
+    }
     setIsAnalyzing(true);
     setError(null);
     const controller = new AbortController();
@@ -584,13 +596,13 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
             mediaAssetId: source.id,
             settings: {
               analysisMethod: method,
-              preserveStory: preserveStory && cameraMode === 'single' && !additionalSources.length ? true : undefined,
+              preserveStory: storyEnabled && cameraMode === 'single' && !additionalSources.length ? true : undefined,
               mode,
               storyGenre: cameraMode === 'single' ? undefined : mode === 'custom' ? 'product' : mode === 'auto_highlight' ? 'vlog' : undefined,
               targetDurationSeconds,
               intensity,
               pacing,
-              silenceRemoval: preserveStory && cameraMode === 'single' && !additionalSources.length ? 'disabled' : silenceRemoval,
+              silenceRemoval: storyEnabled && cameraMode === 'single' && !additionalSources.length ? 'disabled' : silenceRemoval,
               sceneSelection,
               transition,
               quality,
@@ -609,6 +621,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
       };
       const data = await analyzeSource(activeAsset);
       if (controller.signal.aborted || version !== requestVersion.current) return;
+      setAnalysisFingerprint(platform ? fingerprintFor(method) : '');
       if (mode === 'cooking_recipe') {
         const sources = [activeAsset, ...additionalSources.flatMap(id => activeProject.mediaAssets.find(asset => asset.id === id) ?? [])];
         const steps: AutoCutClipCandidate[] = [];
@@ -957,7 +970,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
   };
   const selectedCount = candidates.filter((c) => c.selected).length;
   const storyPlan = useMemo(() => {
-    if (!preserveStory || !activeAsset?.metadata.hasVideo || cameraMode !== 'single' || additionalSources.length) return undefined;
+    if (!storyEnabled || !platformAvailable || !activeAsset || (platform && analysisFingerprint !== currentPlatformFingerprint)) return undefined;
     const duplicates = new Set(duplicateClusters.flatMap(group => group.alternatives.filter(item =>
       item.match.kind === 'Exact file match' || item.match.kind === 'Visual duplicate').map(item => item.clip.id)));
     const locked = candidates.filter(clip => clip.locked && clip.selected);
@@ -965,9 +978,11 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
       duplicateDecision(clip, duplicateDecisions) !== 'exclude').map(clip => ({ ...clip,
         locked: clip.locked || locked.some(range => range.startMs < clip.endMs && range.endMs > clip.startMs),
       }));
-    return planStory(footage, targetDurationSeconds, activeAsset.metadata.hasAudio, storyOverrides, duplicates);
-  }, [preserveStory, activeAsset, cameraMode, additionalSources, duplicateClusters, candidates, sourceCandidates,
-    duplicateDecisions, targetDurationSeconds, storyOverrides]);
+    return platform ? planPlatformStory(footage, targetDurationSeconds, activeAsset.metadata.hasAudio, storyOverrides, duplicates,
+      naturalTransitions.profile === 'cinematic') :
+      { ...planStory(footage, targetDurationSeconds, activeAsset.metadata.hasAudio, storyOverrides, duplicates), blends: new Set<string>() };
+  }, [storyEnabled, platformAvailable, activeAsset, platform, analysisFingerprint, currentPlatformFingerprint,
+    duplicateClusters, candidates, sourceCandidates, duplicateDecisions, targetDurationSeconds, storyOverrides, naturalTransitions.profile]);
 
   const prepareStory = async (save: boolean) => {
     if (!storyPlan || !activeProject || !activeAsset || storyRequest.current) return;
@@ -990,10 +1005,19 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
         ramps.push(...data.assets);
       }
       controller.signal.throwIfAborted();
-      const project = createStoryReel(activeAsset, storyPlan, ramps, activeProject.name + ' — Story draft', showCaptions);
+      const title = platform ? activeProject.name + ' — ' + platforms[platform].label + ' · ' + targetDurationSeconds + ' s' :
+        activeProject.name + ' — Story draft';
+      const project = createStoryReel(activeAsset, storyPlan, ramps, title, showCaptions,
+        platform ? { platform, targetSeconds: targetDurationSeconds, blends: storyPlan.blends } : undefined);
       if (save) {
         const reel = await saveReel(project, { originProjectId: activeProject.id, originProjectName: activeProject.name });
-        if (!controller.signal.aborted) router.push('/reel-maker?savedReel=' + encodeURIComponent(reel.id));
+        if (!controller.signal.aborted) {
+          if (platform) setPlatformDraft(previous => ({ ...previous, versions: [...previous.versions, {
+            platform, targetSeconds: targetDurationSeconds, reelId: reel.id, outputFrames: storyPlan.outputFrames,
+            clipCount: storyPlan.rows.filter(row => row.included).length,
+          }] }));
+          router.push('/reel-maker?savedReel=' + encodeURIComponent(reel.id));
+        }
       } else {
         videoRef.current?.pause(); setHookTime(0); setHookPlaying(true); setHookPreview(project);
       }
@@ -1336,6 +1360,14 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
 
           {/* 3. Duration Presets */}
           <Card className="p-5 space-y-4">
+            <Select value={platform ?? 'custom'} disabled={isAnalyzing || isOpening}
+              onValueChange={value => { setPlatformDraft(previous => ({ ...previous, platform: PlatformSchema.safeParse(value).data ?? null })); setHookPreview(undefined); }}>
+              <SelectTrigger aria-label="Target platform"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="custom">Custom workflow</SelectItem>
+                {PlatformSchema.options.map(value => <SelectItem key={value} value={value}>{platforms[value].label}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
                 3. Choose reel length
@@ -1345,7 +1377,29 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
               </Badge>
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
+            {platform ? <div className="space-y-2 text-xs">
+              <div className="flex flex-wrap gap-2">
+                {platforms[platform].durations.map(seconds => <Button key={seconds} type="button" size="sm" variant="outline"
+                  disabled={isAnalyzing || isOpening} aria-pressed={targetDurationSeconds === seconds}
+                  onClick={() => { setPlatformDraft(previous => ({ ...previous, durations: { ...previous.durations, [platform]: seconds } })); setHookPreview(undefined); }}>
+                  {seconds}s
+                </Button>)}
+              </div>
+              {platforms[platform].maximum > 60 && <label className="flex items-center gap-2">
+                Custom platform duration (seconds)
+                <input type="number" min={60} max={platforms[platform].maximum} step={1} key={platform + targetDurationSeconds}
+                  defaultValue={targetDurationSeconds} className="w-20 rounded border bg-transparent p-1" disabled={isAnalyzing || isOpening}
+                  onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                  onBlur={event => {
+                    const seconds = event.currentTarget.valueAsNumber;
+                    if (!validPlatformDuration(platform, seconds)) { event.currentTarget.value = String(targetDurationSeconds); return; }
+                    setPlatformDraft(previous => ({ ...previous, durations: { ...previous.durations, [platform]: seconds } })); setHookPreview(undefined);
+                  }} />
+              </label>}
+              <p>1080 × 1920 · 30 fps · H.264 / AAC. Check publishing eligibility separately.</p>
+              {!platformAvailable && <p role="status">Platform drafts use one video in Single Video mode.</p>}
+              {storyPlan && <p role="status">{storyPlan.rows.filter(row => row.included).length} planned clips · {(storyPlan.outputFrames / 30).toFixed(2)} s final timeline</p>}
+            </div> : <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
               {DURATION_PRESETS.map((preset) => {
                 const isSelected = durationPreset === preset.value;
                 return (
@@ -1365,9 +1419,9 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                   </button>
                 );
               })}
-            </div>
+            </div>}
 
-            {durationPreset === 'custom' && (
+            {!platform && durationPreset === 'custom' && (
               <div className="pt-2 flex items-center space-x-4">
                 <input
                   type="range"
@@ -1385,13 +1439,20 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                 </span>
               </div>
             )}
+            {platformDraft.versions.length > 0 && <ul aria-label="Saved platform drafts" className="space-y-1 text-xs">
+              {platformDraft.versions.map(version => <li key={version.reelId}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => router.push('/reel-maker?savedReel=' + encodeURIComponent(version.reelId))}>
+                  {platforms[version.platform].label} · {version.targetSeconds} s target · {(version.outputFrames / 30).toFixed(2)} s · {version.clipCount} clips
+                </Button>
+              </li>)}
+            </ul>}
           </Card>
 
           {/* Trigger Button & Status */}
           <div className="space-y-3">
             <Button
               type="button"
-              disabled={isAnalyzing || isOpening || !activeAsset || uploadProgress !== null}
+              disabled={isAnalyzing || isOpening || !activeAsset || uploadProgress !== null || Boolean(platform && !platformAvailable)}
               onClick={() => void runAutoCut()}
               className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-sm shadow-xl shadow-amber-400/15 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
             >
@@ -1414,8 +1475,8 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
 
             {isAnalyzing && <Button type="button" onClick={() => { requestVersion.current++; requestRef.current?.abort(); setIsAnalyzing(false); setProgressStage('Cancelled'); }}>Cancel analysis</Button>}
             {hasRun && analysisNotice && <p role="status" className="text-xs text-zinc-400">{analysisNotice}</p>}
-            {hasRun && achievedDurationMs < targetDurationSeconds * 1000 && <p className="text-xs text-amber-300" role="status">Selected footage is shorter than the target. Select more clips or reduce the target; footage will not be extended past its source.</p>}
-            {hasRun && achievedDurationMs > targetDurationSeconds * 1000 && candidates.some(clip => clip.selected && clip.locked) &&
+            {!platform && hasRun && achievedDurationMs < targetDurationSeconds * 1000 && <p className="text-xs text-amber-300" role="status">Selected footage is shorter than the target. Select more clips or reduce the target; footage will not be extended past its source.</p>}
+            {!platform && hasRun && achievedDurationMs > targetDurationSeconds * 1000 && candidates.some(clip => clip.selected && clip.locked) &&
               <p className="text-xs text-amber-300" role="status">The draft exceeds the target duration. Locked ranges retain their full length.</p>}
             {error && (
               <Alert variant="destructive">
@@ -1426,6 +1487,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                   {analysisMethod === 'semantic' && (
                     <Button type="button" size="sm" variant="outline" onClick={() => {
                       setAnalysisMethod('scene_audio');
+                      if (platform) setAnalysisMethod('scene_audio');
                       void runAutoCut('scene_audio');
                     }}>Use local analysis</Button>
                   )}
@@ -1884,7 +1946,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                 </div>
               </div>
 
-              <div className="space-y-2 pt-2">
+              {!platform && <div className="space-y-2 pt-2">
                 <Button
                   type="button"
                   onClick={addToTimeline}
@@ -1904,7 +1966,7 @@ const AutoCutWorkspace: React.FC<{ visible: boolean; draftKey: string | null; du
                   <Clapperboard className="w-3.5 h-3.5 text-amber-400" />
                   <span>{isOpening ? 'Saving sequence…' : 'Open in timeline editor'}</span>
                 </Button>
-              </div>
+              </div>}
             </div>
           )}
         </div>

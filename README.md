@@ -103,24 +103,10 @@ Navigate to:
 - **AI Reel Maker**: [http://localhost:3000/reel-maker](http://localhost:3000/reel-maker)
 - **AI Social Post Studio**: [http://localhost:3000/social-post](http://localhost:3000/social-post)
 
-### 4. Run Automated Tests
+### 4. Check the Build
 ```bash
-# Run comprehensive core test runner
-npm test
-
-# Run social media safe-zone measurement system test
-npm run test:safe-zone
-
-# Run caption & thumbnail safe-zone two-way sync test
-npm run test:safe-sync
-
-# Run comprehensive preset analysis & isolation test
-npm run test:presets
-
-# Run TypeScript type check
 npm run typecheck
-
-# Run Next.js production build check
+npm run lint
 npm run build
 ```
 
@@ -187,4 +173,4 @@ Open any dashboard project in **Video & Audio Studio**. The same workspace provi
 - **Save / Sync** saves locally and uses the existing optional D1 metadata integration. Cloud failure is reported and keeps the local copy. Original media ownership and private-storage access checks remain enforced.
 - Existing AI manifests and timeline documents remain separate, linked records. No bulk data migration is required. Shared-source deletion is blocked while another saved project depends on that media. Missing media does not erase analysis; restore or relink it before timeline imports or exports.
 
-Run `npm run test:studio` for bridge, initialization, ownership, import, duplication, and data-preservation checks. See [STUDIO_MERGE_PLAN.md](STUDIO_MERGE_PLAN.md) for the review and validation record.
+See [STUDIO_MERGE_PLAN.md](STUDIO_MERGE_PLAN.md) for the Studio review and validation record.

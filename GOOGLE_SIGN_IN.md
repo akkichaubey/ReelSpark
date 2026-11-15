@@ -42,12 +42,10 @@ Official references: [Google web-server OAuth](https://developers.google.com/ide
 ## Verification
 
 ```powershell
-npm run test:google-auth
-npm run test:social-platform
 npm run build
 ```
 
-The Google suite uses local signing keys and mocked Google/D1 endpoints. It verifies first and returning login, session rotation, current-user lookup, logout, password registration/login, email collision handling, PKCE exchange, expired/mismatched state, nonce, audience, unverified email, forged signatures, missing settings, and database failure. It creates no real Google or Cloudflare accounts.
+Historical automated coverage used local signing keys and mocked Google/D1 endpoints. It covered first and returning login, session rotation, logout, password login, email collisions, OAuth validation, and database failure.
 
 Live Google consent and real-account sign-in still require your OAuth Client ID and Secret. These were not configured during implementation. Do not put real tokens or client secrets into `.env.example` or Git.
 

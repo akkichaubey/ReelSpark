@@ -51,7 +51,7 @@ Verification after fixes:
 | --- | --- |
 | `npm run typecheck` | PASS |
 | `npm run build` | PASS, no prior tracing warning |
-| `npm run test:autocut -- --render` | PASS: modes/durations, rejection, bounds, original media, real tone/no-audio/silence fixtures, real route validation/auth/origin/cross-account checks, saved sequence restoration, caption mapping, and real Remotion export with audio |
+| `npx tsx tests/auto_cut_intelligence.test.ts --render` | PASS: modes/durations, rejection, bounds, original media, real tone/no-audio/silence fixtures, real route validation/auth/origin/cross-account checks, saved sequence restoration, caption mapping, and real Remotion export with audio |
 | `npx playwright test tests/browser/auto-cut.spec.ts` | PASS: 2 component browser tests covering candidate review, selection totals, regeneration, full sequence handoff, clip-library insertion, desktop/mobile overflow, errors, cancellation and source changes |
 | Studio, timeline, caption-sync and Saved Reels suites | PASS |
 | Auto Cut plus live read-only Playwright suites | PASS: 5 browser tests including existing live authentication gates and routes |
@@ -75,10 +75,10 @@ Verdict at audit time: partial implementation; not ready to claim the supplied s
 | `npm run typecheck` | PASS |
 | `npm run build` | PASS; Auto Cut filesystem access triggers a whole-project tracing warning |
 | `npm run lint` | FAIL: 29 errors, 203 warnings across the repository; not all attributable to Auto Cut |
-| `npm run test:autocut` | PASS, six existing test groups including a generated 8-second FFmpeg video |
-| `npm run test:studio` | PASS |
-| `npm run test:timeline` | PASS, including real media fixtures |
-| `npm run test:caption-sync` | PASS, including a rendered FFmpeg fixture |
+| `npx tsx tests/auto_cut_intelligence.test.ts` | PASS, six existing test groups including a generated 8-second FFmpeg video |
+| `npx tsx tests/unified_studio.test.ts` | PASS |
+| `npx tsx tests/professional_timeline.test.ts` | PASS, including real media fixtures |
+| `npx tsx tests/caption_sync.test.ts` | PASS, including a rendered FFmpeg fixture |
 | Live Chrome `/auto-cut` | Sign-in gate loads without page exceptions; sign-in dialog opens |
 | Anonymous Auto Cut POST | Returns HTTP 401 |
 | Sign-in gate widths 1440 and 390 | No horizontal document overflow |

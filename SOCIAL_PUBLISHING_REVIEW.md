@@ -82,7 +82,7 @@ store is still needed to retain uploaded files across instance replacement.
 - npm run typecheck: passed.
 - npm run build: passed, including new publishing routes and instrumentation.
 - npm run verify:server: all 20 regression suites passed in temporary storage.
-- New npm run test:publishing-security checks real FFmpeg-generated video metadata,
+- The security suite (`npx tsx tests/social_publishing_security.test.ts`) checks real FFmpeg-generated video metadata,
   traversal/cross-account denial, signed HTTP range downloads, signature tampering,
   OAuth expiry/replay/owner binding, production secret enforcement and non-admin
   credential rejection.
@@ -128,7 +128,7 @@ not independently revalidated against live documentation in this change.
   process, legacy tokens, production HTTPS/key rejection, Render URL detection and
   provider callback construction. All 21 regression suites passed. TypeScript and
   the production build passed, and the isolated production HTTP smoke test passed.
-- `npm run test:runtime:http` starts an isolated real production Node HTTP server
+- `node tests/runtime_http_smoke.cjs` starts an isolated real production Node HTTP server
   with fixture credentials and temporary storage. It verifies both main pages,
   account registration/session/logout, secure cookie flags, callback URL generation,
   CSRF rejection, honest missing-storage diagnostics and automatic processing of a

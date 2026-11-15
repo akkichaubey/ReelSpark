@@ -36,6 +36,6 @@ minimum durations, locked affected tracks and supported overlaps are validated
 atomically. Shortened fades are clamped inside their clips. No server restart,
 schema migration or media rewrite is needed.
 
-Verification: `npm run test:timeline-advanced`, timeline scrubbing and timeline
+Verification: `npx tsx tests/advanced_timeline_edits.test.ts`, timeline scrubbing and timeline
 QA regression suites, and TypeScript checks. These cover model behavior and
 rendered control contracts; full browser pointer QA is still pending.

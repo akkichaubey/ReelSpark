@@ -10,6 +10,8 @@
 
 ## 1. Executive Summary
 
+The November 15 cleanup removed seven wrappers with no remaining consumers and unused bindings in the Auto Cut and caption timeline components. TypeScript, the production build, and ESLint error checks passed. Targeted lint reported one existing native image warning in Auto Cut. Browser workflows and test suites were not run.
+
 ReelSpark has been upgraded to adopt **shadcn/ui** as its primary UI component system. This architectural migration ensures visual consistency, WCAG 2.2 accessibility compliance, responsive precision, and unified design token usage across all application views:
 - **`Dashboard`** (`/`)
 - **`AI Auto Cut Studio`** (`/auto-cut`)
@@ -40,13 +42,13 @@ All UI components across ReelSpark were audited and classified into three primar
 | **`Card`** | 2. Migrated to shadcn/ui | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` | [`src/components/ui/card.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/card.tsx) | **Newly Created & Deployed** |
 | **`Badge`** | 2. Migrated to shadcn/ui | `Badge` + `badgeVariants` (default, secondary, destructive, outline, success, warning, info) | [`src/components/ui/badge.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/badge.tsx) | **Newly Created & Deployed** |
 | **`Alert`** | 2. Migrated to shadcn/ui | `Alert`, `AlertTitle`, `AlertDescription` + variants | [`src/components/ui/alert.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/alert.tsx) | **Newly Created & Deployed** |
-| **`Progress`** | 2. Migrated to shadcn/ui | Accessible `progressbar` with smooth Amber fill | [`src/components/ui/progress.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/progress.tsx) | **Newly Created & Deployed** |
-| **`Skeleton`** | 2. Migrated to shadcn/ui | Tailwind pulse skeleton loader | [`src/components/ui/skeleton.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/skeleton.tsx) | **Newly Created & Deployed** |
-| **`Separator`** | 2. Migrated to shadcn/ui | Horizontal / Vertical decorative separator | [`src/components/ui/separator.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/separator.tsx) | **Newly Created & Deployed** |
-| **`Tabs`** | 2. Migrated to shadcn/ui | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | [`src/components/ui/tabs.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/tabs.tsx) | **Newly Created & Deployed** |
-| **`Switch`** | 2. Migrated to shadcn/ui | Accessible toggle switch with amber highlight | [`src/components/ui/switch.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/switch.tsx) | **Newly Created & Deployed** |
-| **`ScrollArea`** | 2. Migrated to shadcn/ui | Thin scrollbar wrapper container | [`src/components/ui/scroll-area.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/scroll-area.tsx) | **Newly Created & Deployed** |
-| **`Tooltip`** | 2. Migrated to shadcn/ui | Animated floating tooltip with arrow and focus triggers | [`src/components/ui/tooltip.tsx`](file:///d:/htdocs/Goal/react/demo/ReelSpark/src/components/ui/tooltip.tsx) | **Newly Created & Deployed** |
+| **`Progress`** | 2. Created during shadcn/ui migration | Accessible `progressbar` with smooth Amber fill | — | **Removed during cleanup (no consumers)** |
+| **`Skeleton`** | 2. Created during shadcn/ui migration | Tailwind pulse skeleton loader | — | **Removed during cleanup (no consumers)** |
+| **`Separator`** | 2. Created during shadcn/ui migration | Horizontal / Vertical decorative separator | — | **Removed during cleanup (no consumers)** |
+| **`Tabs`** | 2. Created during shadcn/ui migration | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | — | **Removed during cleanup (no consumers)** |
+| **`Switch`** | 2. Created during shadcn/ui migration | Accessible toggle switch with amber highlight | — | **Removed during cleanup (no consumers)** |
+| **`ScrollArea`** | 2. Created during shadcn/ui migration | Thin scrollbar wrapper container | — | **Removed during cleanup (no consumers)** |
+| **`Tooltip`** | 2. Created during shadcn/ui migration | Animated floating tooltip with arrow and focus triggers | — | **Removed during cleanup (no consumers)** |
 | **`Timeline & Playhead`** | 3. Specialized Custom | Drag-and-drop canvas + virtual timeline engine | `src/components/caption-maker/ProfessionalTimeline.tsx` | Kept Custom (Engine Core) |
 | **`Remotion Canvas`** | 3. Specialized Custom | Real-time WebGL/Canvas compositing player | `src/components/caption-maker/RemotionPlayerPreview.tsx` | Kept Custom (Video Renderer) |
 | **`Waveform Renderer`** | 3. Specialized Custom | Audio buffer canvas with interactive scrub bars | `src/components/caption-maker/InteractiveWaveform.tsx` | Kept Custom (Acoustic Waveform) |
@@ -172,9 +174,9 @@ All newly introduced shadcn/ui components automatically respect ReelSpark's dark
 
 All migrated shadcn/ui components have been compiled and verified:
 - **TypeScript Typecheck**: `npm run typecheck` passed with **0 errors**.
-- **Auto Cut Intelligence Tests**: `npm run test:autocut` passed **100%**.
+- **Auto Cut Intelligence Tests**: `npx tsx tests/auto_cut_intelligence.test.ts` passed **100%**.
 - **Core ReelSpark Test Suite**: `npm test` passed **63 / 63 tests**.
-- **Playwright Browser E2E Suite**: `npx playwright test tests/browser/auto-cut.spec.ts` passed **11 / 11 tests**.
+- **Historical Playwright Browser E2E Suite**: Auto Cut passed **11 / 11 tests** before the browser harness was removed.
 
 ---
 

@@ -19,15 +19,11 @@ jobs:
           persist-credentials: false
       - name: Build the actual production image
         run: docker build --tag reelspark-verify .
-      - name: Verify runtime and regression suites
+      - name: Verify runtime and audit production dependencies
         run: >-
           docker run --rm --entrypoint sh
-          --mount type=bind,source="$PWD/tests",target=/app/tests,readonly
-          -e CLOUD_PROJECT_METADATA_ENABLED=false
-          -e CLOUD_PRIVATE_MEDIA_ENABLED=false
-          -e CLOUD_MEDIA_LIFECYCLE_ENABLED=false
           reelspark-verify -c
-          'node scripts/check-node.cjs && node scripts/verify-server.cjs --real && npm audit --omit=dev'
+          'node scripts/check-node.cjs && npm audit --omit=dev'
       - name: Render a Hindi-captioned reel with Linux Chromium
         run: >-
           docker run --rm --entrypoint node

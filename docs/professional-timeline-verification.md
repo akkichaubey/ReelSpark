@@ -77,9 +77,9 @@ Saved Reels retains the complete timeline and independent media copies. Its play
 ## Verification completed
 
 - `npm run build`: passed, including TypeScript and 49 generated pages.
-- `npm run test:timeline`: linked edits, group operations, locked tracks, source limits, overlap validation, captions, source replacement/mixer compatibility, real waveforms/thumbnails, cache, authorization, cancellation and independent retention.
-- `npm run test:timeline-render`: real rendered gaps, red/blue sequencing, text pixels, cross-dissolve pixels, audio stream/duration and measured audio fades.
-- `npm run test:caption-remotion`: legacy phrase and solo caption renders, including active/pause/active highlight frames.
+- `npx tsx tests/professional_timeline.test.ts`: linked edits, group operations, locked tracks, source limits, overlap validation, captions, source replacement/mixer compatibility, real waveforms/thumbnails, cache, authorization, cancellation and independent retention.
+- `npx tsx tests/professional_timeline.test.ts --render`: real rendered gaps, red/blue sequencing, text pixels, cross-dissolve pixels, audio stream/duration and measured audio fades.
+- `npx tsx tests/caption_remotion_render.test.ts`: legacy phrase and solo caption renders, including active/pause/active highlight frames.
 - Existing Saved Reels, clip-review concurrency, unified Studio, voice/background upload, caption-sync, storage and private-media suites passed.
 - Targeted ESLint for the new timeline modules and `git diff --check` passed. The broader Reel Maker lint check has zero errors and retains existing unused-symbol/dependency warnings. Three synchronous effect updates found during that check now use cancellable scheduled initialization/status updates.
 - Browser: empty layout; adding a text track/clip; inspector and track settings; repeated playback loops; split 4→8 clips, undo 8→4, redo 4→8, final undo; independent save/reopen; authenticated export success and saved output; 390×844 mobile layout; resizing and Fit. Temporary viewport override was reset.

@@ -214,17 +214,9 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 10. Automated Testing
+## 10. Verification
 
-Run the full automated unit test suite (covering URL validation, timestamps, SRT offsets, context verification, 60s duration cap, security, and real FFmpeg rendering):
-```bash
-npm test
-```
-
-Run the end-to-end integration test against the running studio:
-```bash
-npm run test:e2e
-```
+See [TESTING.md](TESTING.md) for current build checks and historical QA records.
 
 ---
 

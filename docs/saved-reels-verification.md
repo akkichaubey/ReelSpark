@@ -1,5 +1,11 @@
 # Antigravity change verification — 28 October 2026
 
+Saved Reels stores owner-scoped documents as local atomic JSON or in D1 with
+verified private R2 media when cloud storage is configured. Managed media uses
+content-addressed paths outside source project trees. The cleanup inventory
+tracks saved reel references so age-based cleanup can retain shared assets.
+Editing reuses the clip bridge and Reel Maker with revision-checked saves.
+
 Reviewed commits `f3355f6` and `d4e9f1c`, the Saved Reels implementation plan, the related Antigravity audit notes, and the current live Reel Maker UI. Historical audit claims were checked against current code rather than treated as current failures.
 
 Fixed:

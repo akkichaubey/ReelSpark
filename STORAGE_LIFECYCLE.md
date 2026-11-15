@@ -45,16 +45,14 @@ reported cleanup. Logs use the `[Storage maintenance]` prefix and include cleanu
 counts, failures, skipped active work and external queue status. No email alert is
 sent by this endpoint.
 
-Run the focused checks with `npm run test:storage`, `npm run test:private-media`,
-and `npx tsx tests/media_lifecycle.test.ts`; run the TypeScript check with
-`npm run typecheck`.
+Run `npm run typecheck` to check the current source.
 
 ## Verification (2026-10-25)
 
-- `npm run test:storage`: passed, including failed-stream cleanup, owner-scoped
+- `npx tsx tests/storage_maintenance.test.ts`: passed, including failed-stream cleanup, owner-scoped
   cancellation, reference-protected deletion, restart recovery, dry-run safety,
   and retention of active temporary files.
-- `npm run test:private-media`: passed, including owner isolation, cache restore,
+- `npx tsx tests/private_media_cloud.test.ts`: passed, including owner isolation, cache restore,
   integrity checks, upload failure cleanup, and storage/Class A/Class B quota caps.
 - `npx tsx tests/media_lifecycle.test.ts`: passed, including queued R2 cleanup,
   active object protection, active upload reservation fencing, retries, shared

@@ -107,8 +107,8 @@ physical cleanup must be explicitly requested by an administrator. Logs use the
 
 ## Verification
 
-On 2026-10-25, `npm run typecheck`, `npm run build`, `npm run test:storage`,
-`npm run test:private-media`, and `npx tsx tests/media_lifecycle.test.ts` passed.
+On 2026-10-25, `npm run typecheck`, `npm run build`, `npx tsx tests/storage_maintenance.test.ts`,
+`npx tsx tests/private_media_cloud.test.ts`, and `npx tsx tests/media_lifecycle.test.ts` passed.
 The tests use a local SQLite fixture and a fake R2 adapter; they verify safe
 cleanup, retry, owner isolation, project restoration after local-cache loss,
 quotas, tombstones and media deletion. They do not simulate a real Render
@@ -116,5 +116,4 @@ restart or upload a file to the live R2 bucket. The live D1 table names were
 read and the `0007`/`0008` schema was verified. Deployment of the current source
 still requires a successful GitHub-to-Render deploy and a live app smoke check.
 
-See [STORAGE_LIFECYCLE.md](STORAGE_LIFECYCLE.md) for cleanup operations and
-`tests/` for the test coverage.
+See [STORAGE_LIFECYCLE.md](STORAGE_LIFECYCLE.md) for cleanup operations and historical verification.
