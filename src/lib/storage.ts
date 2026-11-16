@@ -236,6 +236,13 @@ export async function deleteProject(projectId: string): Promise<boolean> {
     throw new ProjectMediaReferencedError();
   }
 
+  const projectDocuments = await import('./cloudflare/project-documents');
+  if (projectDocuments.projectCloudEnabled() && project.ownerUserId) {
+    const cloudWorkspaces = await projectDocuments.listClippingDocuments(project.ownerUserId);
+    const linked = cloudWorkspaces.find(workspace => containsPathInsideProject(workspace, projectRoot));
+    if (linked) throw new ProjectMediaReferencedError('A saved Video & Audio Studio project still uses these files. Remove the shared media there and click Save / Sync before retrying.', linked.id);
+  }
+
   const studioRoot = path.join(APP_CONFIG.storageRoot, 'clipping-studio', 'projects');
   const studioEntries = await fs.promises.readdir(studioRoot, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return [];
@@ -246,7 +253,7 @@ export async function deleteProject(projectId: string): Promise<boolean> {
     try {
       const linked = JSON.parse(await fs.promises.readFile(referenceFile, 'utf8'));
       if (containsPathInsideProject(linked, projectRoot)) {
-        throw new ProjectMediaReferencedError('This project’s media is referenced by a linked project in Video & Audio Studio. Remove the shared media there, or delete the linked project, then retry here.', entry.name);
+        throw new ProjectMediaReferencedError('A saved Video & Audio Studio project still uses these files. Remove the shared media there and click Save / Sync before retrying.', entry.name);
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -256,7 +263,6 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   await cancelStorageTasksUnder(projectRoot);
   if (isStoragePathActive(projectRoot)) throw new StorageInUseError();
 
-  const projectDocuments = await import('./cloudflare/project-documents');
   if (projectDocuments.projectCloudEnabled()) {
     if (!project.ownerUserId) throw new Error('Project owner is required for cloud deletion');
     const { deleteOwnedClipFinderProject } = await import('./cloudflare/media-lifecycle');

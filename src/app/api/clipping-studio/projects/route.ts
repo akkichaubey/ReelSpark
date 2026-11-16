@@ -6,6 +6,10 @@ import { listClippingDocuments, projectCloudEnabled, saveClippingDocument } from
 import { DELETE as deleteProject } from './[id]/route';
 import { mediaLifecycleEnabled } from '@/lib/cloudflare/media-lifecycle-state';
 import { d1Query } from '@/lib/cloudflare/d1';
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { withProjectMutation } from '@/lib/project-mutations';
 
 export async function GET(req: NextRequest) {
   const access = await requireMediaUser(req);
@@ -24,22 +28,47 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const access = await requireMediaUser(req);
   if (access.error) return access.error;
-  if (!projectCloudEnabled()) return NextResponse.json({ success: true, synced: false, message: 'Cloud metadata is disabled; project remains local.' });
   try {
     const body = await req.text();
     if (Buffer.byteLength(body, 'utf8') > 1_500_000) return NextResponse.json({ success: false, error: 'Project metadata exceeds 1.5 MB' }, { status: 413 });
     const parsed = ClippingProjectSchema.safeParse(JSON.parse(body));
     if (!parsed.success) return NextResponse.json({ success: false, error: 'Invalid project metadata' }, { status: 400 });
     const project = parsed.data;
-    if (!(await clippingProjectAccess(access.user.id, project.id, true))) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    for (const asset of project.mediaAssets) {
-      if (!(await canReadMedia(access.user.id, asset.localPath))) return NextResponse.json({ error: 'Project references inaccessible media' }, { status: 404 });
-    }
-    const saved = await saveClippingDocument(access.user.id, project);
-    return NextResponse.json({ success: true, synced: true, project: saved, mediaDurable: false, message: 'Project metadata saved to D1. Media files are not backed up yet.' });
+    return await withProjectMutation(project.sourceProjectId || project.id, async () => {
+      const cloudEnabled = projectCloudEnabled();
+      if (!cloudEnabled && !project.sourceProjectId) return NextResponse.json({ success: true, synced: false, message: 'Cloud metadata is disabled; project remains local.' });
+      const directory = await clippingProjectAccess(access.user.id, project.id, cloudEnabled);
+      if (!directory) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      const referenceFile = path.join(directory, 'linked-workspace.json');
+      const previous = await fs.readFile(referenceFile, 'utf8').catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (previous !== null) {
+        const linked = ClippingProjectSchema.parse(JSON.parse(previous));
+        if (linked.id !== project.id || linked.sourceProjectId !== project.sourceProjectId) {
+          return NextResponse.json({ error: 'Workspace link conflict. Reopen the project and retry Save / Sync.' }, { status: 409 });
+        }
+      }
+      for (const asset of project.mediaAssets) {
+        if (!(await canReadMedia(access.user.id, asset.localPath))) return NextResponse.json({ error: 'Project references inaccessible media' }, { status: 404 });
+      }
+      const saved = cloudEnabled ? await saveClippingDocument(access.user.id, project) : project;
+      if (previous !== null) {
+        const temporaryFile = `${referenceFile}.${randomUUID()}.tmp`;
+        try {
+          await fs.writeFile(temporaryFile, JSON.stringify(saved), { encoding: 'utf8', flag: 'wx' });
+          await fs.rename(temporaryFile, referenceFile);
+        } finally {
+          await fs.rm(temporaryFile, { force: true }).catch(() => undefined);
+        }
+      }
+      const message = cloudEnabled ? 'Project metadata saved to D1. Media files are not backed up yet.' : 'Workspace saved locally and shared media references updated.';
+      return NextResponse.json({ success: true, synced: cloudEnabled, project: saved, mediaDurable: false, message });
+    });
   } catch (error) {
     if (error instanceof SyntaxError) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-    return NextResponse.json({ success: false, error: 'Cloud metadata save failed; local data has not been removed.' }, { status: 503 });
+    return NextResponse.json({ success: false, error: 'Workspace sync could not finish. Retry Save / Sync before deleting shared files.' }, { status: 503 });
   }
 }
 

@@ -15,9 +15,10 @@ export function linkAnalysisProject(source: Project, existing?: ClippingProject,
     ? { ...existing, mediaAssets: [...existing.mediaAssets], clips: [...existing.clips] }
     : { id, name: source.title, mediaAssets: [], clips: [], mergeRecipes: [], exportJobs: [], createdAt: source.createdAt, updatedAt: source.updatedAt };
   result.sourceProjectId = source.id;
-  result.sourceMediaAssetId = mediaId;
   const metadata = source.videoMetadata;
-  if (source.localVideoPath && metadata && !result.mediaAssets.some(asset => asset.id === mediaId)) {
+  // Reopening a saved workspace should preserve an intentional media removal.
+  const shouldAttachSource = importSelected || !existing?.sourceMediaAssetId;
+  if (shouldAttachSource && source.localVideoPath && metadata && !result.mediaAssets.some(asset => asset.id === mediaId)) {
     const asset: MediaAsset = {
       id: mediaId, projectId: id, filename: source.originalFileName || source.title,
       localPath: source.localVideoPath, fileSizeBytes: metadata.sizeBytes,
@@ -31,6 +32,7 @@ export function linkAnalysisProject(source: Project, existing?: ClippingProject,
     result.mediaAssets.push(asset);
   }
   const asset = result.mediaAssets.find(item => item.id === mediaId);
+  if (asset) result.sourceMediaAssetId = mediaId;
   if (importSelected && !asset) throw new Error('Upload or restore the original media before importing AI clips.');
   if (importSelected && asset) {
     const ids = new Set(result.clips.map(clip => clip.id));

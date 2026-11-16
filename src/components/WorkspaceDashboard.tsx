@@ -1237,14 +1237,17 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
           </p>
           {projectDeleteError && <p role="alert" className="text-sm text-red-300">{projectDeleteError}</p>}
           {linkedWorkspaceId && (
-            <div className="flex flex-wrap items-center gap-3">
-            <a className="inline-block text-sm font-semibold text-amber-300 underline"
-              href={`/clipping-studio?project=${encodeURIComponent(linkedWorkspaceId)}`}>
-              Open linked project
-            </a>
-            <Button type="button" disabled={deletingProject} onClick={removeProjectFromOurWork}>
-              Remove from Our Work
-            </Button>
+            <div className="space-y-2">
+              <p className="text-sm text-zinc-300">Remove from Our Work hides this card and keeps the project files.</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <a className="inline-block text-sm font-semibold text-amber-300 underline"
+                  href={`/clipping-studio?project=${encodeURIComponent(linkedWorkspaceId)}`}>
+                  Open linked project
+                </a>
+                <Button type="button" disabled={deletingProject} onClick={removeProjectFromOurWork}>
+                  Remove from Our Work
+                </Button>
+              </div>
             </div>
           )}
           <div className="flex justify-end gap-2">

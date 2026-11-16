@@ -35,6 +35,12 @@ ReelSpark's **Video & Audio Clipping Studio** is engineered as a local-first, de
 
 1. **Non-Destructive Local Media Processing**:
    Original video/audio files on your PC are never modified, moved, or deleted. All cuts, clips, and merges generate new derivative files.
+
+   To release a shared project file for Dashboard deletion, remove it from the
+   linked Studio workspace and click **Save / Sync**. This updates the saved
+   link record even when cloud metadata is disabled. The Dashboard checks saved
+   Studio references before deleting project files. **Remove from Our Work**
+   hides the card and keeps the project files.
 2. **Metadata vs. Binaries Separation**:
    Original heavy video and audio files remain strictly on your local PC disk. Supabase stores only structured metadata, timestamps, recipes, and export job records.
 3. **Resilient Local-First Fallback**:

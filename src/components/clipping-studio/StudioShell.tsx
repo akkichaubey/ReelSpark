@@ -519,7 +519,13 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
             if (useClippingStore.getState().saveStatus === 'error') { setLinkError('Could not save the workspace on this device. Free browser storage and retry.'); return; }
             await syncToCloudflare();
             const current = useClippingStore.getState();
-            setLinkNotice(current.saveStatus === 'error' ? 'Saved on this device. Cloud sync failed; retry before using another device.' : current.cloudflareStatus?.configured ? 'Workspace saved on this device and synced to the cloud.' : 'Workspace saved on this device. Cloud metadata sync is not configured.');
+            if (current.saveStatus === 'error') {
+              setLinkNotice(null);
+              setLinkError('Saved on this device. Workspace sync did not finish. Retry Save / Sync before deleting shared files.');
+              return;
+            }
+            setLinkError(null);
+            setLinkNotice(current.cloudflareStatus?.configured ? 'Workspace saved on this device and synced to the cloud.' : 'Workspace saved on this device.');
           }} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-40">Save / Sync</Button>}
           {activeProject?.sourceProjectId ? (
             <Button type="button" disabled={linking || !projectResolved || analysisProject?.id !== activeProject.sourceProjectId || !analysisProject?.candidates.some(candidate => candidate.selected)} onClick={importSelected} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black hover:bg-amber-300 disabled:opacity-40">
