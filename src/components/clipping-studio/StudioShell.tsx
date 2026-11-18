@@ -20,21 +20,16 @@ import { primaryWorkspaceForSource, studioProjectUrl } from '@/lib/clipping-stud
 import { ProjectCreator } from '../ProjectCreator';
 import { SiteLoader } from '../SiteLoader';
 import { DashboardLayout } from '../dashboard/DashboardLayout';
-const MediaLibrary = dynamic(() => import('./MediaLibrary').then(module => module.MediaLibrary), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
 const MediaPlayerPreview = dynamic(() => import('./MediaPlayerPreview').then(module => module.MediaPlayerPreview), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
 const InteractiveTimeline = dynamic(() => import('./InteractiveTimeline').then(module => module.InteractiveTimeline), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
 const BulkTimestampEditor = dynamic(() => import('./BulkTimestampEditor').then(module => module.BulkTimestampEditor), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
 const ClipsLibrary = dynamic(() => import('./ClipsLibrary').then(module => module.ClipsLibrary), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
-const MergeStudio = dynamic(() => import('./MergeStudio').then(module => module.MergeStudio), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
-const ExportStudio = dynamic(() => import('./ExportStudio').then(module => module.ExportStudio), { loading: () => <SiteLoader label="Loading workspace…" fullScreen={false} /> });
 const AutoCutStudio = dynamic(() => import('./AutoCutStudio').then(module => module.AutoCutStudio), { loading: () => <SiteLoader label="Loading AI Auto Cut…" fullScreen={false} /> });
 import { useClippingStore, StudioTab } from '@/lib/clipping-studio/use-clipping-store';
 import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
 import {
   Film,
   Scissors,
-  Layers,
-  Download,
   ScanSearch,
   Sparkles,
   Edit2,
@@ -43,7 +38,6 @@ import {
   Trash2,
   RefreshCw,
   AlertTriangle,
-  ChevronDown,
 } from 'lucide-react';
 
 interface StudioShellProps {
@@ -263,7 +257,7 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
     if (!name) return;
 
     const project = createProject(name, newProjectDescription.trim() || undefined);
-    router.push(studioProjectUrl(project.id, 'media'));
+    router.push(studioProjectUrl(project.id, 'autocut'));
     setNewProjectName('');
     setNewProjectDescription('');
     setShowCreateProject(false);
@@ -274,12 +268,9 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
   const isLocalServiceOnline = ffmpegOk && ffprobeOk;
 
   const tabs: { id: StudioTab; label: string; icon: React.ReactNode; num: string }[] = [
-    { id: 'media', label: 'Media Library', icon: <Film className="w-3.5 h-3.5" />, num: '1' },
-    { id: 'autocut', label: 'AI Auto Cut', icon: <Sparkles className="w-3.5 h-3.5" />, num: '2' },
-    { id: 'ai', label: 'AI Moments', icon: <ScanSearch className="w-3.5 h-3.5" />, num: '3' },
-    { id: 'timeline', label: 'Timeline & Clips', icon: <Scissors className="w-3.5 h-3.5" />, num: '4' },
-    { id: 'merge', label: 'Merge Studio', icon: <Layers className="w-3.5 h-3.5" />, num: '5' },
-    { id: 'export', label: 'Export Queue', icon: <Download className="w-3.5 h-3.5" />, num: '6' },
+    { id: 'autocut', label: 'AI Auto Cut', icon: <Sparkles className="w-3.5 h-3.5" />, num: '1' },
+    { id: 'ai', label: 'AI Moments', icon: <ScanSearch className="w-3.5 h-3.5" />, num: '2' },
+    { id: 'timeline', label: 'Timeline & Clips', icon: <Scissors className="w-3.5 h-3.5" />, num: '3' },
   ];
 
   if (isLoading) {
@@ -623,18 +614,12 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                     {activeProject.name}
                   </span>
                   <h2 className="text-2xl font-black text-white tracking-tight capitalize mt-0.5">
-                    {activeTab === 'media' && 'Media Library & Inspector'}
                     {activeTab === 'timeline' && 'Timeline & Bulk Timestamp Clipping'}
-                    {activeTab === 'merge' && 'Merge Studio (Sequence Builder)'}
-                    {activeTab === 'export' && 'Export Queue & Job Manager'}
                   </h2>
                 </div>
               </div>
 
-              {/* Media Library View (Phase 2) */}
-              {activeTab === 'media' && <MediaLibrary />}
-
-              {/* Timeline, Player & Bulk Clips Workspace (Phase 2) */}
+              {/* Timeline, Player & Bulk Clips Workspace */}
               {activeTab === 'timeline' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
@@ -656,12 +641,6 @@ export const StudioShell: React.FC<StudioShellProps> = ({ children }) => {
                   <ClipsLibrary />
                 </div>
               )}
-
-              {/* Merge Studio (Phase 3) */}
-              {activeTab === 'merge' && <MergeStudio />}
-
-              {/* Export Studio (Phase 4) */}
-              {activeTab === 'export' && <ExportStudio />}
             </div>
           )}
         </div>

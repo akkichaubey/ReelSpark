@@ -38,6 +38,7 @@ import {
   X,
   Clock,
   Compass,
+  Copy,
 } from 'lucide-react';
 
 interface TranscriptEditorProps {
@@ -62,6 +63,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   className = '',
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
   const [editingWordId, setEditingWordId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editStart, setEditStart] = useState('');
@@ -254,32 +256,47 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     (acc, g) => acc + g.words.filter((w) => w.isImportant).length,
     0
   );
+  const hasTranscriptText = groups.some((group) => group.text.trim());
+
+  const handleCopyTranscript = async () => {
+    const text = groups.map((group) => group.text.trim()).filter(Boolean).join(' ');
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('error');
+    }
+  };
 
   return (
     <div className={`flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl ${className}`}>
       {/* Header & Controls */}
-      <div className="p-3 bg-zinc-950/80 border-b border-zinc-800 space-y-2.5 shrink-0">
+      <div className="@container shrink-0 space-y-2.5 border-b border-zinc-800 bg-zinc-950/80 p-3">
         {/* Row 1: Title and Status Badges */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-zinc-100 text-sm tracking-tight whitespace-nowrap">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-bold tracking-tight text-zinc-100">
               Transcript & Captions
             </h3>
             <Button
               type="button"
               onClick={() => setAutoScroll((prev) => !prev)}
+              aria-label="Sync transcript scrolling with playback"
+              aria-pressed={autoScroll}
               title={autoScroll ? 'Auto-scroll is ON during playback' : 'Auto-scroll is OFF'}
-              className={`p-1 rounded text-xs transition-colors cursor-pointer flex items-center gap-1 ${
+              className={`flex min-h-6 cursor-pointer items-center gap-1 rounded border px-1.5 text-xs transition-colors ${
                 autoScroll
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                  : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:text-zinc-100'
               }`}
             >
               <Compass className="w-3 h-3" />
-              <span className="text-[10px] font-mono leading-none">{autoScroll ? 'Sync' : 'Manual'}</span>
+              <span className="font-mono text-[10px] leading-none">Sync</span>
             </Button>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full font-mono whitespace-nowrap border border-zinc-700/60 shadow-sm leading-none flex items-center">
               {totalWords} words
             </span>
@@ -292,18 +309,18 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
 
         {/* Subtitle / Tip */}
         <p className="text-[11px] text-zinc-400 leading-snug">
-          Click words or edit entire phrases. Audio stays perfectly synchronized.
+          Click a word to seek, or edit an entire phrase.
         </p>
 
         {/* Row 2: Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        <div className="grid gap-2 pt-0.5 @min-[14rem]:grid-cols-2 @min-[36rem]:grid-flow-col @min-[36rem]:auto-cols-fr @min-[36rem]:grid-cols-none">
           {onAutoDetectTranscript && (
             <Button
               type="button"
               onClick={onAutoDetectTranscript}
               disabled={isTranscribing}
               title="Automatically detect spoken words from audio using AI"
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shadow-sm cursor-pointer active:scale-95 whitespace-nowrap ${
+              className={`flex min-h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:cursor-wait @min-[14rem]:col-span-2 @min-[36rem]:col-span-1 ${
                 isTranscribing
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
                   : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-zinc-950 font-bold'
@@ -317,7 +334,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             type="button"
             onClick={handleAutoDetectAll}
             title="Auto-detect emotional/motivational keywords"
-            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap"
+            className="flex min-h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-400 shadow-sm transition-colors hover:bg-amber-500/20"
           >
             <ScanSearch className="w-3.5 h-3.5 shrink-0 text-amber-400" />
             <span>Detect Keywords</span>
@@ -326,7 +343,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             type="button"
             onClick={() => handleAddNewPhrase(null)}
             title="Add a new caption phrase"
-            className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+            className="flex min-h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-200 shadow-sm transition-colors hover:bg-zinc-700"
           >
             <Plus className="w-3.5 h-3.5 shrink-0 text-amber-400" />
             <span>Add Phrase</span>
@@ -336,13 +353,25 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
               type="button"
               onClick={onClearAll}
               title="Delete all transcript words and captions"
-              className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+              className="flex min-h-8 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold text-red-400 shadow-sm transition-colors hover:bg-red-500/20 @min-[14rem]:col-span-2 @min-[36rem]:col-span-1"
             >
               <Trash2 className="w-3.5 h-3.5 shrink-0" />
               <span>Clear</span>
             </Button>
           )}
+          <Button
+            type="button"
+            onClick={handleCopyTranscript}
+            disabled={!hasTranscriptText}
+            className="flex min-h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 @min-[14rem]:col-span-2 @min-[36rem]:col-span-1"
+          >
+            <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Copy Transcript
+          </Button>
         </div>
+        <p role="status" className={copyStatus === 'idle' || !hasTranscriptText ? 'sr-only' : copyStatus === 'error' ? 'text-xs text-red-400' : 'text-xs text-zinc-300'}>
+          {hasTranscriptText && (copyStatus === 'copied' ? 'Transcript copied.' : copyStatus === 'error' ? 'Could not copy the transcript. Try again or check your clipboard permissions.' : '')}
+        </p>
       </div>
 
       {/* Search Input */}

@@ -91,7 +91,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   }, []);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-400 selection:text-black">
+    <div className="flex h-dvh w-full overflow-hidden bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-400 selection:text-black pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* 1. Left Sidebar Navigation */}
       <DashboardSidebar
         isCollapsed={isCollapsed}
@@ -109,7 +109,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           <Button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="min-h-11 min-w-11 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            aria-label="Open navigation menu"
+            aria-expanded={mobileOpen}
             title="Open navigation menu"
           >
             <Menu className="w-5 h-5" />

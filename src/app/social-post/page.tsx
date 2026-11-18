@@ -8,7 +8,9 @@ import { publishingProgress } from '@/lib/social-intelligence/publishing-progres
 import { accountCache } from '@/lib/account-cache';
 
 // ReelSpark Smart Social Intelligence Studio — Updated 2026-10-22
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TitleSuggestionsButton } from '@/components/TitleSuggestionsDialog';
+import { selectTitleTranscript } from '@/lib/title-suggestions';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -111,6 +113,12 @@ function SocialPostPageContent() {
   const [bundle, setBundle] = useState<SocialPostBundle | null>(null);
   const [selectedVariationIdx, setSelectedVariationIdx] = useState<number>(0);
   const [editedTitle, setEditedTitle] = useState<string>('');
+  const manualTitle = useRef<{ clipId: string | null; transcript: string; title: string } | null>(null);
+  const activeTitleSource = useRef({ clipId: sourceClipId, transcript });
+  useEffect(() => {
+    activeTitleSource.current = { clipId: sourceClipId, transcript };
+  }, [sourceClipId, transcript]);
+  const [bridgedTitleSource, setBridgedTitleSource] = useState<{ displayTranscript: string; transcript: string; context?: string } | null>(null);
   const [editedText, setEditedText] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -187,8 +195,15 @@ function SocialPostPageContent() {
       const storedContextRaw = accountCache.getItem('reel_social_post_context');
       if (storedContextRaw) {
         const storedContext = JSON.parse(storedContextRaw);
-        if (storedContext?.transcript) {
+        if (storedContext?.transcript && (!paramClipId || paramClipId === storedContext.clipId)) {
           initialTranscript = storedContext.transcript;
+          if (!paramTranscript && typeof storedContext.titleSource?.transcript === 'string') {
+            setBridgedTitleSource({
+              displayTranscript: initialTranscript,
+              transcript: storedContext.titleSource.transcript,
+              context: typeof storedContext.titleSource.context === 'string' ? storedContext.titleSource.context : undefined,
+            });
+          }
           if (storedContext.title) initialTitle = storedContext.title;
           if (storedContext.duration) initialDuration = storedContext.duration;
           if (storedContext.language) initialLang = storedContext.language;
@@ -204,7 +219,7 @@ function SocialPostPageContent() {
     // 2. Fall back to current project in LocalStorage (from Caption Maker)
     if (!initialTranscript) {
       const currentProject = loadProjectFromLocalStorage();
-      if (currentProject) {
+      if (currentProject && (!paramClipId || paramClipId === currentProject.sourceClipId)) {
         if (currentProject.title) initialTitle = currentProject.title;
         if (currentProject.audio?.duration) initialDuration = currentProject.audio.duration;
         if (currentProject.preferredLanguage) initialLang = currentProject.preferredLanguage;
@@ -220,6 +235,13 @@ function SocialPostPageContent() {
           initialTranscript = currentProject.rawTranscriptEnglish;
         } else if (currentProject.transcript && currentProject.transcript.length > 0) {
           initialTranscript = currentProject.transcript.map((w) => w.text).join(' ');
+        }
+        if (!paramTranscript) {
+          const range = currentProject.trimRange;
+          setBridgedTitleSource({
+            displayTranscript: initialTranscript,
+            ...selectTitleTranscript(currentProject.transcript || [], range?.start ?? 0, range?.end ?? Infinity),
+          });
         }
       }
     }
@@ -280,9 +302,13 @@ function SocialPostPageContent() {
           throw new Error(data.error || 'Failed to generate social media post copy');
         }
 
+        if (activeTitleSource.current.clipId !== sourceClipId || activeTitleSource.current.transcript !== textToUse) return;
         setBundle(data.bundle);
         setSelectedVariationIdx(0);
-        setEditedTitle(data.bundle.postTitle || '');
+        const selected = manualTitle.current;
+        setEditedTitle(selected && selected.clipId === sourceClipId && selected.transcript === textToUse
+          ? selected.title
+          : data.bundle.postTitle || '');
         const firstVar = data.bundle.variations?.[0];
         const newText = firstVar ? firstVar.fullText : '';
         setEditedText(newText);
@@ -297,7 +323,7 @@ function SocialPostPageContent() {
         setIsLoading(false);
       }
     },
-    [language, tone, platform, contentType, includeLinks, captionStyle, transcript, clipTitle, clipDuration]
+    [language, tone, platform, contentType, includeLinks, captionStyle, transcript, clipTitle, clipDuration, sourceClipId]
   );
 
   // Trigger auto-generation once transcript is loaded and no bundle exists
@@ -968,6 +994,16 @@ function SocialPostPageContent() {
                 </div>
 
                 {/* Regenerate Button */}
+                <TitleSuggestionsButton
+                  sourceKey={JSON.stringify([sourceClipId, clipTitle, transcript, platform])}
+                  source={bridgedTitleSource?.displayTranscript === transcript ? bridgedTitleSource : { transcript }}
+                  platform={platform === 'youtube' || platform === 'instagram' || platform === 'facebook' || platform === 'threads' ? platform : undefined}
+                  applyLabel="Apply post title"
+                  onApply={title => {
+                    manualTitle.current = { clipId: sourceClipId, transcript, title };
+                    setEditedTitle(title);
+                  }}
+                />
                 <Button
                   type="button"
                   onClick={() => handleGenerate()}
@@ -1020,7 +1056,10 @@ function SocialPostPageContent() {
                       <Input
                         id="platform-post-title"
                         value={editedTitle}
-                        onChange={(e) => setEditedTitle(e.target.value)}
+                        onChange={(e) => {
+                          manualTitle.current = { clipId: sourceClipId, transcript, title: e.target.value };
+                          setEditedTitle(e.target.value);
+                        }}
                         maxLength={platform === 'youtube' ? 100 : 90}
                         className="min-w-0 flex-1 bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-2 text-xs sm:text-sm text-zinc-100 focus:outline-none focus:border-amber-400"
                         placeholder="AI-generated platform title"

@@ -140,6 +140,20 @@ export async function POST(req: NextRequest) {
         } : undefined,
       };
 
+      const companionMeta = {
+        id: assetId,
+        fileName: filename,
+        fileUrl,
+        mediaType: 'video',
+        fileSize,
+        width: videoMetadata.width || 1080,
+        height: videoMetadata.height || 1920,
+        duration: Math.round(duration * 100) / 100,
+        hasAudio: true,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.promises.writeFile(path.join(uploadDir, '.meta.json'), JSON.stringify(companionMeta), 'utf8').catch(() => {});
+
       return NextResponse.json({
         success: true,
         asset: audioAsset,
@@ -171,6 +185,20 @@ export async function POST(req: NextRequest) {
         duration: Math.round(duration * 100) / 100,
       };
 
+      const videoMeta = {
+        id: assetId,
+        fileName: filename,
+        fileUrl,
+        mediaType: 'video',
+        fileSize,
+        width: 1080,
+        height: 1920,
+        duration: Math.round(duration * 100) / 100,
+        hasAudio: true,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.promises.writeFile(path.join(uploadDir, '.meta.json'), JSON.stringify(videoMeta), 'utf8').catch(() => {});
+
       return NextResponse.json({
         success: true,
         asset: videoAsset,
@@ -195,6 +223,21 @@ export async function POST(req: NextRequest) {
       await backupPrivateMedia(user.id, targetFilePath);
       if (uploadAbort.signal.aborted) throw new Error('Upload cancelled.');
       keepUploadedAsset = true;
+
+      const imageMeta = {
+        id: assetId,
+        fileName: filename,
+        fileUrl,
+        mediaType: 'image',
+        fileSize,
+        width: 1080,
+        height: 1920,
+        duration: 3,
+        hasAudio: false,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.promises.writeFile(path.join(uploadDir, '.meta.json'), JSON.stringify(imageMeta), 'utf8').catch(() => {});
+
       return NextResponse.json({ success: true, asset: imageAsset, type: 'image' });
     } else {
       // Audio duration probing
@@ -212,6 +255,19 @@ export async function POST(req: NextRequest) {
         duration: Math.round(duration * 100) / 100,
         format: ext.replace('.', '').toUpperCase(),
       };
+
+      const audioMeta = {
+        id: assetId,
+        fileName: filename,
+        fileUrl,
+        mediaType: 'audio',
+        fileSize,
+        duration: Math.round(duration * 100) / 100,
+        hasAudio: true,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.promises.writeFile(path.join(uploadDir, '.meta.json'), JSON.stringify(audioMeta), 'utf8').catch(() => {});
+
       return NextResponse.json({ success: true, asset: audioAsset, type: 'audio' });
     }
   } catch (err: any) {

@@ -136,6 +136,7 @@ export function ProfessionalTimeline({
   allowTimelineThumbnail = false,
   onOpenTrackPanel,
   trackSettingsTarget,
+  userMediaLibrary = [],
 }: {
   project: CaptionProject;
   currentTime: number;
@@ -162,11 +163,26 @@ export function ProfessionalTimeline({
   allowTimelineThumbnail?: boolean;
   onOpenTrackPanel?: (kind: TrackKind) => void;
   trackSettingsTarget?: HTMLDivElement | null;
+  userMediaLibrary?: TimelineAsset[];
 }) {
   const base = useMemo(() => timelineFromProject(project), [project]);
   const [draft, setDraft] = useState<ReelTimeline | null>(null);
   const timeline = draft || base;
+
+  const allAvailableAssets = useMemo(() => {
+    const map = new Map<string, TimelineAsset>();
+    for (const a of projectTimelineAssets(project)) {
+      map.set(a.fileUrl || a.id, a);
+    }
+    for (const a of userMediaLibrary || []) {
+      if (!map.has(a.fileUrl || a.id)) {
+        map.set(a.fileUrl || a.id, a);
+      }
+    }
+    return Array.from(map.values());
+  }, [project, userMediaLibrary]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<TimelineClip[]>([]);
   const [zoom, setZoom] = useState(40);
   const [snap, setSnap] = useState(true);
@@ -205,6 +221,7 @@ export function ProfessionalTimeline({
   const [simple, setSimple] = useState(false);
   const [error, setError] = useState("");
   const [mediaTrackId, setMediaTrackId] = useState<string | null>(null);
+  const [backgroundTrackId, setBackgroundTrackId] = useState<string | null>(null);
   const [inspector, setInspector] = useState<TimelineClip | null>(null);
   const [motionClipboard, setMotionClipboard] = useState<ClipMotion | null>(null);
   const [trackEditor, setTrackEditor] = useState<{
@@ -390,6 +407,7 @@ export function ProfessionalTimeline({
           ? selected
           : [clip.id];
     setSelected(ids);
+    setSelectedTrackId(null);
     if (timeline.tracks.find((t) => t.id === clip.trackId)?.locked) {
       setError("Unlock this track to edit it.");
       return;
@@ -502,7 +520,7 @@ export function ProfessionalTimeline({
     start = currentTime * 1000,
   ) =>
     run(() => {
-      const all = projectTimelineAssets(project).map((asset) =>
+      const all = allAvailableAssets.map((asset) =>
         previews[asset.id]?.sourceUrl === asset.fileUrl
           ? { ...asset, hasAudio: previews[asset.id].hasAudio }
           : asset,
@@ -706,12 +724,74 @@ export function ProfessionalTimeline({
       }
     }
   };
-  const removeTrack = (id:string) => run(() => {
-    const next = deleteTimelineTrack(timeline,id);
-    setSelected(previous=>previous.filter(id=>next.clips.some(clip=>clip.id===id)));
+  const removeTrack = (id: string) => run(() => {
+    const next = deleteTimelineTrack(timeline, id);
+    setSelected((previous) => previous.filter((clipId) => next.clips.some((clip) => clip.id === clipId)));
     setTrackEditor(null);
+    setSelectedTrackId((prev) => (prev === id ? null : prev));
     return next;
   });
+
+  const handleDeleteTrack = (trackId: string) => {
+    const track = timeline.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    if (track.locked) {
+      setError(`Unlock "${track.name}" before deleting it.`);
+      return;
+    }
+    if (timeline.tracks.length <= 1) {
+      run(() => ({
+        ...timeline,
+        clips: timeline.clips.filter((c) => c.trackId !== trackId),
+      }));
+      setError(`Cleared clips from "${track.name}". Cannot delete the last remaining track.`);
+      return;
+    }
+    removeTrack(trackId);
+    setSelectedTrackId(null);
+  };
+
+  const handleDeleteSelection = () => {
+    if (selected.length > 0) {
+      remove();
+    } else if (selectedTrackId) {
+      handleDeleteTrack(selectedTrackId);
+    }
+  };
+
+  const handleDeleteSelectionRef = useRef(handleDeleteSelection);
+
+  useEffect(() => {
+    handleDeleteSelectionRef.current = handleDeleteSelection;
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selected.length > 0 || selectedTrackId) {
+          e.preventDefault();
+          handleDeleteSelectionRef.current();
+        }
+      } else if (e.key === 'Escape') {
+        setSelected([]);
+        setSelectedTrackId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selected.length, selectedTrackId]);
   const updateTrack = (
     id: string,
     changes: Partial<ReelTimeline["tracks"][number]>,
@@ -898,6 +978,100 @@ export function ProfessionalTimeline({
     }
   };
 
+  const replaceBackground = (trackId: string, bgAsset: TimelineAsset) => run(() => {
+    const track = timeline.tracks.find((t) => t.id === trackId);
+    if (!track || track.kind !== "video" || track.locked) throw new Error("The background track is unavailable or locked.");
+    if (bgAsset.mediaType !== "image" && bgAsset.mediaType !== "video") {
+      throw new Error("Choose an image or video for the background.");
+    }
+
+    let nextTracks = timeline.tracks.map((t) =>
+      t.id === trackId ? { ...t, mainVideoMode: "audio_only" as const } : t,
+    );
+
+    // Ensure original voice audio is on an audio track and in sync
+    let audioTrack = nextTracks.find((t) => t.kind === "audio" && !t.locked);
+    if (!audioTrack) {
+      audioTrack = {
+        ...createTimelineTrack("audio", "Main audio / Voice"),
+        id: makeTimelineId("track_audio"),
+      };
+      nextTracks = [...nextTracks, audioTrack];
+    }
+
+    const nextAssets = [...timeline.assets];
+    if (!nextAssets.some((asset) => asset.id === bgAsset.id)) nextAssets.push(bgAsset);
+    if (originalVideoAsset && !nextAssets.some((a) => a.id === originalVideoAsset.id)) {
+      nextAssets.push(originalVideoAsset);
+    }
+
+    // Determine target duration from timeline audio or project
+    const targetDuration = Math.max(
+      1000,
+      timelineEnd(timeline),
+      Math.round((project.audio?.duration || 30) * 1000),
+    );
+
+    let nextClips = [...timeline.clips];
+
+    // Ensure audio clip exists
+    const audioAssetId = project.audio?.id || (originalVideoAsset ? originalVideoAsset.id : undefined);
+    if (audioAssetId) {
+      const hasAudioClip = nextClips.some((c) => {
+        const t = nextTracks.find((tr) => tr.id === c.trackId);
+        return (
+          t?.kind === "audio" &&
+          (c.assetId === audioAssetId || c.assetId === project.audio?.id)
+        );
+      });
+      if (!hasAudioClip) {
+        const audioClip = {
+          ...createTimelineClip(
+            audioTrack,
+            nextAssets.find((a) => a.id === audioAssetId) || originalVideoAsset,
+            0,
+            targetDuration,
+          ),
+          name: project.audio?.fileName || `${originalVideoAsset?.fileName || "Video"} (Audio)`,
+          muted: false,
+          volume: project.voiceVolume ?? 1,
+          linkId: "primary_voice",
+        };
+        nextClips.push(audioClip);
+      }
+    }
+
+    const existingVideoClips = nextClips.filter((c) => c.trackId === trackId);
+
+    if (existingVideoClips.length > 0) {
+      nextClips = nextClips.map((c) =>
+        c.trackId === trackId
+          ? {
+              ...c,
+              assetId: bgAsset.id,
+              name: bgAsset.fileName,
+              sourceStartMs: c.sourceStartMs + c.durationMs <= bgAsset.durationMs ? c.sourceStartMs : 0,
+              loop: bgAsset.mediaType === "image" || (bgAsset.durationMs > 0 && c.durationMs > bgAsset.durationMs),
+              muted: true, // background video visuals stay muted
+            }
+          : c,
+      );
+    } else {
+      nextClips.push({
+        ...createTimelineClip(track, bgAsset, 0, targetDuration),
+        loop: bgAsset.mediaType === "image" || (bgAsset.durationMs > 0 && targetDuration > bgAsset.durationMs),
+        muted: true,
+      });
+    }
+
+    return {
+      ...timeline,
+      tracks: nextTracks,
+      assets: nextAssets,
+      clips: nextClips,
+    };
+  });
+
   const handleBackgroundMediaUpload = async (file: File) => {
     const trackId = bgUploadTrackId || timeline.tracks.find((t) => t.kind === "video")?.id;
     if (!trackId || directUploadAbort.current) return;
@@ -940,97 +1114,7 @@ export function ProfessionalTimeline({
         hasAudio: false, // background visuals stay muted
       };
 
-      run(() => {
-        const track = timeline.tracks.find((t) => t.id === trackId);
-        if (!track) return timeline;
-
-        let nextTracks = timeline.tracks.map((t) =>
-          t.id === trackId ? { ...t, mainVideoMode: "audio_only" as const } : t,
-        );
-
-        // Ensure original voice audio is on an audio track and in sync
-        let audioTrack = nextTracks.find((t) => t.kind === "audio" && !t.locked);
-        if (!audioTrack) {
-          audioTrack = {
-            ...createTimelineTrack("audio", "Main audio / Voice"),
-            id: makeTimelineId("track_audio"),
-          };
-          nextTracks = [...nextTracks, audioTrack];
-        }
-
-        const nextAssets = [
-          ...timeline.assets.filter((a) => a.id !== bgAsset.id),
-          bgAsset,
-        ];
-        if (originalVideoAsset && !nextAssets.some((a) => a.id === originalVideoAsset.id)) {
-          nextAssets.push(originalVideoAsset);
-        }
-
-        // Determine target duration from timeline audio or project
-        const targetDuration = Math.max(
-          1000,
-          timelineEnd(timeline),
-          Math.round((project.audio?.duration || 30) * 1000),
-        );
-
-        let nextClips = [...timeline.clips];
-
-        // Ensure audio clip exists
-        const audioAssetId = project.audio?.id || (originalVideoAsset ? originalVideoAsset.id : undefined);
-        if (audioAssetId) {
-          const hasAudioClip = nextClips.some((c) => {
-            const t = nextTracks.find((tr) => tr.id === c.trackId);
-            return (
-              t?.kind === "audio" &&
-              (c.assetId === audioAssetId || c.assetId === project.audio?.id)
-            );
-          });
-          if (!hasAudioClip) {
-            const audioClip = {
-              ...createTimelineClip(
-                audioTrack,
-                nextAssets.find((a) => a.id === audioAssetId) || originalVideoAsset,
-                0,
-                targetDuration,
-              ),
-              name: project.audio?.fileName || `${originalVideoAsset?.fileName || "Video"} (Audio)`,
-              muted: false,
-              volume: project.voiceVolume ?? 1,
-              linkId: "primary_voice",
-            };
-            nextClips.push(audioClip);
-          }
-        }
-
-        const existingVideoClips = nextClips.filter((c) => c.trackId === trackId);
-
-        if (existingVideoClips.length > 0) {
-          nextClips = nextClips.map((c) =>
-            c.trackId === trackId
-              ? {
-                  ...c,
-                  assetId: bgAsset.id,
-                  name: bgAsset.fileName,
-                  loop: uploadType === "image",
-                  muted: true, // background video visuals stay muted
-                }
-              : c,
-          );
-        } else {
-          nextClips.push({
-            ...createTimelineClip(track, bgAsset, 0, targetDuration),
-            loop: uploadType === "image",
-            muted: true,
-          });
-        }
-
-        return {
-          ...timeline,
-          tracks: nextTracks,
-          assets: nextAssets,
-          clips: nextClips,
-        };
-      });
+      replaceBackground(trackId, bgAsset);
     } catch (err) {
       if (err instanceof UploadCancelledError) return;
       setError(err instanceof Error ? err.message : "Failed to upload background media");
@@ -1416,10 +1500,19 @@ export function ProfessionalTimeline({
           !clipboard.length,
         )}
         {icon(
-          "Delete selected",
-          remove,
-          <Trash2 size={14} />,
-          !selected.length,
+          selected.length > 0
+            ? `Delete selected clip${selected.length > 1 ? "s" : ""} (Delete)`
+            : selectedTrackId
+              ? `Delete track "${timeline.tracks.find((t) => t.id === selectedTrackId)?.name || "Track"}" (Delete)`
+              : "Delete selected (Delete)",
+          handleDeleteSelection,
+          <Trash2 size={14} className={selected.length > 0 || selectedTrackId ? "text-red-400 stroke-[2.2]" : ""} />,
+          !selected.length && !selectedTrackId,
+          `${button} ${
+            selected.length > 0 || selectedTrackId
+              ? "!text-red-400 !border-red-500/60 !bg-red-950/50 hover:!bg-red-900/60 hover:!text-red-200 hover:!border-red-400 shadow-sm cursor-pointer"
+              : "disabled:opacity-30 cursor-not-allowed"
+          }`,
         )}
         {icon(
           "Group selected clips",
@@ -1504,25 +1597,12 @@ export function ProfessionalTimeline({
             e.target.value = "";
           }}
         />
-        <Button
-          type="button"
-          disabled={isUploadingDirectMedia}
-          onClick={() => directUploadRef.current?.click()}
-          className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
-          title="Upload video or audio to automatically place it on the timeline and define the project duration"
-        >
-          {isUploadingDirectMedia ? (
-            <>
-              <Loader2 size={13} className="animate-spin text-amber-400" />
-              <span>{directUploadProgress !== null ? `Uploading ${directUploadProgress}%` : "Uploading…"}</span>
-            </>
-          ) : (
-            <>
-              <Upload size={13} />
-              <span>Upload Video / Audio</span>
-            </>
-          )}
-        </Button>
+        {isUploadingDirectMedia && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>{directUploadProgress !== null ? `Uploading ${directUploadProgress}%` : 'Uploading…'}</span>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button
             type="button"
@@ -1752,26 +1832,52 @@ export function ProfessionalTimeline({
             </div>
             {timeline.tracks.map((track, index) => {
               const trackHeight = track.kind === "video" ? Math.max(track.height || 52, 74) : (track.height || 52);
+              const isTrackSelected = selectedTrackId === track.id;
               return (
               <div
                 key={track.id}
                 data-track-id={track.id}
-                className={`relative flex border-b border-zinc-800 ${track.hidden ? "opacity-50" : ""}`}
+                className={`relative flex border-b transition-colors cursor-pointer ${
+                  isTrackSelected
+                    ? "border-amber-400 bg-amber-500/10 ring-2 ring-inset ring-amber-400/90 shadow-[inset_0_0_16px_rgba(245,158,11,0.2)] z-10"
+                    : "border-zinc-800 hover:border-zinc-700/80"
+                } ${track.hidden ? "opacity-50" : ""}`}
                 style={{ height: trackHeight }}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button, input, select, [role="group"], [role="slider"]')) return;
+                  setSelectedTrackId(track.id);
+                  setSelected([]);
+                }}
               >
                 <div
-                  className="sticky left-0 z-20 flex w-40 shrink-0 flex-col justify-between py-2 border-r border-zinc-700 bg-[#191b1f] px-2"
+                  className={`sticky left-0 z-20 flex w-40 shrink-0 flex-col justify-between py-2 border-r transition-colors px-2 cursor-pointer ${
+                    isTrackSelected
+                      ? "border-amber-400 bg-amber-950/40 text-amber-200 ring-1 ring-inset ring-amber-400/60 shadow-md"
+                      : "border-zinc-700 bg-[#191b1f]"
+                  }`}
                   style={{ height: trackHeight }}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('button, input, select, [role="group"]')) return;
+                    setSelectedTrackId(track.id);
+                    setSelected([]);
+                  }}
                 >
                   <div className="flex items-center gap-1">
-                    <GripVertical size={11} className="text-zinc-600" />
+                    <GripVertical size={11} className={isTrackSelected ? "text-amber-400" : "text-zinc-600"} />
+                    {isTrackSelected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" title="Selected Track" />
+                    )}
                     <Button
                       type="button"
-                      className="flex-1 truncate text-left text-[11px] font-medium"
-                      title="Select track"
-                      onClick={() => {
+                      className={`flex-1 truncate text-left text-[11px] font-medium transition-colors ${
+                        isTrackSelected ? "!text-amber-300 font-bold" : "text-zinc-200"
+                      }`}
+                      title={`Select track: ${track.name} (Click to select, Delete to remove)`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTrackId(track.id);
+                        setSelected([]);
                         onOpenTrackPanel?.(track.kind);
-                        setTrackEditor({ track: structuredClone(track), index });
                       }}
                     >
                       {track.name}
@@ -1858,6 +1964,13 @@ export function ProfessionalTimeline({
                       false,
                       trackButton,
                     )}
+                    {icon(
+                      `Delete ${track.name} track`,
+                      () => handleDeleteTrack(track.id),
+                      <Trash2 size={11} className="hover:text-red-400 transition-colors" />,
+                      track.locked,
+                      trackButton,
+                    )}
                     {!["text", "captions"].includes(track.kind) &&
                       icon(
                         `${track.muted ? "Unmute" : "Mute"} ${track.name}`,
@@ -1931,7 +2044,9 @@ export function ProfessionalTimeline({
                   </div>
                 </div>
                 <div
-                  className="relative flex-1 bg-[#131518]"
+                  className={`relative flex-1 transition-colors cursor-pointer ${
+                    isTrackSelected ? "bg-amber-950/20" : "bg-[#131518]"
+                  }`}
                   style={{
                     backgroundImage:
                       "linear-gradient(to right,var(--timeline-grid,#ffffff06) 1px,transparent 1px)",
@@ -1939,8 +2054,10 @@ export function ProfessionalTimeline({
                   }}
                   onPointerDown={(e) => {
                     cancelHover();
-                    if (e.target === e.currentTarget) {
+                    const isInteractive = (e.target as HTMLElement).closest('button, input, select, [role="group"], [role="slider"]');
+                    if (!isInteractive) {
                       setSelected([]);
+                      setSelectedTrackId(track.id);
                       onSeek(
                         Math.min(timelineEnd(timeline), timeAt(e.clientX)) /
                           1000,
@@ -1990,7 +2107,7 @@ export function ProfessionalTimeline({
                             type="button"
                             size="sm"
                             aria-label="Upload Background Video or Image"
-                            onClick={() => triggerBackgroundMediaUpload(track.id)}
+                            onClick={() => setMediaTrackId(track.id)}
                             className="flex items-center gap-1.5 rounded bg-cyan-500 hover:bg-cyan-400 px-2.5 py-1 text-[10px] font-bold text-zinc-950 transition-colors cursor-pointer shadow"
                           >
                             <Upload size={11} />
@@ -2024,7 +2141,7 @@ export function ProfessionalTimeline({
                             type="button"
                             size="sm"
                             aria-label="Upload Video"
-                            onClick={() => directUploadRef.current?.click()}
+                            onClick={() => setMediaTrackId(track.id)}
                             className="h-7 px-3 text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-zinc-950 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <Film size={12} />
@@ -2207,7 +2324,7 @@ export function ProfessionalTimeline({
                           </svg>}
                           {track.kind === 'captions' && <div title="Drag caption clip" aria-hidden="true" className="absolute inset-x-2 top-0 z-20 h-1 cursor-grab bg-amber-300/30" onPointerDown={e => startDrag(e, clip)} />}
                           {track.kind === 'captions' && clip.assetId && <TimelineCaptionWords clip={clip} groups={captionClipGroups(project, timeline, clip)}
-                            pixelsPerMs={px} currentMs={currentTime * 1000} fps={timeline.fps} disabled={track.locked || !onCaptionSourceChange || isSyncingCaptions || lockedCaptionAssets.has(clip.assetId)} onSelect={() => setSelected([clip.id])}
+                            pixelsPerMs={px} currentMs={currentTime * 1000} fps={timeline.fps} disabled={track.locked || !onCaptionSourceChange || isSyncingCaptions || lockedCaptionAssets.has(clip.assetId)} onSelect={() => { setSelected([clip.id]); setSelectedTrackId(null); }}
                             visibleStartMs={(viewport.left - 160) / px - 500} visibleEndMs={(viewport.left + viewport.width) / px + 500}
                             onSeek={onSeek} onError={setError} onChange={groups => {
                               try { onCaptionSourceChange?.(clip.assetId!, groups); setError(''); }
@@ -2237,10 +2354,13 @@ export function ProfessionalTimeline({
                                   size="sm"
                                   aria-label="Change Background (Video / Image)"
                                   title="Upload or choose a different background video or image"
+                                  aria-haspopup="dialog"
+                                  disabled={track.locked}
                                   onPointerDown={(e) => e.stopPropagation()}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    triggerBackgroundMediaUpload(track.id);
+                                    setError("");
+                                    setBackgroundTrackId(track.id);
                                   }}
                                   className="h-5 px-2 text-[9px] font-semibold bg-cyan-500/30 hover:bg-cyan-500/50 text-cyan-200 border border-cyan-500/60 rounded flex items-center gap-1 shadow cursor-pointer"
                                 >
@@ -2317,10 +2437,27 @@ export function ProfessionalTimeline({
             : "Original project · edits enable composition"}
         </span>
       </div>
+      {backgroundTrackId && (() => {
+        const track = timeline.tracks.find(track => track.id === backgroundTrackId);
+        if (!track) return null;
+        const visuals = allAvailableAssets.filter(asset => asset.mediaType === "image" || asset.mediaType === "video");
+        const selectBackground = (asset: TimelineAsset) => {
+          if (replaceBackground(track.id, asset)) setBackgroundTrackId(null);
+        };
+        return <TimelineMediaPicker key={track.id} track={track} assets={visuals}
+          title="Change Background"
+          subtitle={error || "Choose an image or video from your library, or upload one from your device."}
+          onClose={() => setBackgroundTrackId(null)}
+          onAdd={assetId => {
+            const asset = visuals.find(asset => asset.id === assetId);
+            if (asset) selectBackground(asset);
+          }}
+          onUpload={selectBackground}/>;
+      })()}
       {mediaTrackId && (() => {
         const track = timeline.tracks.find(track => track.id === mediaTrackId);
         if (!track) return null;
-        return <TimelineMediaPicker key={track.id} track={track} assets={projectTimelineAssets(project)}
+        return <TimelineMediaPicker key={track.id} track={track} assets={allAvailableAssets}
           onDelete={onRemoveMedia}
           onClose={() => setMediaTrackId(null)}
           onAdd={assetId => {
@@ -2329,7 +2466,7 @@ export function ProfessionalTimeline({
             addAsset(track.id, assetId, startMs);
             if (isTimelineEmpty) {
               onSeek(0);
-              const asset = projectTimelineAssets(project).find(a => a.id === assetId);
+              const asset = allAvailableAssets.find(a => a.id === assetId);
               if (asset?.durationMs && scroll.current) {
                 const totalDurationSec = asset.durationMs / 1000;
                 const fitZoom = Math.max(5, Math.min(200, (scroll.current.clientWidth - 160) / (totalDurationSec + 2)));
@@ -2342,7 +2479,7 @@ export function ProfessionalTimeline({
             const isTimelineEmpty = timeline.clips.length === 0;
             const startMs = isTimelineEmpty ? 0 : (trackEnds.get(track.id) || 0);
             const all = [
-              ...projectTimelineAssets(project).filter(existing => existing.id !== asset.id),
+              ...allAvailableAssets.filter(existing => existing.id !== asset.id),
               asset,
             ];
             const clipDuration = Math.max(

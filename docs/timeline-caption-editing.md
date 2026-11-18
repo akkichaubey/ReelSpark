@@ -8,6 +8,19 @@ Enter, to edit text. Enter/blur saves; Escape cancels. Text edits retain word
 timing, importance, speaker and other metadata. The left Transcript panel stays
 available and uses the same source data.
 
+Use **Copy Transcript**, after **Clear**, to copy the full transcript as one
+plain-text passage. It preserves the original language and punctuation, omits
+timestamps and caption numbers, and includes phrases hidden by the search filter.
+The button is disabled when the transcript is empty and reports whether the
+browser allowed the clipboard write.
+
+When **Hinglish** is active, use the compact **Case** dropdown immediately beside
+it in the toolbar to select
+Original, lowercase, UPPERCASE, Capitalize Each Word, or Sentence case. This
+shortcut edits the same project-wide caption style as **Caption Styles → Text**.
+The preview and rendered video use that style, and the source transcript keeps
+its original spelling and case.
+
 Drag a word's start/end handle to adjust its source timing. Focus a handle and
 use Left/Right for a one-frame adjustment. Boundaries clamp to clip in/out and
 neighboring words; insufficient space produces an error. Drag release commits
@@ -45,6 +58,46 @@ undo/redo. No new project fields or version migration were introduced. Saved
 Reels and portable JSON retain the existing source/group data structure.
 
 ## Verification
+
+### Hinglish caption case shortcut (2026-11-18)
+
+- **PASS** TypeScript, scoped ESLint (zero errors, 20 warnings), and fixtures
+  covering the five transforms, ASS subtitle text, legacy uppercase, and
+  unchanged source words.
+- **PASS** The placement follow-up verified that Case shares the language
+  group and that the compiled width override takes precedence over the
+  shared trigger's full-width default.
+- **FAIL** The production build stopped when the Turbopack CSS loader
+  subprocess exited while processing `theme.css`.
+- **NOT RUN** Live browser interaction, light/dark and responsive layout,
+  undo/save/reopen, and MP4 export.
+
+### Copy Transcript (2026-11-18)
+
+- **PASS** TypeScript, ESLint for `TranscriptEditor.tsx`, and checks for full Hindi text,
+  punctuation, search independence, button order, the empty state, and missing
+  or denied clipboard access.
+- **FAIL** The production build stopped when Turbopack's CSS loader subprocess
+  exited while processing `theme.css`.
+- **NOT RUN** Live browser copy and paste, responsive layout, and theme checks.
+
+### Transcript toolbar layout (2026-11-18)
+
+The toolbar adapts to the panel width. At narrow widths, speech detection gets
+its own row and Detect Keywords and Add Phrase sit side by side when there is
+room. At wider widths, the actions share a row. The Sync button exposes its
+pressed state and toggles whether the transcript scrolls with playback.
+
+- **PASS** TypeScript, ESLint for `TranscriptEditor.tsx`, Tailwind container
+  query compilation, and rendered markup checks for empty, populated,
+  transcribing, and optional speech-action states.
+- **FAIL** The Turbopack production build lost its CSS loader subprocess while
+  processing `globals.css`. The retry with Node 24.22.1 hit the same failure.
+- **NOT RUN** Browser layout, keyboard, theme, and full caption workflow checks.
+  The standalone regression suites referenced below are historical and have
+  since been removed.
+
+### Original timeline editing verification
 
 `npx tsx tests/timeline_caption_editing.test.ts` checks spelling/timing edits, frame/neighbor/clip
 bounds, locks, source immutability, archived-source isolation, source-to-timeline

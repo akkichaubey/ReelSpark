@@ -6,10 +6,8 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard,
-  Scissors,
   Clapperboard,
   Share2,
-  Download,
   Sliders,
   HelpCircle,
   LogOut,
@@ -20,6 +18,8 @@ import {
   BookOpen,
   Library,
   Sparkles,
+  FolderOpen,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/use-auth-store';
 import { ReelSparkLogo } from '@/components/ReelSparkLogo';
@@ -63,7 +63,7 @@ interface DashboardSidebarProps {
 }
 
 export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
-  isCollapsed,
+  isCollapsed: desktopCollapsed,
   onToggleCollapse,
   mobileOpen,
   onCloseMobile,
@@ -76,6 +76,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const { user, logout } = useAuthStore();
   const subscribeMobile = useCallback((notify: () => void) => subscribeMobileNavigation(notify, onCloseMobile), [onCloseMobile]);
   const isMobileViewport = useSyncExternalStore(subscribeMobile, mobileNavigationSnapshot, serverMobileNavigationSnapshot);
+  const isCollapsed = !isMobileViewport && desktopCollapsed;
 
   // Navigation structure mapped directly to working ReelSpark features
   const navSections: NavSection[] = [
@@ -101,16 +102,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           icon: Sparkles,
         },
         {
-          id: 'clipping-studio',
-          label: 'Video & Audio Studio',
-          href: '/clipping-studio',
-          icon: Scissors,
-        },
-        {
-          id: 'export-history',
-          label: 'Export History',
-          href: '/clipping-studio?tab=export',
-          icon: Download,
+          id: 'media-library',
+          label: 'Media Library',
+          href: '/media-library',
+          icon: FolderOpen,
         },
         { id: 'saved-reels', label: 'Saved Reels', href: '/saved-reels', icon: Library },
       ],
@@ -123,6 +118,12 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           label: 'AI Social Post',
           href: '/social-post',
           icon: Share2,
+        },
+        {
+          id: 'planner',
+          label: 'Planner',
+          href: '/planner',
+          icon: CalendarDays,
         },
         {
           id: 'social-accounts',
@@ -148,11 +149,11 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     if (item.href === '/?view=clip-finder') {
       return pathname === '/' && currentView === 'clip-finder';
     }
-    if (item.href === '/clipping-studio?tab=export') {
-      return pathname === '/clipping-studio' && searchParams.get('tab') === 'export';
+    if (item.href === '/auto-cut') {
+      return pathname.startsWith('/auto-cut') || pathname.startsWith('/clipping-studio');
     }
-    if (item.href === '/clipping-studio') {
-      return pathname === '/clipping-studio' && searchParams.get('tab') !== 'export';
+    if (item.href === '/media-library') {
+      return pathname.startsWith('/media-library');
     }
     if (item.href === '/reel-maker') {
       return pathname.startsWith('/reel-maker') || pathname.startsWith('/caption-maker');

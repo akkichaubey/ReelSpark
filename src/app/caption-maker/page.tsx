@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { updateCaptionSource } from '@/lib/timeline/caption-edits';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { accountCache, ACCOUNT_WORKSPACE_FLUSH_EVENT } from '@/lib/account-cache';
 import { syncStorageReferenceInventory } from '@/lib/storage-reference-client';
 import { voiceVideoBackgroundUpdates } from '@/lib/caption-maker/voice-video-background';
@@ -13,6 +14,8 @@ import { removeReelMedia } from '@/lib/caption-maker/remove-reel-media';
 import { readCloudSaveResult } from '@/lib/caption-maker/cloud-save';
 import { uploadFileWithProgress } from '@/lib/upload-with-progress';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { TitleSuggestionsButton } from '@/components/TitleSuggestionsDialog';
+import { selectTitleTranscript } from '@/lib/title-suggestions';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -27,6 +30,7 @@ import {
   TranscriptWord,
   ThumbnailSettings,
   BgMusicTrack,
+  TextTransformMode,
 } from '@/lib/caption-maker/types';
 import { createEmptyCaptionProject, PRESET_BGM_TRACKS } from '@/lib/caption-maker/sample-data';
 import { cleanBundledSampleProject } from '@/lib/caption-maker/clean-sample-project';
@@ -39,7 +43,7 @@ import { ProfessionalTimeline } from '@/components/caption-maker/ProfessionalTim
 import { TimelinePreview } from '@/components/caption-maker/TimelinePreview';
 import { ThumbnailPoster, useThumbnailCover } from '@/components/caption-maker/ThumbnailCover';
 import { createThumbnailCoverDataUrl, THUMBNAIL_COVER_SECONDS } from '@/lib/caption-maker/thumbnail-cover';
-import { commitTimeline, createTimelineTrack, projectTimelineAssets, synchronizeTimelineSources, timelineEnd, type TrackKind } from '@/lib/timeline/model';
+import { commitTimeline, createTimelineTrack, projectTimelineAssets, synchronizeTimelineSources, timelineEnd, type TrackKind, type TimelineAsset } from '@/lib/timeline/model';
 import { downloadFileReliably } from '@/lib/download-client';
 import { BackgroundMusicPicker } from '@/components/caption-maker/BackgroundMusicPicker';
 import { SavedReelActions } from '@/components/saved-reels/SavedReelActions';
@@ -153,6 +157,39 @@ function CaptionMakerPageContent() {
   const [isSmartEditorOpen, setIsSmartEditorOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [isThumbnailMediaPickerOpen, setIsThumbnailMediaPickerOpen] = useState<boolean>(false);
+  const [userMediaLibrary, setUserMediaLibrary] = useState<TimelineAsset[]>([]);
+
+  const fetchUserMediaLibrary = useCallback(async () => {
+    try {
+      const response = await fetch('/api/caption-maker/media', { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.success && Array.isArray(data.assets)) {
+        setUserMediaLibrary(data.assets);
+      }
+    } catch (err) {
+      console.warn('[User Media Library] Failed to fetch:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/caption-maker/media', { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && data.success && Array.isArray(data.assets)) {
+          setUserMediaLibrary(data.assets);
+        }
+      } catch (err) {
+        console.warn('[User Media Library] Failed to fetch:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const [crashRecoverySnapshot, setCrashRecoverySnapshot] = useState<ProjectSnapshot | null>(null);
   const isInitialMount = useRef<boolean>(true);
@@ -599,12 +636,12 @@ function CaptionMakerPageContent() {
 
   // Push new state to undo/redo history
   const updateProjectWithHistory = useCallback(
-    (updater: (prev: CaptionProject) => CaptionProject) => {
+    (updater: (prev: CaptionProject) => CaptionProject, titleOnly = false) => {
       const prev = editingSnapshot.current.project;
       const historyPosition = editingSnapshot.current.index;
-      const updated = synchronizeTimelineSources(prev, updater(prev));
+      const updated = titleOnly ? updater(prev) : synchronizeTimelineSources(prev, updater(prev));
       if (updated === prev) return;
-      const next = savedReelId || updated.timeline?.enabled ? { ...updated, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined, renderedSrtUrl: undefined } : updated;
+      const next = !titleOnly && (savedReelId || updated.timeline?.enabled) ? { ...updated, renderedVideoUrl: undefined, renderedVideoPath: undefined, renderedSrtPath: undefined, renderedSrtUrl: undefined } : updated;
       setHistory((prevHist) => {
         const cut = prevHist.slice(0, historyPosition + 1);
         return [...cut, next];
@@ -612,7 +649,7 @@ function CaptionMakerPageContent() {
       editingSnapshot.current = { project: next, index: historyPosition + 1 };
       setHistoryIndex(historyPosition + 1);
       setProject(next);
-      setRenderResult(null);
+      if (!titleOnly) setRenderResult(null);
     },
     [savedReelId]
   );
@@ -1083,6 +1120,7 @@ function CaptionMakerPageContent() {
         updatedAt: new Date().toISOString(),
       };
     });
+    fetchUserMediaLibrary();
   };
 
   const initialThumbAspect: '9:16' | '4:5' | '1:1' | '16:9' = useMemo(() => {
@@ -1154,6 +1192,12 @@ function CaptionMakerPageContent() {
     initialThumbAspect,
   ]);
 
+  const titleSourceKey = useMemo(
+    () => JSON.stringify([project.id, project.sourceClipId, project.trimRange, project.transcript]),
+    [project.id, project.sourceClipId, project.trimRange, project.transcript],
+  );
+  const getTitleSource = () => selectTitleTranscript(project.transcript, project.trimRange?.start ?? 0, project.trimRange?.end ?? Infinity);
+
   const handleChangeThumbnailSettings = (newSettings: ThumbnailSettings) => {
     updateProjectWithHistory((prev) => {
       // Sync safe-zone platform/overrides to captionStyle so video reel view stays synchronized
@@ -1209,8 +1253,27 @@ function CaptionMakerPageContent() {
     if (project.image && isImg(project.image)) {
       map.set(project.image.fileUrl || project.image.id, project.image);
     }
+    for (const a of userMediaLibrary) {
+      if (isImg(a)) {
+        if (!map.has(a.fileUrl || a.id)) {
+          map.set(a.fileUrl || a.id, {
+            id: a.id,
+            fileName: a.fileName || 'Image',
+            fileUrl: a.fileUrl,
+            fileSize: 0,
+            width: a.width || 1080,
+            height: a.height || 1920,
+            format: 'png',
+            mediaType: 'image',
+            fitMode: a.fitMode || 'cover',
+            position: a.position || 'center',
+            scale: a.scale ?? 100,
+          });
+        }
+      }
+    }
     return Array.from(map.values());
-  }, [project.mediaAssets, project.timeline?.assets, project.image]);
+  }, [project.mediaAssets, project.timeline?.assets, project.image, userMediaLibrary]);
 
   const thumbnailCover = useThumbnailCover(project, currentThumbSettings);
   const handleEditThumbnailCover = () => {
@@ -1550,6 +1613,7 @@ function CaptionMakerPageContent() {
     };
 
     setProject(nextProject);
+    fetchUserMediaLibrary();
     if (isDifferentAudio) {
       setHistory([nextProject]);
       setHistoryIndex(0);
@@ -2319,7 +2383,13 @@ function CaptionMakerPageContent() {
             />
 
             {/* Multilingual Language Switcher Toggle (English / Hindi / Hinglish) */}
-            <div className="flex items-center bg-zinc-800/90 rounded-lg p-0.5 border border-zinc-700/60 text-xs">
+            <TitleSuggestionsButton
+              sourceKey={titleSourceKey}
+              source={getTitleSource}
+              applyLabel="Apply reel title"
+              onApply={title => updateProjectWithHistory(previous => previous.id === project.id && previous.title !== title ? { ...previous, title } : previous, true)}
+            />
+            <div className="flex max-w-full flex-wrap items-center rounded-lg border border-zinc-700/60 bg-zinc-800/90 p-0.5 text-xs">
               <Button
                 type="button"
                 onClick={() => handleSwitchLanguage('en')}
@@ -2356,6 +2426,32 @@ function CaptionMakerPageContent() {
               >
                 Hinglish
               </Button>
+              {project.preferredLanguage === 'hinglish' && (
+                <Select
+                  value={project.captionStyle.textTransform ?? (project.captionStyle.uppercase ? 'uppercase' : 'none')}
+                  onValueChange={(value: TextTransformMode) => updateProjectWithHistory(previous => ({
+                    ...previous,
+                    captionStyle: {
+                      ...previous.captionStyle,
+                      textTransform: value,
+                      uppercase: value === 'uppercase',
+                    },
+                    updatedAt: new Date().toISOString(),
+                  }))}
+                >
+                  <SelectTrigger aria-label="Caption Case" className="ml-1 h-6 w-auto! gap-1! rounded-md! px-1.5! py-0!">
+                    <span className="text-zinc-400">Case</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    <SelectItem value="none">Original</SelectItem>
+                    <SelectItem value="lowercase">lowercase</SelectItem>
+                    <SelectItem value="uppercase">UPPERCASE</SelectItem>
+                    <SelectItem value="title">Capitalize Each Word</SelectItem>
+                    <SelectItem value="sentence">Sentence case</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Word timing quality badge */}
@@ -2837,6 +2933,23 @@ function CaptionMakerPageContent() {
               <ThumbnailStylePanel
                 settings={currentThumbSettings}
                 onChangeSettings={handleChangeThumbnailSettings}
+                titleAction={
+                  <TitleSuggestionsButton
+                    sourceKey={titleSourceKey}
+                    source={getTitleSource}
+                    platform="instagram"
+                    applyLabel="Apply to Thumbnail"
+                    onApply={title => updateProjectWithHistory(previous => {
+                      if (previous.id !== project.id) throw new Error('The reel changed. Reopen AI Titles and try again.');
+                      const settings = previous.thumbnailSettings ?? currentThumbSettings;
+                      return settings.title === title ? previous : {
+                        ...previous,
+                        thumbnailSettings: { ...settings, title },
+                        updatedAt: new Date().toISOString(),
+                      };
+                    })}
+                  />
+                }
                 projectTitle={project.title}
                 captionGroups={project.captionGroups}
                 image={project.image}
@@ -2858,7 +2971,7 @@ function CaptionMakerPageContent() {
       {/* BOTTOM SECTION: Full Interactive Scrubber & Audio Waveform Timeline */}
       {savedReelLoadError ? <div role="alert" className="bg-red-950 px-4 py-3 text-sm text-red-200">{savedReelLoadError} · <a href="/saved-reels">Return to Saved Reels</a></div> : (!savedReelId || savedReelSession) && <SavedReelActions project={project} session={savedReelSession} onUpdateProject={updates => updateProjectWithHistory(previous => ({ ...previous, ...updates, updatedAt: new Date().toISOString() }))} onSaved={(reel) => { setSavedReelSession(reel); setProject(previous => previous === project ? reel.project : previous); if (!savedReelId) router.push(`/reel-maker?savedReel=${encodeURIComponent(reel.id)}`); }} />}
       <footer className="shrink-0">
-        <ProfessionalTimeline project={project} currentTime={currentTime} isPlaying={isPlaying} onSeek={handleSeek} onTogglePlay={togglePlay} onUndo={undo} onRedo={redo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1} onTrimChange={handleTrimChange} onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
+        <ProfessionalTimeline project={project} userMediaLibrary={userMediaLibrary} currentTime={currentTime} isPlaying={isPlaying} onSeek={handleSeek} onTogglePlay={togglePlay} onUndo={undo} onRedo={redo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1} onTrimChange={handleTrimChange} onOpenSmartEditor={() => setIsSmartEditorOpen(true)}
           trackSettingsTarget={trackSettingsTarget}
           onOpenTrackPanel={kind => { setTrackPanel(kind); setCompactPanel('media'); }}
           thumbnailCoverUrl={thumbnailCover.url} thumbnailCoverError={thumbnailCover.error} onEditThumbnail={handleEditThumbnailCover}
@@ -2868,7 +2981,7 @@ function CaptionMakerPageContent() {
           onCaptionSourceChange={(assetId, groups) => updateProjectWithHistory(previous => updateCaptionSource(previous, assetId, groups))}
           onEditCaptions={() => { setTrackPanel(null); setCompactPanel('media'); setCenterViewMode('video'); setRightTab('style'); }} onRemoveMedia={async assetId => {
           const previous = editingSnapshot.current.project;
-          const asset = projectTimelineAssets(previous).find(asset => asset.id === assetId);
+          const asset = projectTimelineAssets(previous).find(asset => asset.id === assetId) || userMediaLibrary.find(asset => asset.id === assetId);
           if (!asset) throw new Error('Media is no longer available.');
           // Validate linked-track locks before deleting any stored bytes.
           removeReelMedia(previous, assetId);
@@ -2889,6 +3002,7 @@ function CaptionMakerPageContent() {
           setProject(next); setHistory([next]); setHistoryIndex(0); setRenderResult(null);
           audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false); setCurrentTime(0);
           setTimelineSeekVersion(value => value + 1);
+          fetchUserMediaLibrary();
         }} onChange={timeline => {
           audioRef.current?.pause(); bgMusicRef.current?.pause(); setIsPlaying(false);
           if (!project.timeline?.enabled) setCurrentTime(0);
@@ -3086,6 +3200,7 @@ function CaptionMakerPageContent() {
             };
             handleImageUploaded(imgAsset);
             setIsThumbnailMediaPickerOpen(false);
+            fetchUserMediaLibrary();
           }}
           onDelete={async (assetId) => {
             const asset = allImageAssets.find((a) => a.id === assetId);
@@ -3106,6 +3221,7 @@ function CaptionMakerPageContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fileUrl: asset.fileUrl }),
               });
+              fetchUserMediaLibrary();
             } catch {}
           }}
           onClose={() => setIsThumbnailMediaPickerOpen(false)}

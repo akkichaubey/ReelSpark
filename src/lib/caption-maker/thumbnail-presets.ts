@@ -372,9 +372,29 @@ export function drawRoundRect(
   ctx.closePath();
 }
 
-/**
- * Renders thumbnail onto canvas with multi-line word wrap and word highlighting
- */
+const brushHeadlineYellow = '#FCD905';
+
+function drawHeadlineBrush(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = brushHeadlineYellow;
+  // Overlapping bristle marks leave a rough edge and a solid center for the text.
+  const edges = [0.04, 0.018, 0.035, 0.005, 0.024, 0, 0.028, 0.012, 0.041, 0.025];
+  edges.forEach((left, index) => {
+    const right = edges[edges.length - 1 - index];
+    ctx.fillRect(width * left, height * index / edges.length, width * (1 - left - right), height * 0.14);
+  });
+  for (let index = 0; index < 42; index++) {
+    const row = index / 42;
+    const inset = width * (index % 7) / 350;
+    const length = width * (0.035 + (index % 5) / 90);
+    ctx.fillRect(inset, height * row, length, height * 0.012);
+    ctx.fillRect(width - inset - length, height * row, length, height * 0.012);
+  }
+  ctx.restore();
+}
+
+/** Renders a thumbnail with title wrapping and text styling. */
 export async function renderThumbnailToCanvas(
   canvas: HTMLCanvasElement,
   settings: ThumbnailSettings,
@@ -583,12 +603,16 @@ export async function renderThumbnailToCanvas(
   }
 
   // 3. Setup Font for Title
+  const brushHeadline = settings.titleTreatment === 'brush-headline';
   const fontFamily = settings.fontFamily || 'Montserrat';
-  const fontWeight = settings.fontWeight || '900';
+  const fontStack = brushHeadline
+    ? `"${fontFamily}", "Noto Sans Devanagari", "Nirmala UI", sans-serif`
+    : `"${fontFamily}", -apple-system, sans-serif`;
+  const fontWeight = brushHeadline ? '900' : settings.fontWeight || '900';
   const fontSize = settings.fontSize || 78;
   const letterSpacing = settings.letterSpacing || 0;
 
-  ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}", -apple-system, sans-serif`;
+  ctx.font = `${fontWeight} ${fontSize}px ${fontStack}`;
   ctx.textBaseline = 'top';
 
   // 4. Parse Title Words and Wrapping
@@ -605,12 +629,18 @@ export async function renderThumbnailToCanvas(
   interface TitleToken {
     text: string;
     isHighlight: boolean;
+    startsLine?: boolean;
   }
 
   const rawTokens: TitleToken[] = [];
-  const words = rawTitle.split(/\s+/).filter(Boolean);
+  const words = brushHeadline ? rawTitle.match(/[^\s]+|\r\n|[\r\n]/g) ?? [] : rawTitle.split(/\s+/).filter(Boolean);
+  let startsLine = false;
 
   for (const word of words) {
+    if (brushHeadline && /^[\r\n]/.test(word)) {
+      startsLine = true;
+      continue;
+    }
     let cleanWord = word;
     let isHl = false;
 
@@ -627,7 +657,9 @@ export async function renderThumbnailToCanvas(
     rawTokens.push({
       text: cleanWord,
       isHighlight: isHl,
+      startsLine,
     });
+    startsLine = false;
   }
 
   // Measure word widths and break into lines
@@ -649,7 +681,7 @@ export async function renderThumbnailToCanvas(
     const tokenW = ctx.measureText(token.text).width + letterSpacing * Math.max(0, token.text.length - 1);
     const addedWidth = currentLineTokens.length === 0 ? tokenW : spaceWidth + tokenW;
 
-    if (currentLineTokens.length > 0 && currentLineWidth + addedWidth > maxLineWidth) {
+    if (currentLineTokens.length > 0 && (token.startsLine || currentLineWidth + addedWidth > maxLineWidth)) {
       lines.push({
         tokens: currentLineTokens,
         tokenWidths: currentTokenWidths,
@@ -675,7 +707,15 @@ export async function renderThumbnailToCanvas(
 
   // Line metrics
   const lineHeight = fontSize * 1.18;
-  const totalTitleHeight = lines.length * lineHeight;
+  const lineScales = brushHeadline ? lines.map((line, index) => {
+    const widthFraction = index === 0 ? 0.79 : index === 1 ? 0.63 : 0.68;
+    const maxScale = index === 0 ? 3.4 : index === 1 ? 2.65 : 1.95;
+    return Math.min(maxScale, width * widthFraction / Math.max(1, line.totalWidth));
+  }) : [];
+  const brushRise = brushHeadline ? (lines[0]?.totalWidth ?? 0) * (lineScales[0] ?? 1) * 0.12 : 0;
+  const totalTitleHeight = brushHeadline
+    ? lineScales.reduce((sum, scale) => sum + lineHeight * scale, 0) + brushRise
+    : lines.length * lineHeight;
 
   // 5. Measure Badge Pill if present and enabled
   let badgeHeight = 0;
@@ -898,34 +938,51 @@ export async function renderThumbnailToCanvas(
   }
 
   // 10. Draw Title Lines
-  ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}", -apple-system, sans-serif`;
+  ctx.font = `${fontWeight} ${fontSize}px ${fontStack}`;
   ctx.textBaseline = 'top';
 
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
+    const scale = lineScales[lineIndex] ?? 1;
+    const lineWidth = line.totalWidth * scale;
     let startX = 0;
     if (settings.textAlign === 'left') {
       startX = width * 0.08;
     } else if (settings.textAlign === 'right') {
-      startX = width * 0.92 - line.totalWidth;
+      startX = width * 0.92 - lineWidth;
     } else if (settings.textAlign === 'custom') {
       const customXPercent = (settings.customX ?? 50) / 100;
-      startX = width * customXPercent - line.totalWidth / 2;
+      startX = width * customXPercent - lineWidth / 2;
     } else {
-      startX = (width - line.totalWidth) / 2;
+      startX = (width - lineWidth) / 2;
     }
-    startX = Math.max(width * 0.04, Math.min(width * 0.96 - line.totalWidth, startX));
+    startX = Math.max(width * 0.04, Math.min(width * 0.96 - lineWidth, startX));
 
-    let tokenX = startX;
+    const brushLine = brushHeadline && lineIndex === 0;
+    if (brushHeadline) {
+      ctx.save();
+      ctx.translate(startX, currentY);
+      if (brushLine) ctx.transform(1, -0.12, 0, 1, 0, brushRise);
+      ctx.scale(scale, scale);
+    }
+    if (brushLine) {
+      const padding = fontSize * 0.35;
+      const left = Math.max(-startX / scale, -padding);
+      const right = Math.min((width - startX) / scale, line.totalWidth + padding);
+      drawHeadlineBrush(ctx, left, -fontSize * 0.04, right - left, fontSize * 1.06);
+    }
+    const brushColor = brushLine ? '#000000' : lineIndex % 2 === 0 ? brushHeadlineYellow : '#FFFFFF';
+    let tokenX = brushHeadline ? 0 : startX;
+    const textY = brushHeadline ? 0 : currentY;
     for (let i = 0; i < line.tokens.length; i++) {
       const token = line.tokens[i];
       const tokenW = line.tokenWidths[i];
       const isHl = token.isHighlight;
 
       ctx.save();
-      const color = isHl ? (settings.highlightColor || '#FCD905') : (settings.textColor || '#FFFFFF');
+      const color = brushHeadline ? brushColor : isHl ? (settings.highlightColor || '#FCD905') : (settings.textColor || '#FFFFFF');
 
       // Shadow
-      if (settings.shadowBlur > 0) {
+      if (!brushLine && settings.shadowBlur > 0) {
         ctx.shadowColor = settings.shadowColor || 'rgba(0,0,0,0.85)';
         ctx.shadowBlur = settings.shadowBlur;
         ctx.shadowOffsetX = 0;
@@ -933,22 +990,23 @@ export async function renderThumbnailToCanvas(
       }
 
       // Stroke
-      if (settings.strokeWidth > 0) {
+      if (!brushLine && settings.strokeWidth > 0) {
         ctx.strokeStyle = settings.strokeColor || '#000000';
         ctx.lineWidth = settings.strokeWidth;
         ctx.lineJoin = 'round';
-        ctx.strokeText(token.text, tokenX, currentY);
+        ctx.strokeText(token.text, tokenX, textY);
       }
 
       // Fill
       ctx.fillStyle = color;
-      ctx.fillText(token.text, tokenX, currentY);
+      ctx.fillText(token.text, tokenX, textY);
       ctx.restore();
 
       tokenX += tokenW + spaceWidth;
     }
 
-    currentY += lineHeight;
+    if (brushHeadline) ctx.restore();
+    currentY += lineHeight * scale + (brushLine ? brushRise : 0);
   }
 
   // 11. Draw Subtitle

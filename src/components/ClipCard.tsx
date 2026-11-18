@@ -27,7 +27,11 @@ import {
 import { ClipCandidate } from '@/lib/types';
 import { getBilingualCandidateData } from '@/lib/bilingual';
 
+import { TitleSuggestionsButton } from '@/components/TitleSuggestionsDialog';
+
 interface ClipCardProps {
+  titleSource?: { key: string; load: () => { transcript: string; context?: string } };
+  onSaveTitle?: (title: string) => Promise<void>;
   candidate: ClipCandidate;
   rank: number;
   onToggleSelect: (id: string) => void;
@@ -44,6 +48,8 @@ interface ClipCardProps {
 }
 
 export const ClipCard: React.FC<ClipCardProps> = ({
+  titleSource,
+  onSaveTitle,
   candidate,
   rank,
   onToggleSelect,
@@ -83,6 +89,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
         duration: candidate.duration,
         language: lang,
         clipId: candidate.id,
+        titleSource: titleSource?.load(),
       };
       accountCache.setItem('reel_social_post_context', JSON.stringify(socialContext));
     } catch (e) {
@@ -453,6 +460,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({
             <span>Social Post</span>
           </Button>
 
+          {titleSource && onSaveTitle && <TitleSuggestionsButton sourceKey={titleSource.key} source={titleSource.load} applyLabel="Save clip title" onApply={onSaveTitle} />}
           {/* Create Reel in Amber/Gold */}
           <Button
             type="button"

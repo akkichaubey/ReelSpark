@@ -229,6 +229,7 @@ export type ThumbnailBackgroundType = 'project' | 'gradient' | 'color';
 
 export interface ThumbnailSettings {
   title: string;
+  titleTreatment?: 'brush-headline';
   subtitle?: string;
   badgeText?: string;
   badgeStyle?: ThumbnailBadgeStyle;

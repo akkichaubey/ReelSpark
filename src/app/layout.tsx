@@ -1,11 +1,15 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { PwaRegistration } from '@/components/PwaRegistration';
 import { MediaErrorHandler } from '@/components/MediaErrorHandler';
 import { AccountWorkspaceBoundary } from '@/components/AccountWorkspaceBoundary';
 import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 import './theme.css';
 
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#09090b' };
+
 export const metadata: Metadata = {
+  appleWebApp: { capable: true, title: 'ReelSpark', statusBarStyle: 'default' },
   title: 'ReelMaker — Video to Reels & Shorts Studio',
   description:
     'Find engaging moments in long videos, create short reels with synchronized captions, and prepare social-ready video covers.',
@@ -15,7 +19,7 @@ export const metadata: Metadata = {
       { url: '/favicon.ico', sizes: 'any' },
     ],
     shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    apple: '/pwa-192.png',
   },
   keywords: [
     'ReelMaker',
@@ -36,6 +40,7 @@ export default function RootLayout({
     <html lang="en" className="dark h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
         <MediaErrorHandler />
+        <PwaRegistration />
         <ThemeProvider><AccountWorkspaceBoundary>{children}</AccountWorkspaceBoundary></ThemeProvider>
       </body>
     </html>

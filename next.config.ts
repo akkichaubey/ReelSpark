@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   ],
   experimental: {
     proxyClientMaxBodySize: '500mb',
+    agentUpgrade: false,
   },
   turbopack: {
     rules: {

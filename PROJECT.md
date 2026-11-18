@@ -299,6 +299,38 @@ Download MP4 & Word/Phrase-level SRT
 
 ---
 
+### AI Title Generator
+
+Open **AI Titles** in AI Clip Finder, Reel Maker, Saved Clips, or Social Post
+Studio. Generate five suggestions in Viral, Meaningful, or SEO Optimized mode
+for YouTube Shorts, Instagram Reels, Facebook Reels, or Threads. The language
+defaults to Roman-script Hinglish and also supports Hindi, English, and Auto
+Detect. Each suggestion includes a category, a source excerpt, a short rationale,
+and an estimated score. The highest score is marked **AI Recommended**.
+
+The authenticated `POST /api/title-suggestions` route uses the existing Ollama
+Cloud client, validates JSON and exact evidence, and applies the seven weighted
+criteria from the title brief. Nearby transcript helps establish context, while
+evidence must appear in the selected clip text. YouTube follows the
+[100-character title limit](https://developers.google.com/youtube/data/reference/rest/v3/videos).
+The other modes use a ReelSpark editorial limit of 90 characters. Successful
+responses can be reused for five minutes for the same account, model, and input.
+
+Regenerate one or all suggestions, request three more, or copy and edit a
+selected title. Regeneration preserves the selected draft. Saving in Clip
+Finder or Saved Clips updates the clip title. Reel Maker applies the choice to
+the current project through its undo and save flow. Social Post Studio applies
+it to the current post draft used by the publishing flow.
+
+Use **Enter title manually** if generation is unavailable. The dialog shows
+separate messages for exhausted usage, configuration, model, and connection
+errors. **Retry** is available for temporary provider failures.
+
+Generation requires a transcript. Saved Clips use a linked analysis transcript
+or a matching saved reel transcript when available. For timed selections,
+only segments fully inside the range are used as evidence. A clip covering
+only part of a transcript segment may need more precise transcript timing.
+
 ## 15. Professional AI Reel Studio Engine (Advanced Capabilities)
 
 The Studio upgrade adds 10 specialized, production-ready modules powering `/reel-maker`:

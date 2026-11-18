@@ -1,5 +1,20 @@
 # ReelSpark — Professional AI Reel Studio & Local-First Clip Finder
 
+## Mobile installation
+
+On HTTPS deployments, install ReelSpark using the browser's Install app action
+or Safari's Add to Home Screen. The installed app includes a standalone window,
+phone safe-area spacing, and an offline reconnection page. Project loading,
+AI processing, and export require a network connection. The service worker
+caches only the static offline page. Mobile navigation retains its labels even
+when desktop navigation was collapsed.
+
+On Render, Remotion exports use one rendering worker and 32 MiB limits for each
+video cache, with encoding after frame rendering. A second simultaneous export
+receives a retry message. These limits reduce resource pressure but cannot
+guarantee that every export fits the hosting instance's memory. Production
+export verification and physical-device installation checks remain pending.
+
 Current verification: [2026-11 QA/QC report](docs/qa-qc-2026-11-01.md) records
 tested features, confirmed fixes, command evidence and remaining release risks.
 
@@ -8,6 +23,16 @@ tested features, confirmed fixes, command evidence and remaining release risks.
 ---
 
 ## ⚡ Highlights
+
+- **Persistent User Media Library (`/media-library`)**: Dedicated workspace library
+  where user-uploaded videos, images, and audio persist indefinitely across reel
+  projects until explicitly deleted. Features category filters (`All`, `Videos`, `Images`,
+  `Audio`), search, live video previews, direct usage in Reel Maker timeline tracks,
+  and cover art picker.
+
+- **Streamlined Workflow & Navigation**: Simplified dashboard sidebar with direct
+  `Media Library` access, unified `AI Auto Cut` workspace, and streamlined timeline
+  toolbars with direct track-level media pickers.
 
 - **Thumbnail Cover**: editable pre-playback poster, with/without cover video
   export, and separate JPG/PNG downloads. [Behavior and verification](docs/thumbnail-cover.md).
@@ -102,6 +127,11 @@ Navigate to:
 - **AI Clip Finder**: [http://localhost:3000](http://localhost:3000)
 - **AI Reel Maker**: [http://localhost:3000/reel-maker](http://localhost:3000/reel-maker)
 - **AI Social Post Studio**: [http://localhost:3000/social-post](http://localhost:3000/social-post)
+- **Planner**: Open `/planner` from Social Intelligence. The weekly reference
+  shows seven topics and 28 IST posting slots, with official platform guidance
+  for testing times against your own audience data. A **Today** highlight follows
+  the India Standard Time calendar and updates at midnight. Publishing is
+  handled separately in Social Post Studio.
 
 ### 4. Check the Build
 ```bash

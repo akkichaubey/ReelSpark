@@ -1,5 +1,23 @@
 # Reel Maker multi-track timeline
 
+## Audio Only background picker (2026-11-18)
+
+On Caption Maker's Audio Only main video track, **Change Background** opens the
+media picker with available images and videos. Select one or use the upload
+button. The replacement keeps the background clips in place and mutes their
+audio. A shorter replacement video loops, and the existing voice and caption
+clips keep their timing. The timeline uses its existing commit and undo path.
+
+- **PASS** TypeScript, ESLint for `ProfessionalTimeline.tsx`, and a timeline
+  validation check for image and video replacement, short video looping, voice
+  and caption preservation, and rejection of audio assets and locked tracks.
+- **FAIL** The production build stopped when the Turbopack CSS loader subprocess
+  exited while processing `theme.css`.
+- **NOT RUN** Browser picker selection, device upload, cancel, keyboard,
+  responsive layout, theme, undo, preview, save/reopen, and export checks.
+
+## Earlier timeline verification
+
 Thumbnail cover follow-up: [cover behavior and tests](thumbnail-cover.md).
 This optional pre-playback poster is independent of source clip timing and
 does not become a draggable clip or ripple-edit target.

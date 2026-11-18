@@ -2,6 +2,7 @@
 import { Button } from '@/components/ui/button';
 import { DialogSurface, DialogTitle } from '@/components/ui/dialog';
 import { accountCache } from '@/lib/account-cache';
+import { selectTitleTranscript } from '@/lib/title-suggestions';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1014,8 +1015,17 @@ export function WorkspaceDashboard({ embedded = false, projectId, onProjectChang
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {displayCandidates.map((candidate, idx) => (
                   <ClipCard
-                    key={candidate.id}
+                    key={`${activeProject.id}:${candidate.id}`}
                     candidate={candidate}
+                    titleSource={{
+                      key: JSON.stringify([activeProject.id, candidate.id, candidate.start, candidate.end, candidate.transcript]),
+                      load: () => selectTitleTranscript(activeProject.transcript || [], candidate.start, candidate.end),
+                    }}
+                    onSaveTitle={async title => {
+                      await persistCandidateMutation(activeProject.id, {
+                        candidateUpdate: { id: candidate.id, changes: { title, titleEnglish: title, titleHindi: title } },
+                      });
+                    }}
                     rank={idx + 1}
                     onToggleSelect={handleToggleSelect}
                     onPlayPreview={(c) => setPreviewCandidate(c)}

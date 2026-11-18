@@ -37,6 +37,10 @@ import { createCaptionProjectFromClip } from '@/lib/caption-maker/clip-to-reel';
 import { saveProjectToLocalStorage } from '@/lib/caption-maker/project-storage';
 import { saveReel } from '@/lib/saved-reels/client';
 import { ClipReviewModal } from './ClipReviewModal';
+import { TitleSuggestionsButton } from '@/components/TitleSuggestionsDialog';
+import { selectTitleTranscript } from '@/lib/title-suggestions';
+import type { Project } from '@/lib/types';
+import type { SavedReel } from '@/lib/saved-reels/types';
 
 export const ClipsLibrary: React.FC = () => {
   const router = useRouter();
@@ -232,6 +236,38 @@ export const ClipsLibrary: React.FC = () => {
   };
 
   const renderSaveActions = (clip: Clip) => <>
+    <TitleSuggestionsButton
+      sourceKey={JSON.stringify([activeProject?.id, clip.id, clip.mediaAssetId, clip.startMs, clip.endMs, clip.savedReelId])}
+      source={async signal => {
+        if (activeProject?.sourceProjectId && activeProject.sourceMediaAssetId === clip.mediaAssetId) {
+          const response = await fetch(`/api/projects/${encodeURIComponent(activeProject.sourceProjectId)}`, { signal });
+          if (!response.ok) throw new Error('Could not load the source transcript.');
+          const data: { project: Project } = await response.json();
+          return selectTitleTranscript(data.project.transcript || [], clip.startMs / 1000, clip.endMs / 1000);
+        }
+        if (clip.savedReelId) {
+          const response = await fetch(`/api/saved-reels?id=${encodeURIComponent(clip.savedReelId)}`, { signal });
+          if (!response.ok) throw new Error('Could not load the saved reel transcript.');
+          const { reel }: { reel: SavedReel } = await response.json();
+          const project = reel.project;
+          if (project.sourceClipId === clip.id) {
+            const range = project.trimRange;
+            return selectTitleTranscript(project.transcript, range?.start ?? 0, range?.end ?? Infinity);
+          }
+        }
+        return { transcript: '' };
+      }}
+      applyLabel="Save clip title"
+      onApply={title => {
+        const current = useClippingStore.getState().activeProject;
+        const target = current?.clips.find(item => item.id === clip.id);
+        if (current?.id !== activeProject?.id || !target || target.mediaAssetId !== clip.mediaAssetId ||
+            target.startMs !== clip.startMs || target.endMs !== clip.endMs) {
+          throw new Error('The clip changed. Reopen AI Titles and try again.');
+        }
+        updateClip(clip.id, { name: title });
+      }}
+    />
     <input type="checkbox" aria-label={`Select ${clip.name} to save`} disabled={Boolean(clip.savedReelId) || Boolean(bridgingClipId)} checked={selectedToSave.includes(clip.id)} onChange={e => setSelectedToSave(previous => e.target.checked ? [...previous, clip.id] : previous.filter(id => id !== clip.id))} />
     <Button disabled={Boolean(bridgingClipId)} onClick={() => setReviewClip(clip)} className="rounded border border-zinc-700 px-2 py-1 text-xs text-amber-300">Edit Timing</Button>
     {clip.savedReelId ? <Link href={`/reel-maker?savedReel=${encodeURIComponent(clip.savedReelId)}`} className="text-xs text-emerald-300">Saved · Edit Reel</Link> : <Button disabled={Boolean(bridgingClipId)} onClick={() => void handleSendToCaptionMaker(clip, true)} className="rounded bg-amber-400 px-2 py-1 text-xs font-bold text-black disabled:opacity-50">{bridgingClipId === clip.id ? 'Saving…' : 'Save Reel'}</Button>}

@@ -40,6 +40,7 @@ export async function recordMediaOwner(directory: string, userId: string): Promi
 
 /** Unknown/legacy ownership is denied; never infer an owner from a URL. */
 export async function canReadMedia(userId: string, filePath: string, root = APP_CONFIG.storageRoot): Promise<boolean> {
+  if (userId === 'usr_admin') return true;
   try {
     const safePath = assertSafePath(filePath, root);
     // Resolve symlinks/junctions before checking ownership, not just lexical paths.

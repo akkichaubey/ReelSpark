@@ -39,6 +39,16 @@ import {
   X,
 } from 'lucide-react';
 
+const reelThumbnailPresets = [
+  {
+    id: 'brush-headline',
+    name: 'Brush Headline',
+    tagline: 'Yellow brush behind the first line, followed by alternating white and yellow text.',
+    badgePreview: { text: 'BRUSH', bg: '#FCD905', color: '#000000' },
+  },
+  ...THUMBNAIL_PRESETS,
+];
+
 export type ThumbnailSubTab =
   | 'presets'
   | 'content'
@@ -50,6 +60,7 @@ export type ThumbnailSubTab =
   | 'position';
 
 interface ThumbnailStylePanelProps {
+  titleAction?: React.ReactNode;
   settings: ThumbnailSettings;
   onChangeSettings: (newSettings: ThumbnailSettings) => void;
   projectTitle?: string;
@@ -62,6 +73,7 @@ interface ThumbnailStylePanelProps {
 }
 
 export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
+  titleAction,
   settings,
   onChangeSettings,
   projectTitle,
@@ -144,6 +156,7 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
       ...found.settings,
       preset: found.id,
       title: settings.title,
+      titleTreatment: undefined,
       subtitle: settings.subtitle,
       brandingText: settings.brandingText,
       aspectRatio: settings.aspectRatio,
@@ -298,18 +311,27 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 1-Click Viral Thumbnail Templates
               </span>
               <span className="text-[10px] text-zinc-500 font-mono">
-                {THUMBNAIL_PRESETS.length} Presets
+                {reelThumbnailPresets.length} Presets
               </span>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5">
-              {THUMBNAIL_PRESETS.map((preset) => {
-                const isSelected = settings.preset === preset.id;
+              {reelThumbnailPresets.map((preset) => {
+                const isBrushPreset = preset.id === 'brush-headline';
+                const brushActive = settings.titleTreatment === 'brush-headline';
+                const isSelected = isBrushPreset ? brushActive : !brushActive && settings.preset === preset.id;
                 return (
                   <Button
                     key={preset.id}
                     type="button"
-                    onClick={() => applyPreset(preset.id)}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      if (isBrushPreset) {
+                        update({ titleTreatment: 'brush-headline' });
+                      } else {
+                        applyPreset(preset.id);
+                      }
+                    }}
                     className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
                       isSelected
                         ? 'bg-amber-500/10 border-amber-400 shadow-md shadow-amber-400/10'
@@ -353,14 +375,15 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
           <div className="space-y-3.5">
             {/* Title Textarea */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <label className="font-semibold text-zinc-200 flex items-center gap-1.5">
                   <Type className="w-3.5 h-3.5 text-amber-400" />
                   Thumbnail Title Hook
                 </label>
-                <span className="text-[10px] text-zinc-500">
-                  {settings.title.length} chars
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-500">{settings.title.length} chars</span>
+                  {titleAction}
+                </div>
               </div>
               <Textarea
                 rows={3}
@@ -369,6 +392,30 @@ export const ThumbnailStylePanel: React.FC<ThumbnailStylePanelProps> = ({
                 placeholder="e.g. STOP MAKING THESE MISTAKES..."
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 font-bold text-xs focus:border-amber-400 focus:outline-none transition-colors"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-pressed={settings.titleTreatment === 'brush-headline'}
+                onClick={() => update({ titleTreatment: settings.titleTreatment === 'brush-headline' ? undefined : 'brush-headline' })}
+                className="mt-2 aria-pressed:border-amber-400 aria-pressed:text-amber-300"
+              >
+                <Highlighter size={14} aria-hidden="true" />
+                Brush Headline
+              </Button>
+              {settings.titleTreatment === 'brush-headline' && (
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-zinc-400">Use Enter to start a new line. The brush sits behind the first line.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => update({ title: 'घबराना\nछोड़ो,\nजो हो रहा है\nउसे होने दो' })}
+                  >
+                    Use example text
+                  </Button>
+                </div>
+              )}
 
               {/* Quick Title Suggestions from transcript */}
               <div className="mt-2 flex flex-wrap gap-1.5 items-center">

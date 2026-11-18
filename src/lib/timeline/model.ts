@@ -23,6 +23,7 @@ export interface TimelineAsset {
   fitMode?: ImageFitMode;
   position?: ImagePosition;
   scale?: number;
+  isFavorite?: boolean;
 }
 export interface TimelineTrack {
   id: string;

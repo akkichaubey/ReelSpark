@@ -149,7 +149,25 @@ function getMimeType(filePath: string): string {
 /**
  * Programmatically render MP4 video with GSAP typography animations via Remotion.
  */
+let renderInProgress = false;
+
 export async function renderRemotionReelVideo(
+  options: RenderRemotionOptions
+): Promise<{ outputPath: string; duration: number }> {
+  const constrainedServer = process.env.RENDER === 'true';
+  if (!constrainedServer) return renderReel(options);
+  if (renderInProgress) {
+    throw new Error('The server is exporting another reel. Wait for that export to finish, then retry.');
+  }
+  renderInProgress = true;
+  try {
+    return await renderReel(options);
+  } finally {
+    renderInProgress = false;
+  }
+}
+
+async function renderReel(
   options: RenderRemotionOptions
 ): Promise<{ outputPath: string; duration: number }> {
   const {
@@ -301,6 +319,13 @@ export async function renderRemotionReelVideo(
   if (options.signal?.aborted) abortRender();
   try {
     await renderMedia({
+      ...(process.env.RENDER === 'true' ? {
+        concurrency: 1,
+        offthreadVideoThreads: 1,
+        offthreadVideoCacheSizeInBytes: 32 * 1024 * 1024,
+        mediaCacheSizeInBytes: 32 * 1024 * 1024,
+        disallowParallelEncoding: true,
+      } : {}),
       browserExecutable,
       composition,
       serveUrl: bundleLocation,
